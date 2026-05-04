@@ -23,6 +23,10 @@ export default defineConfig(({ mode }) => {
         input: {
           newtab: path.resolve(__dirname, "src/newtab/index.html"),
           options: path.resolve(__dirname, "src/options/index.html"),
+          "auth-callback": path.resolve(
+            __dirname,
+            "src/auth-callback/index.html",
+          ),
         },
       },
     },

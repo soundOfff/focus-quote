@@ -30,6 +30,19 @@ export default defineManifest({
   chrome_url_overrides: {
     newtab: "src/newtab/index.html",
   },
-  permissions: ["contextMenus", "storage", "alarms", "notifications", "activeTab"],
+  permissions: [
+    "contextMenus",
+    "storage",
+    "alarms",
+    "notifications",
+    "activeTab",
+    "identity",
+  ],
   host_permissions: ["<all_urls>"],
+  web_accessible_resources: [
+    {
+      resources: ["src/auth-callback/index.html"],
+      matches: ["<all_urls>"],
+    },
+  ],
 })
