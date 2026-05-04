@@ -1,12 +1,7 @@
 import { Effect, Schema } from "effect"
 import { StorageService } from "./storage"
 import { SyncService } from "./sync"
-import {
-  Quote,
-  NewQuote,
-  type DeviceId,
-  type QuoteId,
-} from "@focus-quote/shared"
+import { Quote, NewQuote, type QuoteId } from "@focus-quote/shared"
 import { ValidationError } from "../shared/errors"
 
 const QUOTES_KEY = "focusquote.quotes"
@@ -52,7 +47,7 @@ export class QuotesService extends Effect.Service<QuotesService>()(
           )
         })
 
-      const save = (input: NewQuote, deviceId: DeviceId) =>
+      const save = (input: NewQuote) =>
         Effect.gen(function* () {
           const validated = yield* Schema.decodeUnknown(NewQuote)(input).pipe(
             Effect.mapError(
@@ -63,7 +58,6 @@ export class QuotesService extends Effect.Service<QuotesService>()(
           const now = new Date().toISOString()
           const quote: Quote = {
             id: crypto.randomUUID() as QuoteId,
-            deviceId,
             text: validated.text,
             sourceUrl: validated.sourceUrl,
             sourceTitle: validated.sourceTitle,
@@ -73,11 +67,20 @@ export class QuotesService extends Effect.Service<QuotesService>()(
           }
           const all = yield* readAll
           yield* writeAll({ ...all, [quote.id]: quote })
-          yield* sync.enqueue({ kind: "upsertQuote", quote })
+          yield* sync.enqueue({
+            kind: "upsertQuote",
+            id: quote.id,
+            text: quote.text,
+            sourceUrl: quote.sourceUrl,
+            sourceTitle: quote.sourceTitle,
+            tag: quote.tag,
+            createdAt: quote.createdAt,
+            updatedAt: quote.updatedAt,
+          })
           return quote
         })
 
-      const remove = (id: QuoteId, deviceId: DeviceId) =>
+      const remove = (id: QuoteId) =>
         Effect.gen(function* () {
           const all = yield* readAll
           if (!(id in all)) return
@@ -85,7 +88,7 @@ export class QuotesService extends Effect.Service<QuotesService>()(
             Object.entries(all).filter(([k]) => k !== id),
           ) as QuoteRecord
           yield* writeAll(next)
-          yield* sync.enqueue({ kind: "deleteQuote", id, deviceId })
+          yield* sync.enqueue({ kind: "deleteQuote", id })
         })
 
       return { list, search, save, remove }

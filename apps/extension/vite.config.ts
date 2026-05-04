@@ -12,8 +12,9 @@ export default defineConfig(({ mode }) => {
       alias: { "@": path.resolve(__dirname, "src") },
     },
     define: {
-      __TURSO_DB_URL__: JSON.stringify(env.TURSO_DB_URL ?? ""),
-      __TURSO_AUTH_TOKEN__: JSON.stringify(env.TURSO_AUTH_TOKEN ?? ""),
+      __API_BASE_URL__: JSON.stringify(
+        env.API_BASE_URL ?? "http://localhost:3000",
+      ),
     },
     build: {
       target: "esnext",

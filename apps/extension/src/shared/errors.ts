@@ -1,12 +1,8 @@
 import { Data } from "effect"
 
-export class DatabaseError extends Data.TaggedError("DatabaseError")<{
-  readonly message: string
-  readonly cause?: unknown
-}> {}
-
 export class NetworkError extends Data.TaggedError("NetworkError")<{
   readonly message: string
+  readonly status?: number
   readonly cause?: unknown
 }> {}
 
@@ -35,6 +31,11 @@ export class NotFoundError extends Data.TaggedError("NotFoundError")<{
   readonly id: string
 }> {}
 
-export class ConfigError extends Data.TaggedError("ConfigError")<{
+export class SignedOutError extends Data.TaggedError("SignedOutError")<{
   readonly message: string
+}> {}
+
+export class AuthError extends Data.TaggedError("AuthError")<{
+  readonly message: string
+  readonly cause?: unknown
 }> {}

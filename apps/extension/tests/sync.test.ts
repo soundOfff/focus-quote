@@ -2,93 +2,88 @@ import { describe, it, expect, beforeEach } from "vitest"
 import { Effect, Layer } from "effect"
 import { SyncService } from "@/services/sync"
 import { StorageService } from "@/services/storage"
-import { DatabaseService } from "@/services/database"
-import { DatabaseError } from "@/shared/errors"
-import type { Quote } from "@focus-quote/shared"
+import { ApiService } from "@/services/api"
+import { NetworkError } from "@/shared/errors"
+import type { QuoteId } from "@focus-quote/shared"
 import { resetChromeStorage } from "./setup"
 
-let executeCalls = 0
-let executeShouldFail = false
+let calls = 0
+let mode: "ok" | "fail-all" | "fail-second" = "ok"
 
-const fakeResultSet = {
-  rows: [],
-  columns: [],
-  columnTypes: [],
-  rowsAffected: 1,
-  lastInsertRowid: undefined,
-  toJSON: () => ({}),
-}
-
-const TestDatabase = Layer.succeed(DatabaseService, {
-  isReady: () => true,
-  ensureSchema: Effect.void,
-  ping: Effect.succeed(true),
-  execute: () => {
-    executeCalls++
-    return executeShouldFail
-      ? Effect.fail(new DatabaseError({ message: "boom" }))
-      : Effect.succeed(fakeResultSet as never)
+const TestApi = Layer.succeed(ApiService, {
+  // Only the methods used by SyncService.drain need to be implemented.
+  syncBatch: ({ jobs }: { jobs: ReadonlyArray<unknown> }) => {
+    calls++
+    if (mode === "fail-all") {
+      return Effect.fail(new NetworkError({ message: "down" }))
+    }
+    return Effect.succeed({
+      results: jobs.map((_, i) => {
+        if (mode === "fail-second" && i === 1) {
+          return { ok: false as const, error: "boom" }
+        }
+        return { ok: true as const }
+      }),
+    })
   },
-} as unknown as DatabaseService)
+} as unknown as ApiService)
 
 const TestLayer = SyncService.DefaultWithoutDependencies.pipe(
-  Layer.provide(Layer.merge(StorageService.Default, TestDatabase)),
+  Layer.provideMerge(Layer.merge(StorageService.Default, TestApi)),
 )
 
-const sampleQuote: Quote = {
-  id: "q1" as Quote["id"],
-  deviceId: "d1" as Quote["deviceId"],
-  text: "hello world",
-  sourceUrl: "https://example.com",
-  sourceTitle: "Example",
+const sampleJob = (id: string) => ({
+  kind: "upsertQuote" as const,
+  id: id as QuoteId,
+  text: "hello",
+  sourceUrl: null,
+  sourceTitle: null,
   tag: null,
   createdAt: "2026-05-04T00:00:00Z",
   updatedAt: "2026-05-04T00:00:00Z",
-}
+})
 
 describe("SyncService", () => {
   beforeEach(() => {
     resetChromeStorage()
-    executeCalls = 0
-    executeShouldFail = false
+    calls = 0
+    mode = "ok"
   })
 
   it("enqueues jobs and reports queue size", async () => {
     const program = Effect.gen(function* () {
       const sync = yield* SyncService
-      yield* sync.enqueue({ kind: "upsertQuote", quote: sampleQuote })
-      yield* sync.enqueue({
-        kind: "deleteQuote",
-        id: "q1" as Quote["id"],
-        deviceId: "d1" as Quote["deviceId"],
-      })
+      yield* sync.enqueue(sampleJob("q1"))
+      yield* sync.enqueue({ kind: "deleteQuote", id: "q1" as QuoteId })
       return yield* sync.queueSize
     }).pipe(Effect.provide(TestLayer))
 
     expect(await Effect.runPromise(program)).toBe(2)
   })
 
-  it("drains the queue when DB succeeds", async () => {
+  it("drains the queue when API succeeds", async () => {
     const program = Effect.gen(function* () {
       const sync = yield* SyncService
-      yield* sync.enqueue({ kind: "upsertQuote", quote: sampleQuote })
+      yield* sync.enqueue(sampleJob("q1"))
+      yield* sync.enqueue(sampleJob("q2"))
       const result = yield* sync.drain
       const remaining = yield* sync.queueSize
       return { result, remaining }
     }).pipe(Effect.provide(TestLayer))
 
     const r = await Effect.runPromise(program)
-    expect(r.result.applied).toBe(1)
+    expect(r.result.applied).toBe(2)
     expect(r.result.failed).toBe(0)
     expect(r.remaining).toBe(0)
-    expect(executeCalls).toBe(1)
+    expect(calls).toBe(1)
   })
 
-  it("keeps failing jobs in the queue", async () => {
-    executeShouldFail = true
+  it("keeps everything queued when the whole batch fails", async () => {
+    mode = "fail-all"
     const program = Effect.gen(function* () {
       const sync = yield* SyncService
-      yield* sync.enqueue({ kind: "upsertQuote", quote: sampleQuote })
+      yield* sync.enqueue(sampleJob("q1"))
+      yield* sync.enqueue(sampleJob("q2"))
       const result = yield* sync.drain
       const remaining = yield* sync.queueSize
       return { result, remaining }
@@ -96,28 +91,25 @@ describe("SyncService", () => {
 
     const r = await Effect.runPromise(program)
     expect(r.result.applied).toBe(0)
-    expect(r.result.failed).toBe(1)
-    expect(r.remaining).toBe(1)
+    expect(r.result.failed).toBe(2)
+    expect(r.remaining).toBe(2)
   })
 
-  it("recovers a previously-failed job on next drain", async () => {
+  it("keeps individual failed items in the queue, drops successes", async () => {
+    mode = "fail-second"
     const program = Effect.gen(function* () {
       const sync = yield* SyncService
-      yield* sync.enqueue({ kind: "upsertQuote", quote: sampleQuote })
-
-      executeShouldFail = true
-      yield* sync.drain
-      const stillQueued = yield* sync.queueSize
-
-      executeShouldFail = false
-      const final = yield* sync.drain
+      yield* sync.enqueue(sampleJob("q1"))
+      yield* sync.enqueue(sampleJob("q2"))
+      yield* sync.enqueue(sampleJob("q3"))
+      const result = yield* sync.drain
       const remaining = yield* sync.queueSize
-      return { stillQueued, final, remaining }
+      return { result, remaining }
     }).pipe(Effect.provide(TestLayer))
 
     const r = await Effect.runPromise(program)
-    expect(r.stillQueued).toBe(1)
-    expect(r.final.applied).toBe(1)
-    expect(r.remaining).toBe(0)
+    expect(r.result.applied).toBe(2)
+    expect(r.result.failed).toBe(1)
+    expect(r.remaining).toBe(1)
   })
 })

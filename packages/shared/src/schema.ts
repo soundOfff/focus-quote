@@ -1,8 +1,5 @@
 import { Schema } from "effect"
 
-export const DeviceId = Schema.String.pipe(Schema.brand("DeviceId"))
-export type DeviceId = Schema.Schema.Type<typeof DeviceId>
-
 export const QuoteId = Schema.String.pipe(Schema.brand("QuoteId"))
 export type QuoteId = Schema.Schema.Type<typeof QuoteId>
 
@@ -13,7 +10,6 @@ const NullableString = Schema.NullOr(Schema.String)
 
 export const Quote = Schema.Struct({
   id: QuoteId,
-  deviceId: DeviceId,
   text: Schema.String.pipe(Schema.minLength(1)),
   sourceUrl: NullableString,
   sourceTitle: NullableString,
@@ -33,7 +29,6 @@ export type NewQuote = Schema.Schema.Type<typeof NewQuote>
 
 export const Session = Schema.Struct({
   id: SessionId,
-  deviceId: DeviceId,
   goal: NullableString,
   durationMinutes: Schema.Number,
   breakMinutes: Schema.Number,
@@ -60,19 +55,36 @@ export const Settings = Schema.Struct({
 })
 export type Settings = Schema.Schema.Type<typeof Settings>
 
+/**
+ * SyncJob is the wire format for queued offline mutations posted to
+ * the server's /api/sync/batch endpoint. The server resolves the
+ * acting user from the bearer-auth session, so jobs carry no
+ * device/user id.
+ */
 export const SyncJob = Schema.Union(
   Schema.Struct({
     kind: Schema.Literal("upsertQuote"),
-    quote: Quote,
+    id: QuoteId,
+    text: Schema.String,
+    sourceUrl: NullableString,
+    sourceTitle: NullableString,
+    tag: NullableString,
+    createdAt: Schema.String,
+    updatedAt: Schema.String,
   }),
   Schema.Struct({
     kind: Schema.Literal("deleteQuote"),
     id: QuoteId,
-    deviceId: DeviceId,
   }),
   Schema.Struct({
     kind: Schema.Literal("upsertSession"),
-    session: Session,
+    id: SessionId,
+    goal: NullableString,
+    durationMinutes: Schema.Number,
+    breakMinutes: Schema.Number,
+    completed: Schema.Boolean,
+    startedAt: Schema.String,
+    endedAt: NullableString,
   }),
 )
 export type SyncJob = Schema.Schema.Type<typeof SyncJob>

@@ -1,12 +1,7 @@
 import { Effect, Schema } from "effect"
 import { StorageService } from "./storage"
 import { SyncService } from "./sync"
-import {
-  Session,
-  NewSession,
-  type DeviceId,
-  type SessionId,
-} from "@focus-quote/shared"
+import { Session, NewSession, type SessionId } from "@focus-quote/shared"
 import { ValidationError } from "../shared/errors"
 
 const SESSIONS_KEY = "focusquote.sessions"
@@ -22,7 +17,6 @@ const ActiveSession = Schema.Struct({
   breakMinutes: Schema.Number,
   startedAt: Schema.String,
   expectedEndAt: Schema.String,
-  deviceId: Schema.String,
 })
 export type ActiveSession = Schema.Schema.Type<typeof ActiveSession>
 
@@ -31,6 +25,18 @@ export interface SessionStats {
   streakDays: number
   totalCompleted: number
 }
+
+const enqueueSession = (sync: SyncService, session: Session) =>
+  sync.enqueue({
+    kind: "upsertSession",
+    id: session.id,
+    goal: session.goal,
+    durationMinutes: session.durationMinutes,
+    breakMinutes: session.breakMinutes,
+    completed: session.completed,
+    startedAt: session.startedAt,
+    endedAt: session.endedAt,
+  })
 
 export class SessionsService extends Effect.Service<SessionsService>()(
   "SessionsService",
@@ -59,7 +65,7 @@ export class SessionsService extends Effect.Service<SessionsService>()(
           return limit ? arr.slice(0, limit) : arr
         })
 
-      const start = (input: NewSession, deviceId: DeviceId) =>
+      const start = (input: NewSession) =>
         Effect.gen(function* () {
           const validated = yield* Schema.decodeUnknown(NewSession)(input).pipe(
             Effect.mapError(
@@ -73,7 +79,6 @@ export class SessionsService extends Effect.Service<SessionsService>()(
           )
           const session: Session = {
             id: crypto.randomUUID() as SessionId,
-            deviceId,
             goal: validated.goal,
             durationMinutes: validated.durationMinutes,
             breakMinutes: validated.breakMinutes,
@@ -90,10 +95,9 @@ export class SessionsService extends Effect.Service<SessionsService>()(
             breakMinutes: session.breakMinutes,
             startedAt: session.startedAt,
             expectedEndAt: expectedEnd.toISOString(),
-            deviceId,
           }
           yield* storage.set(ACTIVE_SESSION_KEY, active)
-          yield* sync.enqueue({ kind: "upsertSession", session })
+          yield* enqueueSession(sync, session)
           return { session, active }
         })
 
@@ -109,7 +113,7 @@ export class SessionsService extends Effect.Service<SessionsService>()(
           }
           yield* writeAll({ ...all, [id]: updated })
           yield* storage.remove(ACTIVE_SESSION_KEY)
-          yield* sync.enqueue({ kind: "upsertSession", session: updated })
+          yield* enqueueSession(sync, updated)
           return updated
         })
 

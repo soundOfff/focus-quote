@@ -3,27 +3,15 @@ import { Effect, Layer } from "effect"
 import { QuotesService } from "@/services/quotes"
 import { StorageService } from "@/services/storage"
 import { SyncService } from "@/services/sync"
-import { DatabaseService } from "@/services/database"
-import type { DeviceId } from "@focus-quote/shared"
+import { ApiService } from "@/services/api"
 import { resetChromeStorage } from "./setup"
 
-const fakeResultSet = {
-  rows: [],
-  columns: [],
-  columnTypes: [],
-  rowsAffected: 1,
-  lastInsertRowid: undefined,
-  toJSON: () => ({}),
-}
+const TestApi = Layer.succeed(ApiService, {
+  syncBatch: ({ jobs }: { jobs: ReadonlyArray<unknown> }) =>
+    Effect.succeed({ results: jobs.map(() => ({ ok: true as const })) }),
+} as unknown as ApiService)
 
-const TestDatabase = Layer.succeed(DatabaseService, {
-  isReady: () => true,
-  ensureSchema: Effect.void,
-  ping: Effect.succeed(true),
-  execute: () => Effect.succeed(fakeResultSet as never),
-} as unknown as DatabaseService)
-
-const baseDeps = Layer.merge(StorageService.Default, TestDatabase)
+const baseDeps = Layer.merge(StorageService.Default, TestApi)
 const syncStack = SyncService.DefaultWithoutDependencies.pipe(
   Layer.provideMerge(baseDeps),
 )
@@ -31,23 +19,18 @@ const TestLayer = QuotesService.DefaultWithoutDependencies.pipe(
   Layer.provideMerge(syncStack),
 )
 
-const deviceId = "device-test-1" as DeviceId
-
 describe("QuotesService", () => {
   beforeEach(resetChromeStorage)
 
   it("saves and lists a quote", async () => {
     const program = Effect.gen(function* () {
       const quotes = yield* QuotesService
-      const saved = yield* quotes.save(
-        {
-          text: "first quote",
-          sourceUrl: "https://example.com",
-          sourceTitle: "Example",
-          tag: "wisdom",
-        },
-        deviceId,
-      )
+      const saved = yield* quotes.save({
+        text: "first quote",
+        sourceUrl: "https://example.com",
+        sourceTitle: "Example",
+        tag: "wisdom",
+      })
       const listed = yield* quotes.list()
       return { saved, listed }
     }).pipe(Effect.provide(TestLayer))
@@ -61,10 +44,12 @@ describe("QuotesService", () => {
   it("rejects empty text", async () => {
     const program = Effect.gen(function* () {
       const quotes = yield* QuotesService
-      return yield* quotes.save(
-        { text: "", sourceUrl: null, sourceTitle: null, tag: null },
-        deviceId,
-      )
+      return yield* quotes.save({
+        text: "",
+        sourceUrl: null,
+        sourceTitle: null,
+        tag: null,
+      })
     }).pipe(Effect.provide(TestLayer))
 
     await expect(Effect.runPromise(program)).rejects.toBeDefined()
@@ -73,14 +58,18 @@ describe("QuotesService", () => {
   it("searches by text and tag, case-insensitive", async () => {
     const program = Effect.gen(function* () {
       const quotes = yield* QuotesService
-      yield* quotes.save(
-        { text: "Stay hungry", sourceUrl: null, sourceTitle: null, tag: "jobs" },
-        deviceId,
-      )
-      yield* quotes.save(
-        { text: "The unexamined life", sourceUrl: null, sourceTitle: null, tag: "philosophy" },
-        deviceId,
-      )
+      yield* quotes.save({
+        text: "Stay hungry",
+        sourceUrl: null,
+        sourceTitle: null,
+        tag: "jobs",
+      })
+      yield* quotes.save({
+        text: "The unexamined life",
+        sourceUrl: null,
+        sourceTitle: null,
+        tag: "philosophy",
+      })
       const byText = yield* quotes.search("hungry")
       const byTag = yield* quotes.search("PHILOSOPHY")
       const empty = yield* quotes.search("")
@@ -99,12 +88,14 @@ describe("QuotesService", () => {
     const program = Effect.gen(function* () {
       const quotes = yield* QuotesService
       const sync = yield* SyncService
-      const saved = yield* quotes.save(
-        { text: "to delete", sourceUrl: null, sourceTitle: null, tag: null },
-        deviceId,
-      )
+      const saved = yield* quotes.save({
+        text: "to delete",
+        sourceUrl: null,
+        sourceTitle: null,
+        tag: null,
+      })
       const beforeQueueSize = yield* sync.queueSize
-      yield* quotes.remove(saved.id, deviceId)
+      yield* quotes.remove(saved.id)
       const afterList = yield* quotes.list()
       const afterQueueSize = yield* sync.queueSize
       return { beforeQueueSize, afterList, afterQueueSize }

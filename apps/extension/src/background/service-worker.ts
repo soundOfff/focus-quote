@@ -1,10 +1,9 @@
 import { Effect, Layer } from "effect"
-import { DatabaseService } from "../services/database"
 import { StorageService } from "../services/storage"
+import { ApiService } from "../services/api"
 import { SyncService } from "../services/sync"
 import { QuotesService } from "../services/quotes"
 import { SessionsService } from "../services/sessions"
-import { getOrCreateDeviceId } from "../shared/ids"
 import {
   isRuntimeMessage,
   type RuntimeMessage,
@@ -21,15 +20,15 @@ const CONTEXT_MENU_ID = "focusquote.saveQuote"
 
 const ServicesLayer = Layer.mergeAll(
   StorageService.Default,
-  DatabaseService.Default,
+  ApiService.Default,
   SyncService.Default,
   QuotesService.Default,
   SessionsService.Default,
 )
 
 type AllServices =
-  | DatabaseService
   | StorageService
+  | ApiService
   | SyncService
   | QuotesService
   | SessionsService
@@ -46,20 +45,6 @@ const updateBadge = (minutesRemaining: number) => {
   chrome.action.setBadgeText({ text: String(minutesRemaining) })
   chrome.action.setBadgeBackgroundColor({ color: "#e94560" })
 }
-
-// ---- install / startup ----
-const onInstall = Effect.gen(function* () {
-  const deviceId = yield* getOrCreateDeviceId
-  console.log("[FocusQuote] device id:", deviceId)
-
-  const db = yield* DatabaseService
-  if (!db.isReady()) {
-    console.warn("[FocusQuote] Turso not configured at build time")
-  } else {
-    yield* db.ensureSchema
-    console.log("[FocusQuote] schema ensured")
-  }
-})
 
 const tickSync = Effect.gen(function* () {
   const sync = yield* SyncService
@@ -79,7 +64,9 @@ const tickSync = Effect.gen(function* () {
 // ---- session ----
 const tickSessionBadge = Effect.gen(function* () {
   const sessions = yield* SessionsService
-  const active = yield* sessions.getActive.pipe(Effect.orElseSucceed(() => null))
+  const active = yield* sessions.getActive.pipe(
+    Effect.orElseSucceed(() => null),
+  )
   if (!active) {
     updateBadge(0)
     return
@@ -92,16 +79,12 @@ const tickSessionBadge = Effect.gen(function* () {
 const handleSessionStart = (msg: RuntimeMessage) =>
   Effect.gen(function* () {
     if (msg.type !== "focusquote.session.start") return
-    const deviceId = yield* getOrCreateDeviceId
     const sessions = yield* SessionsService
-    const { active } = yield* sessions.start(
-      {
-        goal: msg.goal,
-        durationMinutes: msg.durationMinutes,
-        breakMinutes: msg.breakMinutes,
-      },
-      deviceId,
-    )
+    const { active } = yield* sessions.start({
+      goal: msg.goal,
+      durationMinutes: msg.durationMinutes,
+      breakMinutes: msg.breakMinutes,
+    })
     chrome.alarms.create(SESSION_END_ALARM, {
       when: new Date(active.expectedEndAt).getTime(),
     })
@@ -119,7 +102,9 @@ const handleSessionCancel = Effect.gen(function* () {
 
 const handleSessionEnd = Effect.gen(function* () {
   const sessions = yield* SessionsService
-  const active = yield* sessions.getActive.pipe(Effect.orElseSucceed(() => null))
+  const active = yield* sessions.getActive.pipe(
+    Effect.orElseSucceed(() => null),
+  )
   if (!active) return
   yield* sessions.complete(active.sessionId as SessionId, true)
   yield* Effect.promise(() => chrome.alarms.clear(SESSION_TICK_ALARM))
@@ -160,12 +145,8 @@ const saveAndNotify = (
 ) =>
   Effect.gen(function* () {
     if (!text.trim()) return
-    const deviceId = yield* getOrCreateDeviceId
     const quotes = yield* QuotesService
-    yield* quotes.save(
-      { text, sourceUrl, sourceTitle, tag },
-      deviceId,
-    )
+    yield* quotes.save({ text, sourceUrl, sourceTitle, tag })
     if (tabId !== undefined) {
       yield* sendToast(tabId, "Quote saved")
     }
@@ -210,9 +191,6 @@ const registerContextMenu = () => {
 chrome.runtime.onInstalled.addListener(() => {
   registerContextMenu()
   chrome.alarms.create(SYNC_ALARM, { periodInMinutes: SYNC_PERIOD_MIN })
-  runWithServices(onInstall).catch((err) =>
-    console.error("[FocusQuote] install failed:", err),
-  )
 })
 
 chrome.runtime.onStartup.addListener(() => {
@@ -264,7 +242,10 @@ chrome.runtime.onMessage.addListener(
     runWithServices(program)
       .then(() => respond({ ok: true }))
       .catch((err) =>
-        respond({ ok: false, error: err instanceof Error ? err.message : String(err) }),
+        respond({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }),
       )
     return true
   },

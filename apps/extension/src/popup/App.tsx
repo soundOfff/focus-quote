@@ -3,7 +3,6 @@ import { Effect } from "effect"
 import { Settings as SettingsIcon } from "lucide-preact"
 import { QuotesService } from "../services/quotes"
 import { StorageService } from "../services/storage"
-import { getOrCreateDeviceId } from "../shared/ids"
 import {
   defaultPrefs,
   loadPrefs,
@@ -16,7 +15,7 @@ import { QuoteList } from "./components/QuoteList"
 import { SearchBar } from "./components/SearchBar"
 import { SessionPanel } from "./components/SessionPanel"
 import { SettingsView } from "./components/SettingsView"
-import type { Quote, DeviceId } from "@focus-quote/shared"
+import type { Quote } from "@focus-quote/shared"
 
 const loadQuotes = (query: string) =>
   Effect.gen(function* () {
@@ -44,7 +43,6 @@ export function App() {
   const [view, setView] = useState<View>("main")
   const [query, setQuery] = useState("")
   const [quotes, setQuotes] = useState<ReadonlyArray<Quote>>([])
-  const [deviceId, setDeviceId] = useState<DeviceId | null>(null)
   const [prefs, setPrefs] = useState<Prefs>(defaultPrefs)
 
   const refresh = (q: string) =>
@@ -59,7 +57,6 @@ export function App() {
         applyTheme(p.theme)
       })
       .catch(console.error)
-    runP(getOrCreateDeviceId).then(setDeviceId).catch(console.error)
     refresh("")
   }, [])
 
@@ -69,11 +66,10 @@ export function App() {
   }, [query])
 
   const handleDelete = (id: Quote["id"]) => {
-    if (!deviceId) return
     runP(
       Effect.gen(function* () {
         const quotes = yield* QuotesService
-        yield* quotes.remove(id, deviceId)
+        yield* quotes.remove(id)
       }),
     )
       .then(() => refresh(query))

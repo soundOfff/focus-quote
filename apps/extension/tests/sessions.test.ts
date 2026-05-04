@@ -3,27 +3,15 @@ import { Effect, Layer } from "effect"
 import { SessionsService } from "@/services/sessions"
 import { StorageService } from "@/services/storage"
 import { SyncService } from "@/services/sync"
-import { DatabaseService } from "@/services/database"
-import type { DeviceId } from "@focus-quote/shared"
+import { ApiService } from "@/services/api"
 import { resetChromeStorage } from "./setup"
 
-const fakeResultSet = {
-  rows: [],
-  columns: [],
-  columnTypes: [],
-  rowsAffected: 1,
-  lastInsertRowid: undefined,
-  toJSON: () => ({}),
-}
+const TestApi = Layer.succeed(ApiService, {
+  syncBatch: ({ jobs }: { jobs: ReadonlyArray<unknown> }) =>
+    Effect.succeed({ results: jobs.map(() => ({ ok: true as const })) }),
+} as unknown as ApiService)
 
-const TestDatabase = Layer.succeed(DatabaseService, {
-  isReady: () => true,
-  ensureSchema: Effect.void,
-  ping: Effect.succeed(true),
-  execute: () => Effect.succeed(fakeResultSet as never),
-} as unknown as DatabaseService)
-
-const baseDeps = Layer.merge(StorageService.Default, TestDatabase)
+const baseDeps = Layer.merge(StorageService.Default, TestApi)
 const syncStack = SyncService.DefaultWithoutDependencies.pipe(
   Layer.provideMerge(baseDeps),
 )
@@ -31,18 +19,17 @@ const TestLayer = SessionsService.DefaultWithoutDependencies.pipe(
   Layer.provideMerge(syncStack),
 )
 
-const deviceId = "device-test-1" as DeviceId
-
 describe("SessionsService", () => {
   beforeEach(resetChromeStorage)
 
   it("starts a session and tracks it as active", async () => {
     const program = Effect.gen(function* () {
       const sessions = yield* SessionsService
-      const { session, active } = yield* sessions.start(
-        { goal: "ship MVP", durationMinutes: 25, breakMinutes: 5 },
-        deviceId,
-      )
+      const { session, active } = yield* sessions.start({
+        goal: "ship MVP",
+        durationMinutes: 25,
+        breakMinutes: 5,
+      })
       const stored = yield* sessions.getActive
       return { session, active, stored }
     }).pipe(Effect.provide(TestLayer))
@@ -57,10 +44,11 @@ describe("SessionsService", () => {
   it("completes a session and clears active", async () => {
     const program = Effect.gen(function* () {
       const sessions = yield* SessionsService
-      const { session } = yield* sessions.start(
-        { goal: null, durationMinutes: 25, breakMinutes: 5 },
-        deviceId,
-      )
+      const { session } = yield* sessions.start({
+        goal: null,
+        durationMinutes: 25,
+        breakMinutes: 5,
+      })
       const completed = yield* sessions.complete(session.id, true)
       const active = yield* sessions.getActive
       return { completed, active }
@@ -75,10 +63,11 @@ describe("SessionsService", () => {
   it("cancel marks active session as not completed and clears it", async () => {
     const program = Effect.gen(function* () {
       const sessions = yield* SessionsService
-      yield* sessions.start(
-        { goal: null, durationMinutes: 25, breakMinutes: 5 },
-        deviceId,
-      )
+      yield* sessions.start({
+        goal: null,
+        durationMinutes: 25,
+        breakMinutes: 5,
+      })
       const cancelled = yield* sessions.cancel
       const active = yield* sessions.getActive
       return { cancelled, active }
@@ -92,10 +81,11 @@ describe("SessionsService", () => {
   it("computes today count and a 1-day streak after one completion", async () => {
     const program = Effect.gen(function* () {
       const sessions = yield* SessionsService
-      const { session } = yield* sessions.start(
-        { goal: null, durationMinutes: 25, breakMinutes: 5 },
-        deviceId,
-      )
+      const { session } = yield* sessions.start({
+        goal: null,
+        durationMinutes: 25,
+        breakMinutes: 5,
+      })
       yield* sessions.complete(session.id, true)
       return yield* sessions.stats
     }).pipe(Effect.provide(TestLayer))

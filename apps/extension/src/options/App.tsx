@@ -1,25 +1,13 @@
 import { useEffect, useState } from "preact/hooks"
 import { Effect } from "effect"
-import { CheckCircle2, Download, Key, Moon, Sun, XCircle } from "lucide-preact"
-import { DatabaseService } from "../services/database"
+import { Download, Key, Moon, Sun } from "lucide-preact"
 import { QuotesService } from "../services/quotes"
 import { SessionsService } from "../services/sessions"
 import { StorageService } from "../services/storage"
 import { OPENROUTER_KEY_KEY } from "../shared/settings"
-import {
-  applyTheme,
-  loadTheme,
-  saveTheme,
-} from "../shared/theme"
-import { tursoConfigStatus } from "../shared/config"
+import { applyTheme, loadTheme, saveTheme } from "../shared/theme"
 import type { Theme } from "@focus-quote/shared"
 import { runP } from "./runtime"
-
-type ConnState =
-  | { kind: "idle" }
-  | { kind: "checking" }
-  | { kind: "ok" }
-  | { kind: "error"; message: string }
 
 const loadInitial = Effect.gen(function* () {
   const storage = yield* StorageService
@@ -44,19 +32,6 @@ const persistTheme = (theme: Theme) =>
     yield* saveTheme(storage, theme)
   })
 
-const testConnection = Effect.gen(function* () {
-  const db = yield* DatabaseService
-  if (!db.isReady()) {
-    return { ok: false as const, message: "Turso not configured at build time" }
-  }
-  return yield* db.ping.pipe(
-    Effect.map(() => ({ ok: true as const })),
-    Effect.catchAll((err) =>
-      Effect.succeed({ ok: false as const, message: err.message }),
-    ),
-  )
-})
-
 const exportAll = Effect.gen(function* () {
   const quotes = yield* QuotesService
   const sessions = yield* SessionsService
@@ -73,7 +48,6 @@ export function App() {
   const [theme, setTheme] = useState<Theme>("dark")
   const [openrouterKey, setOpenrouterKey] = useState("")
   const [keyStatus, setKeyStatus] = useState<"idle" | "saved">("idle")
-  const [conn, setConn] = useState<ConnState>({ kind: "idle" })
 
   useEffect(() => {
     runP(loadInitial)
@@ -99,15 +73,6 @@ export function App() {
         setTimeout(() => setKeyStatus("idle"), 1500)
       })
       .catch((e) => console.error("[FocusQuote] save key:", e))
-  }
-
-  const handleTestConnection = () => {
-    setConn({ kind: "checking" })
-    runP(testConnection)
-      .then((r) =>
-        r.ok ? setConn({ kind: "ok" }) : setConn({ kind: "error", message: r.message }),
-      )
-      .catch((e) => setConn({ kind: "error", message: String(e) }))
   }
 
   const handleExport = () => {
@@ -159,9 +124,7 @@ export function App() {
               placeholder="sk-or-…"
               value={openrouterKey}
               onInput={(e) =>
-                setOpenrouterKey(
-                  (e.currentTarget as HTMLInputElement).value,
-                )
+                setOpenrouterKey((e.currentTarget as HTMLInputElement).value)
               }
               class="flex-1 rounded bg-bg-light px-3 py-2 text-sm outline-none ring-0 focus:ring-1 focus:ring-accent dark:bg-bg-dark/60"
             />
@@ -172,40 +135,6 @@ export function App() {
             >
               {keyStatus === "saved" ? "Saved" : "Save"}
             </button>
-          </div>
-        </section>
-
-        <section class="rounded bg-card-light p-5 shadow-sm dark:bg-card-dark/60 dark:shadow-none">
-          <h2 class="mb-1 text-sm font-medium">Turso connection</h2>
-          <p class="mb-3 text-xs opacity-60">
-            {(() => {
-              const s = tursoConfigStatus()
-              if (s.ok) return "URL and token were baked at build time."
-              return s.reason ?? "Not configured at build time. Set TURSO_DB_URL and TURSO_AUTH_TOKEN in .env and rebuild."
-            })()}
-          </p>
-          <div class="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleTestConnection}
-              disabled={conn.kind === "checking"}
-              class="rounded border border-accent/40 px-3 py-2 text-sm text-accent transition hover:bg-accent/10 disabled:opacity-40"
-            >
-              Test connection
-            </button>
-            {conn.kind === "ok" && (
-              <span class="flex items-center gap-1 text-sm text-green-500">
-                <CheckCircle2 size={14} /> OK
-              </span>
-            )}
-            {conn.kind === "error" && (
-              <span class="flex items-center gap-1 text-sm text-red-400">
-                <XCircle size={14} /> {conn.message}
-              </span>
-            )}
-            {conn.kind === "checking" && (
-              <span class="text-sm opacity-60">Checking…</span>
-            )}
           </div>
         </section>
 
