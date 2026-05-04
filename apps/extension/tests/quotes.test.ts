@@ -4,7 +4,7 @@ import { QuotesService } from "@/services/quotes"
 import { StorageService } from "@/services/storage"
 import { SyncService } from "@/services/sync"
 import { DatabaseService } from "@/services/database"
-import type { DeviceId } from "@/shared/schema"
+import type { DeviceId } from "@focus-quote/shared"
 import { resetChromeStorage } from "./setup"
 
 const fakeResultSet = {

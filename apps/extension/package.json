@@ -12,6 +12,7 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@focus-quote/shared": "*",
     "@libsql/client": "^0.14.0",
     "effect": "^3.10.4",
     "lucide-preact": "^0.460.0",

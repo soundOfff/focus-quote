@@ -1,5 +1,5 @@
 import { Moon, Sun } from "lucide-preact"
-import type { Theme } from "../../shared/schema"
+import type { Theme } from "@focus-quote/shared"
 
 interface Props {
   theme: Theme

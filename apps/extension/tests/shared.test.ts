@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest"
 import { Effect, Schema } from "effect"
 import { getOrCreateDeviceId } from "@/shared/ids"
-import { Quote, NewQuote, Session } from "@/shared/schema"
+import { Quote, NewQuote, Session } from "@focus-quote/shared"
 import { resetChromeStorage } from "./setup"
 
 describe("device id", () => {

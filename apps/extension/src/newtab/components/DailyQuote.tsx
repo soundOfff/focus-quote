@@ -1,4 +1,4 @@
-import type { Quote } from "../../shared/schema"
+import type { Quote } from "@focus-quote/shared"
 
 interface Props {
   quote: Quote | null

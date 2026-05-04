@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import { StorageError } from "./errors"
-import type { DeviceId } from "./schema"
+import type { DeviceId } from "@focus-quote/shared"
 
 const DEVICE_ID_KEY = "focusquote.deviceId"
 

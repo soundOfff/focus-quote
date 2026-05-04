@@ -13,7 +13,7 @@ import { QuotesService } from "../../services/quotes"
 import { SessionsService } from "../../services/sessions"
 import type { Prefs } from "../../shared/prefs"
 import { applyTheme } from "../../shared/theme"
-import type { Theme } from "../../shared/schema"
+import type { Theme } from "@focus-quote/shared"
 import { runP } from "../runtime"
 
 interface Stats {

@@ -16,7 +16,7 @@ import { QuoteList } from "./components/QuoteList"
 import { SearchBar } from "./components/SearchBar"
 import { SessionPanel } from "./components/SessionPanel"
 import { SettingsView } from "./components/SettingsView"
-import type { Quote, DeviceId } from "../shared/schema"
+import type { Quote, DeviceId } from "@focus-quote/shared"
 
 const loadQuotes = (query: string) =>
   Effect.gen(function* () {

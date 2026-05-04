@@ -12,7 +12,7 @@ import {
   saveTheme,
 } from "../shared/theme"
 import { tursoConfigStatus } from "../shared/config"
-import type { Theme } from "../shared/schema"
+import type { Theme } from "@focus-quote/shared"
 import { runP } from "./runtime"
 
 type ConnState =

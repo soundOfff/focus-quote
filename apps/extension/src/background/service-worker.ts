@@ -11,7 +11,7 @@ import {
   type RuntimeResponse,
   type SaveQuoteMessage,
 } from "../shared/messages"
-import type { SessionId } from "../shared/schema"
+import type { SessionId } from "@focus-quote/shared"
 
 const SYNC_ALARM = "focusquote.sync.tick"
 const SYNC_PERIOD_MIN = 2

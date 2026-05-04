@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import type { StorageService } from "../services/storage"
-import type { Theme } from "./schema"
+import type { Theme } from "@focus-quote/shared"
 import { loadPrefs, savePrefs } from "./prefs"
 
 export const TODAY_GOAL_KEY = "focusquote.todayGoal"

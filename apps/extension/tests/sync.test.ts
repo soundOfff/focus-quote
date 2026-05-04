@@ -4,7 +4,7 @@ import { SyncService } from "@/services/sync"
 import { StorageService } from "@/services/storage"
 import { DatabaseService } from "@/services/database"
 import { DatabaseError } from "@/shared/errors"
-import type { Quote } from "@/shared/schema"
+import type { Quote } from "@focus-quote/shared"
 import { resetChromeStorage } from "./setup"
 
 let executeCalls = 0

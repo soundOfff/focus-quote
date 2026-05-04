@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect"
 import type { StorageService } from "../services/storage"
-import { Theme } from "./schema"
+import { Theme } from "@focus-quote/shared"
 
 export const PREFS_KEY = "focusquote.prefs"
 

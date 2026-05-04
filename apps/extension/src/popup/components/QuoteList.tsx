@@ -1,5 +1,5 @@
 import { Trash2, Link as LinkIcon } from "lucide-preact"
-import type { Quote } from "../../shared/schema"
+import type { Quote } from "@focus-quote/shared"
 
 interface Props {
   quotes: ReadonlyArray<Quote>

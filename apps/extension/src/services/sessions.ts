@@ -6,7 +6,7 @@ import {
   NewSession,
   type DeviceId,
   type SessionId,
-} from "../shared/schema"
+} from "@focus-quote/shared"
 import { ValidationError } from "../shared/errors"
 
 const SESSIONS_KEY = "focusquote.sessions"

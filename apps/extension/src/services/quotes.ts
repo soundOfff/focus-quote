@@ -6,7 +6,7 @@ import {
   NewQuote,
   type DeviceId,
   type QuoteId,
-} from "../shared/schema"
+} from "@focus-quote/shared"
 import { ValidationError } from "../shared/errors"
 
 const QUOTES_KEY = "focusquote.quotes"

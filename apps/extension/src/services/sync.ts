@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect"
 import { DatabaseService } from "./database"
 import { StorageService } from "./storage"
-import { SyncJob, type Quote, type Session } from "../shared/schema"
+import { SyncJob, type Quote, type Session } from "@focus-quote/shared"
 import { SyncError } from "../shared/errors"
 
 const QUEUE_KEY = "focusquote.syncQueue"
