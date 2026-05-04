@@ -18,10 +18,19 @@ export interface SyncNowMessage {
   type: "focusquote.sync.now"
 }
 
+export interface SaveQuoteMessage {
+  type: "focusquote.saveQuote"
+  text: string
+  sourceUrl: string | null
+  sourceTitle: string | null
+  tag: string | null
+}
+
 export type RuntimeMessage =
   | SessionStartMessage
   | SessionCancelMessage
   | SyncNowMessage
+  | SaveQuoteMessage
 
 export interface OkResponse {
   ok: true
@@ -38,6 +47,7 @@ export const isRuntimeMessage = (msg: unknown): msg is RuntimeMessage => {
   return (
     t === "focusquote.session.start" ||
     t === "focusquote.session.cancel" ||
-    t === "focusquote.sync.now"
+    t === "focusquote.sync.now" ||
+    t === "focusquote.saveQuote"
   )
 }

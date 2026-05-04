@@ -9,6 +9,7 @@ import {
   isRuntimeMessage,
   type RuntimeMessage,
   type RuntimeResponse,
+  type SaveQuoteMessage,
 } from "../shared/messages"
 import type { SessionId } from "../shared/schema"
 
@@ -150,28 +151,50 @@ const sendToast = (
     catch: () => null,
   }).pipe(Effect.either, Effect.asVoid)
 
+const saveAndNotify = (
+  text: string,
+  sourceUrl: string | null,
+  sourceTitle: string | null,
+  tag: string | null,
+  tabId: number | undefined,
+) =>
+  Effect.gen(function* () {
+    if (!text.trim()) return
+    const deviceId = yield* getOrCreateDeviceId
+    const quotes = yield* QuotesService
+    yield* quotes.save(
+      { text, sourceUrl, sourceTitle, tag },
+      deviceId,
+    )
+    if (tabId !== undefined) {
+      yield* sendToast(tabId, "Quote saved")
+    }
+    yield* (yield* SyncService).drain.pipe(Effect.either)
+  })
+
 const handleSaveSelection = (
   info: chrome.contextMenus.OnClickData,
   tab: chrome.tabs.Tab | undefined,
 ) =>
-  Effect.gen(function* () {
-    if (!info.selectionText) return
-    const deviceId = yield* getOrCreateDeviceId
-    const quotes = yield* QuotesService
-    yield* quotes.save(
-      {
-        text: info.selectionText,
-        sourceUrl: tab?.url ?? null,
-        sourceTitle: tab?.title ?? null,
-        tag: null,
-      },
-      deviceId,
-    )
-    if (tab?.id !== undefined) {
-      yield* sendToast(tab.id, "Quote saved")
-    }
-    yield* (yield* SyncService).drain.pipe(Effect.either)
-  })
+  saveAndNotify(
+    info.selectionText ?? "",
+    tab?.url ?? null,
+    tab?.title ?? null,
+    null,
+    tab?.id,
+  )
+
+const handleSaveQuoteMessage = (
+  msg: SaveQuoteMessage,
+  sender: chrome.runtime.MessageSender,
+) =>
+  saveAndNotify(
+    msg.text,
+    msg.sourceUrl,
+    msg.sourceTitle,
+    msg.tag,
+    sender.tab?.id,
+  )
 
 const registerContextMenu = () => {
   chrome.contextMenus.removeAll(() => {
@@ -228,14 +251,16 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 })
 
 chrome.runtime.onMessage.addListener(
-  (msg: unknown, _sender, respond: (r: RuntimeResponse) => void) => {
+  (msg: unknown, sender, respond: (r: RuntimeResponse) => void) => {
     if (!isRuntimeMessage(msg)) return false
     const program =
       msg.type === "focusquote.session.start"
         ? handleSessionStart(msg)
         : msg.type === "focusquote.session.cancel"
           ? handleSessionCancel
-          : tickSync
+          : msg.type === "focusquote.saveQuote"
+            ? handleSaveQuoteMessage(msg, sender)
+            : tickSync
     runWithServices(program)
       .then(() => respond({ ok: true }))
       .catch((err) =>
