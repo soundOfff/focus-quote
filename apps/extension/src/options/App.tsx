@@ -1,19 +1,27 @@
 import { useEffect, useState } from "preact/hooks"
 import { Effect } from "effect"
-import { Download, Key, Moon, Sun } from "lucide-preact"
+import { Download, Key, LogOut, Moon, Sun, User as UserIcon } from "lucide-preact"
 import { QuotesService } from "../services/quotes"
 import { SessionsService } from "../services/sessions"
 import { StorageService } from "../services/storage"
+import { AuthService } from "../services/auth"
 import { OPENROUTER_KEY_KEY } from "../shared/settings"
 import { applyTheme, loadTheme, saveTheme } from "../shared/theme"
-import type { Theme } from "@focus-quote/shared"
+import type { Theme, User } from "@focus-quote/shared"
 import { runP } from "./runtime"
 
 const loadInitial = Effect.gen(function* () {
   const storage = yield* StorageService
+  const auth = yield* AuthService
   const theme = yield* loadTheme(storage)
   const key = yield* storage.get<string>(OPENROUTER_KEY_KEY)
-  return { theme, openrouterKey: key ?? "" }
+  const user = yield* auth.currentUser
+  return { theme, openrouterKey: key ?? "", user }
+})
+
+const signOut = Effect.gen(function* () {
+  const auth = yield* AuthService
+  yield* auth.signOut
 })
 
 const saveOpenrouterKey = (value: string) =>
@@ -48,16 +56,24 @@ export function App() {
   const [theme, setTheme] = useState<Theme>("dark")
   const [openrouterKey, setOpenrouterKey] = useState("")
   const [keyStatus, setKeyStatus] = useState<"idle" | "saved">("idle")
+  const [user, setUser] = useState<User | null>(null)
 
   useEffect(() => {
     runP(loadInitial)
       .then((s) => {
         setTheme(s.theme)
         setOpenrouterKey(s.openrouterKey)
+        setUser(s.user)
         applyTheme(s.theme)
       })
       .catch(console.error)
   }, [])
+
+  const handleSignOut = () => {
+    runP(signOut)
+      .then(() => setUser(null))
+      .catch(() => setUser(null))
+  }
 
   const handleToggleTheme = () => {
     const next: Theme = theme === "dark" ? "light" : "dark"
@@ -109,6 +125,36 @@ export function App() {
             {theme === "dark" ? <Moon size={16} /> : <Sun size={16} />}
           </button>
         </header>
+
+        <section class="rounded bg-card-light p-5 shadow-sm dark:bg-card-dark/60 dark:shadow-none">
+          <h2 class="mb-2 flex items-center gap-2 text-sm font-medium">
+            <UserIcon size={14} class="text-accent" /> Account
+          </h2>
+          {user ? (
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="truncate text-sm font-medium">
+                  {user.name ?? user.email}
+                </div>
+                {user.name && (
+                  <div class="truncate text-xs opacity-60">{user.email}</div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                class="flex shrink-0 items-center gap-1 rounded border border-accent/40 px-3 py-1.5 text-xs text-accent transition hover:bg-accent/10"
+              >
+                <LogOut size={12} />
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <p class="text-xs opacity-60">
+              Open the FocusQuote popup from your toolbar to sign in.
+            </p>
+          )}
+        </section>
 
         <section class="rounded bg-card-light p-5 shadow-sm dark:bg-card-dark/60 dark:shadow-none">
           <h2 class="mb-1 flex items-center gap-2 text-sm font-medium">

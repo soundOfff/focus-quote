@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
+import { LogIn } from "lucide-preact"
 import { QuotesService } from "../services/quotes"
 import { SessionsService } from "../services/sessions"
 import { StorageService } from "../services/storage"
-import { applyTheme, loadTheme, saveTheme, TODAY_GOAL_KEY } from "../shared/theme"
+import { AuthService } from "../services/auth"
+import {
+  applyTheme,
+  loadTheme,
+  saveTheme,
+  TODAY_GOAL_KEY,
+} from "../shared/theme"
 import { runP } from "./runtime"
-import type { Quote, Theme } from "@focus-quote/shared"
+import type { Quote, Theme, User } from "@focus-quote/shared"
 import { DailyQuote } from "./components/DailyQuote"
 import { StatsRow } from "./components/StatsRow"
 import { GoalEditor } from "./components/GoalEditor"
@@ -18,19 +25,39 @@ interface Stats {
 }
 
 const pickRandom = <T,>(arr: ReadonlyArray<T>): T | null =>
-  arr.length === 0 ? null : (arr[Math.floor(Math.random() * arr.length)] ?? null)
+  arr.length === 0
+    ? null
+    : (arr[Math.floor(Math.random() * arr.length)] ?? null)
 
 const loadAll = Effect.gen(function* () {
   const quotes = yield* QuotesService
   const sessions = yield* SessionsService
   const storage = yield* StorageService
+  const auth = yield* AuthService
+
+  const user = yield* auth.currentUser
+  const theme = yield* loadTheme(storage)
+
+  if (!user) {
+    return {
+      user: null,
+      randomQuote: null,
+      stats: {
+        todaySessions: 0,
+        streak: 0,
+        totalQuotes: 0,
+      } satisfies Stats,
+      theme,
+      todayGoal: "",
+    }
+  }
 
   const allQuotes = (yield* quotes.list()) as ReadonlyArray<Quote>
   const sessionStats = yield* sessions.stats
-  const theme = yield* loadTheme(storage)
   const todayGoal = yield* storage.get<string>(TODAY_GOAL_KEY)
 
   return {
+    user,
     randomQuote: pickRandom(allQuotes),
     stats: {
       todaySessions: sessionStats.todayCount,
@@ -67,6 +94,8 @@ const greeting = () => {
 }
 
 export function App() {
+  const [user, setUser] = useState<User | null>(null)
+  const [authReady, setAuthReady] = useState(false)
   const [randomQuote, setRandomQuote] = useState<Quote | null>(null)
   const [stats, setStats] = useState<Stats>({
     todaySessions: 0,
@@ -76,9 +105,10 @@ export function App() {
   const [theme, setTheme] = useState<Theme>("dark")
   const [todayGoal, setTodayGoal] = useState("")
 
-  useEffect(() => {
+  const refresh = () =>
     runP(loadAll)
       .then((s) => {
+        setUser(s.user)
         setRandomQuote(s.randomQuote)
         setStats(s.stats)
         setTheme(s.theme)
@@ -86,6 +116,21 @@ export function App() {
         applyTheme(s.theme)
       })
       .catch((e) => console.error("[FocusQuote] newtab load:", e))
+      .finally(() => setAuthReady(true))
+
+  useEffect(() => {
+    refresh()
+    const onMessage = (msg: unknown) => {
+      if (
+        typeof msg === "object" &&
+        msg !== null &&
+        (msg as { type?: string }).type === "focusquote.auth.signedIn"
+      ) {
+        refresh()
+      }
+    }
+    chrome.runtime.onMessage.addListener(onMessage)
+    return () => chrome.runtime.onMessage.removeListener(onMessage)
   }, [])
 
   const handleToggleTheme = () => {
@@ -110,6 +155,14 @@ export function App() {
     [],
   )
 
+  if (!authReady) {
+    return (
+      <div class="flex min-h-screen items-center justify-center bg-bg-light text-text-light dark:bg-bg-dark dark:text-text-dark">
+        <p class="text-sm opacity-60">Loading…</p>
+      </div>
+    )
+  }
+
   return (
     <div class="min-h-screen bg-bg-light text-text-light transition dark:bg-bg-dark dark:text-text-dark">
       <div class="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-16">
@@ -123,9 +176,22 @@ export function App() {
           <ThemeToggle theme={theme} onToggle={handleToggleTheme} />
         </header>
 
-        <GoalEditor goal={todayGoal} onChange={handleGoalChange} />
-        <DailyQuote quote={randomQuote} />
-        <StatsRow {...stats} />
+        {!user ? (
+          <div class="rounded bg-card-light p-8 text-center shadow-sm dark:bg-card-dark/60 dark:shadow-none">
+            <LogIn size={28} class="mx-auto mb-3 text-accent" />
+            <h2 class="text-lg font-semibold">Sign in to FocusQuote</h2>
+            <p class="mx-auto mt-2 max-w-md text-sm opacity-60">
+              Click the FocusQuote icon in your toolbar to sign in. Your quotes
+              and focus sessions will sync across all your devices.
+            </p>
+          </div>
+        ) : (
+          <>
+            <GoalEditor goal={todayGoal} onChange={handleGoalChange} />
+            <DailyQuote quote={randomQuote} />
+            <StatsRow {...stats} />
+          </>
+        )}
       </div>
     </div>
   )
