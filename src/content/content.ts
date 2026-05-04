@@ -52,7 +52,7 @@ const SAVE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" s
 
 let saveButton: HTMLButtonElement | null = null
 let pendingText = ""
-let hideTimer: number | undefined
+let isVisible = false
 
 const createSaveButton = (): HTMLButtonElement => {
   const btn = document.createElement("button")
@@ -60,9 +60,12 @@ const createSaveButton = (): HTMLButtonElement => {
   btn.setAttribute("type", "button")
   btn.setAttribute("aria-label", "Save quote to FocusQuote")
   btn.style.cssText = [
+    // reset page styles
     "all:unset",
-    "position:absolute",
+    // positioning — fixed avoids most scroll math issues
+    "position:fixed",
     "z-index:2147483646",
+    // appearance
     "background:#e94560",
     "color:#ffffff",
     "border-radius:8px",
@@ -74,13 +77,19 @@ const createSaveButton = (): HTMLButtonElement => {
     "align-items:center",
     "gap:6px",
     "user-select:none",
+    "white-space:nowrap",
+    "pointer-events:auto",
+    // initial hidden state
     "opacity:0",
     "transform:translateY(-4px)",
     "transition:opacity 150ms ease,transform 150ms ease",
   ].join(";")
   btn.innerHTML = `${SAVE_ICON}<span>Save quote</span>`
   // mousedown would clear the selection before our click — preventDefault avoids that
-  btn.addEventListener("mousedown", (e) => e.preventDefault())
+  btn.addEventListener("mousedown", (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+  })
   btn.addEventListener("click", handleSaveClick)
   return btn
 }
@@ -88,15 +97,20 @@ const createSaveButton = (): HTMLButtonElement => {
 const ensureButton = (): HTMLButtonElement => {
   if (saveButton && saveButton.isConnected) return saveButton
   saveButton = createSaveButton()
-  document.body.appendChild(saveButton)
+  // attach to <html> rather than <body> so transformed/filtered body
+  // ancestors can't create stacking contexts that clip us
+  ;(document.documentElement || document.body).appendChild(saveButton)
+  // force a reflow so the very first opacity transition actually runs
+  void saveButton.offsetWidth
   return saveButton
 }
 
 const positionButton = (btn: HTMLButtonElement, rect: DOMRect) => {
   const margin = 8
+  // measure now that the button is in the DOM (will be ~auto width on first call)
   const btnRect = btn.getBoundingClientRect()
-  const btnW = btnRect.width || 110
-  const btnH = btnRect.height || 30
+  const btnW = btnRect.width > 0 ? btnRect.width : 120
+  const btnH = btnRect.height > 0 ? btnRect.height : 30
 
   // Prefer above the selection; fall back to below if there's no room.
   const aboveTop = rect.top - btnH - margin
@@ -106,29 +120,27 @@ const positionButton = (btn: HTMLButtonElement, rect: DOMRect) => {
   let left = rect.left + rect.width / 2 - btnW / 2
   left = Math.max(8, Math.min(left, window.innerWidth - btnW - 8))
 
-  btn.style.top = `${top + window.scrollY}px`
-  btn.style.left = `${left + window.scrollX}px`
+  btn.style.top = `${top}px`
+  btn.style.left = `${left}px`
 }
 
 const showButton = (text: string, rect: DOMRect) => {
   const btn = ensureButton()
   pendingText = text
   positionButton(btn, rect)
-  // animate in next frame so initial transform applies
-  requestAnimationFrame(() => {
-    btn.style.opacity = "1"
-    btn.style.transform = "translateY(0)"
-  })
+  btn.style.opacity = "1"
+  btn.style.transform = "translateY(0)"
+  isVisible = true
 }
 
 const hideButton = () => {
-  if (!saveButton) return
+  if (!saveButton || !isVisible) return
   saveButton.style.opacity = "0"
   saveButton.style.transform = "translateY(-4px)"
+  isVisible = false
 }
 
 const isInsideOurUI = (node: Node | null): boolean => {
-  if (!node) return false
   let el: Node | null = node
   while (el) {
     if (el instanceof Element) {
@@ -176,23 +188,58 @@ const handleSaveClick = () => {
   })
   pendingText = ""
   hideButton()
-  // collapse the selection after saving so the button doesn't immediately re-appear
+  // collapse the selection after saving so the button doesn't reappear
   window.getSelection()?.removeAllRanges()
 }
 
-// Debounce so the button settles after the user finishes selecting
-const onSelectionChange = () => {
-  if (hideTimer) window.clearTimeout(hideTimer)
-  hideTimer = window.setTimeout(checkSelection, 150)
+// ---- listeners ----
+//
+// Strategy: SHOW only on mouseup / keyup (selection finalized).
+// USE selectionchange only to HIDE when the selection collapses,
+// so we don't fight the user mid-drag.
+
+const onMouseUp = (e: MouseEvent) => {
+  if (saveButton && saveButton.contains(e.target as Node)) return
+  // delay so the browser has finalized the selection
+  setTimeout(checkSelection, 0)
 }
 
-document.addEventListener("selectionchange", onSelectionChange)
-document.addEventListener(
-  "mousedown",
-  (e) => {
-    if (isInsideOurUI(e.target as Node | null)) return
+const onKeyUp = (e: KeyboardEvent) => {
+  // shift / cmd / ctrl combos commonly used to extend selection;
+  // selectionchange will catch the drop-to-zero case for us
+  if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    // also handle keyboard nav inside contenteditable
+    if (
+      e.key !== "ArrowLeft" &&
+      e.key !== "ArrowRight" &&
+      e.key !== "ArrowUp" &&
+      e.key !== "ArrowDown" &&
+      e.key !== "Home" &&
+      e.key !== "End"
+    ) {
+      return
+    }
+  }
+  setTimeout(checkSelection, 0)
+}
+
+const onSelectionChange = () => {
+  const sel = window.getSelection()
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
     hideButton()
-  },
-  true,
-)
-window.addEventListener("scroll", hideButton, { passive: true })
+  }
+}
+
+const onMouseDown = (e: MouseEvent) => {
+  if (saveButton && saveButton.contains(e.target as Node)) return
+  hideButton()
+}
+
+document.addEventListener("mouseup", onMouseUp)
+document.addEventListener("keyup", onKeyUp)
+document.addEventListener("selectionchange", onSelectionChange)
+document.addEventListener("mousedown", onMouseDown, true)
+// capture so we react even when an inner scrollable element scrolls
+window.addEventListener("scroll", hideButton, { passive: true, capture: true })
+window.addEventListener("resize", hideButton, { passive: true })
+window.addEventListener("blur", hideButton)
