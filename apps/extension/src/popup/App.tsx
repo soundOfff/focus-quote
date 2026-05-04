@@ -3,6 +3,7 @@ import { Effect } from "effect"
 import { Settings as SettingsIcon } from "lucide-preact"
 import { QuotesService } from "../services/quotes"
 import { StorageService } from "../services/storage"
+import { AuthService } from "../services/auth"
 import {
   defaultPrefs,
   loadPrefs,
@@ -15,7 +16,8 @@ import { QuoteList } from "./components/QuoteList"
 import { SearchBar } from "./components/SearchBar"
 import { SessionPanel } from "./components/SessionPanel"
 import { SettingsView } from "./components/SettingsView"
-import type { Quote } from "@focus-quote/shared"
+import { SignIn } from "./components/SignIn"
+import type { Quote, User } from "@focus-quote/shared"
 
 const loadQuotes = (query: string) =>
   Effect.gen(function* () {
@@ -37,6 +39,11 @@ const persistPrefs = (next: Prefs) =>
     yield* savePrefs(storage, next)
   })
 
+const loadCurrentUser = Effect.gen(function* () {
+  const auth = yield* AuthService
+  return yield* auth.currentUser
+})
+
 type View = "main" | "settings"
 
 export function App() {
@@ -44,11 +51,19 @@ export function App() {
   const [query, setQuery] = useState("")
   const [quotes, setQuotes] = useState<ReadonlyArray<Quote>>([])
   const [prefs, setPrefs] = useState<Prefs>(defaultPrefs)
+  const [user, setUser] = useState<User | null>(null)
+  const [authReady, setAuthReady] = useState(false)
 
   const refresh = (q: string) =>
     runP(loadQuotes(q))
       .then(setQuotes)
       .catch((e) => console.error("[FocusQuote] load quotes:", e))
+
+  const refreshAuth = () =>
+    runP(loadCurrentUser)
+      .then(setUser)
+      .catch(() => setUser(null))
+      .finally(() => setAuthReady(true))
 
   useEffect(() => {
     runP(loadInitialPrefs)
@@ -57,13 +72,34 @@ export function App() {
         applyTheme(p.theme)
       })
       .catch(console.error)
-    refresh("")
+    refreshAuth()
   }, [])
 
   useEffect(() => {
+    if (!user) return
+    refresh(query)
+  }, [user])
+
+  useEffect(() => {
+    if (!user) return
     const t = setTimeout(() => refresh(query), 120)
     return () => clearTimeout(t)
-  }, [query])
+  }, [query, user])
+
+  // listen for the auth-callback page broadcasting a successful sign-in
+  useEffect(() => {
+    const onMessage = (msg: unknown) => {
+      if (
+        typeof msg === "object" &&
+        msg !== null &&
+        (msg as { type?: string }).type === "focusquote.auth.signedIn"
+      ) {
+        refreshAuth()
+      }
+    }
+    chrome.runtime.onMessage.addListener(onMessage)
+    return () => chrome.runtime.onMessage.removeListener(onMessage)
+  }, [])
 
   const handleDelete = (id: Quote["id"]) => {
     runP(
@@ -81,12 +117,26 @@ export function App() {
     runP(persistPrefs(next)).catch(console.error)
   }
 
+  if (!authReady) {
+    return (
+      <div class="flex min-h-[200px] items-center justify-center p-6 text-sm opacity-60">
+        Loading…
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <SignIn onSignedIn={refreshAuth} />
+  }
+
   if (view === "settings") {
     return (
       <SettingsView
         prefs={prefs}
+        user={user}
         onBack={() => setView("main")}
         onPrefsChange={handlePrefsChange}
+        onSignedOut={() => setUser(null)}
       />
     )
   }

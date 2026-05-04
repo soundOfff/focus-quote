@@ -3,6 +3,7 @@ import { Effect } from "effect"
 import {
   ArrowLeft,
   ExternalLink,
+  LogOut,
   Moon,
   RefreshCw,
   Sun,
@@ -11,9 +12,10 @@ import { StorageService } from "../../services/storage"
 import { SyncService } from "../../services/sync"
 import { QuotesService } from "../../services/quotes"
 import { SessionsService } from "../../services/sessions"
+import { AuthService } from "../../services/auth"
 import type { Prefs } from "../../shared/prefs"
 import { applyTheme } from "../../shared/theme"
-import type { Theme } from "@focus-quote/shared"
+import type { Theme, User } from "@focus-quote/shared"
 import { runP } from "../runtime"
 
 interface Stats {
@@ -44,11 +46,19 @@ const loadStats: Effect.Effect<
 
 interface Props {
   prefs: Prefs
+  user: User
   onBack: () => void
   onPrefsChange: (next: Prefs) => void
+  onSignedOut: () => void
 }
 
-export function SettingsView({ prefs, onBack, onPrefsChange }: Props) {
+export function SettingsView({
+  prefs,
+  user,
+  onBack,
+  onPrefsChange,
+  onSignedOut,
+}: Props) {
   const [stats, setStats] = useState<Stats>({ quotes: 0, sessions: 0, queued: 0 })
   const [busy, setBusy] = useState(false)
 
@@ -95,6 +105,17 @@ export function SettingsView({ prefs, onBack, onPrefsChange }: Props) {
     }
   }
 
+  const handleSignOut = () => {
+    runP(
+      Effect.gen(function* () {
+        const auth = yield* AuthService
+        yield* auth.signOut
+      }),
+    )
+      .then(() => onSignedOut())
+      .catch(() => onSignedOut())
+  }
+
   return (
     <div class="flex flex-col gap-4 p-4">
       <header class="flex items-center gap-2">
@@ -108,6 +129,27 @@ export function SettingsView({ prefs, onBack, onPrefsChange }: Props) {
         </button>
         <h2 class="text-base font-semibold">Settings</h2>
       </header>
+
+      <Section label="Account">
+        <div class="flex items-center justify-between gap-3 rounded bg-card-light px-3 py-2 shadow-sm dark:bg-card-dark dark:shadow-none">
+          <div class="min-w-0">
+            <div class="truncate text-sm font-medium">
+              {user.name ?? user.email}
+            </div>
+            {user.name && (
+              <div class="truncate text-xs opacity-60">{user.email}</div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            class="flex shrink-0 items-center gap-1 rounded border border-accent/40 px-2 py-1 text-xs text-accent transition hover:bg-accent/10"
+          >
+            <LogOut size={12} />
+            Sign out
+          </button>
+        </div>
+      </Section>
 
       <Section label="Appearance">
         <div class="flex gap-2">
