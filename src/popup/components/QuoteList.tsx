@@ -9,7 +9,7 @@ interface Props {
 export function QuoteList({ quotes, onDelete }: Props) {
   if (quotes.length === 0) {
     return (
-      <div class="rounded bg-card-dark/60 p-6 text-center text-sm opacity-60">
+      <div class="rounded bg-card-light p-6 text-center text-sm opacity-60 shadow-sm dark:bg-card-dark/60 dark:shadow-none">
         Highlight text on any page → right-click → <em>Save to FocusQuote</em>.
       </div>
     )
@@ -19,7 +19,7 @@ export function QuoteList({ quotes, onDelete }: Props) {
       {quotes.map((q) => (
         <li
           key={q.id}
-          class="group rounded bg-card-dark p-3 text-sm shadow-sm transition hover:bg-card-dark/80"
+          class="group rounded bg-card-light p-3 text-sm shadow-sm transition hover:bg-card-light/70 dark:bg-card-dark dark:shadow-none dark:hover:bg-card-dark/80"
         >
           <p class="line-clamp-3 leading-snug">{q.text}</p>
           <div class="mt-2 flex items-center justify-between gap-2 text-xs opacity-60">

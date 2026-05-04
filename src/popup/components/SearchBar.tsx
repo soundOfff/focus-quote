@@ -17,7 +17,7 @@ export function SearchBar({ value, onInput }: Props) {
         placeholder="Search quotes or tags…"
         value={value}
         onInput={(e) => onInput((e.currentTarget as HTMLInputElement).value)}
-        class="w-full rounded bg-card-dark/60 py-2 pl-8 pr-3 text-sm placeholder:opacity-50 focus:bg-card-dark focus:outline-none focus:ring-1 focus:ring-accent"
+        class="w-full rounded bg-card-light py-2 pl-8 pr-3 text-sm shadow-sm placeholder:opacity-50 focus:outline-none focus:ring-1 focus:ring-accent dark:bg-card-dark/60 dark:shadow-none dark:focus:bg-card-dark"
       />
     </label>
   )

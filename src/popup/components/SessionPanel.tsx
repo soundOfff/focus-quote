@@ -15,14 +15,24 @@ const formatRemaining = (expectedEndAt: string) => {
 }
 
 interface Props {
+  defaultDurationMinutes: number
+  defaultBreakMinutes: number
   onChange?: () => void
 }
 
-export function SessionPanel({ onChange }: Props) {
+export function SessionPanel({
+  defaultDurationMinutes,
+  defaultBreakMinutes,
+  onChange,
+}: Props) {
   const [active, setActive] = useState<ActiveSession | null>(null)
   const [goal, setGoal] = useState("")
-  const [duration, setDuration] = useState(25)
+  const [duration, setDuration] = useState(defaultDurationMinutes)
   const [remaining, setRemaining] = useState("")
+
+  useEffect(() => {
+    setDuration(defaultDurationMinutes)
+  }, [defaultDurationMinutes])
 
   const refresh = () =>
     runP(
@@ -53,7 +63,7 @@ export function SessionPanel({ onChange }: Props) {
     const payload: SessionStartMessage = {
       type: "focusquote.session.start",
       durationMinutes: Math.max(1, Math.min(180, Math.floor(duration))),
-      breakMinutes: 5,
+      breakMinutes: Math.max(0, Math.min(60, Math.floor(defaultBreakMinutes))),
       goal: goal.trim() || null,
     }
     chrome.runtime
@@ -77,7 +87,7 @@ export function SessionPanel({ onChange }: Props) {
 
   if (active) {
     return (
-      <div class="rounded bg-card-dark p-3">
+      <div class="rounded bg-card-light p-3 shadow-sm dark:bg-card-dark dark:shadow-none">
         <div class="flex items-center justify-between gap-2">
           <div class="flex min-w-0 items-center gap-2">
             <Timer size={16} class="text-accent" />
@@ -102,14 +112,14 @@ export function SessionPanel({ onChange }: Props) {
   }
 
   return (
-    <div class="rounded bg-card-dark p-3">
+    <div class="rounded bg-card-light p-3 shadow-sm dark:bg-card-dark dark:shadow-none">
       <div class="flex items-center gap-2">
         <input
           type="text"
           placeholder="Goal for this session…"
           value={goal}
           onInput={(e) => setGoal((e.currentTarget as HTMLInputElement).value)}
-          class="flex-1 rounded bg-bg-dark/60 px-2 py-1.5 text-sm placeholder:opacity-50 focus:outline-none focus:ring-1 focus:ring-accent"
+          class="flex-1 rounded bg-bg-light px-2 py-1.5 text-sm placeholder:opacity-50 focus:outline-none focus:ring-1 focus:ring-accent dark:bg-bg-dark/60"
         />
         <input
           type="number"
@@ -119,7 +129,7 @@ export function SessionPanel({ onChange }: Props) {
           onInput={(e) =>
             setDuration(Number((e.currentTarget as HTMLInputElement).value))
           }
-          class="w-14 rounded bg-bg-dark/60 px-2 py-1.5 text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-accent"
+          class="w-14 rounded bg-bg-light px-2 py-1.5 text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-accent dark:bg-bg-dark/60"
         />
       </div>
       <button

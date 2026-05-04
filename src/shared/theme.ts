@@ -1,8 +1,8 @@
 import { Effect } from "effect"
 import type { StorageService } from "../services/storage"
 import type { Theme } from "./schema"
+import { loadPrefs, savePrefs } from "./prefs"
 
-export const THEME_KEY = "focusquote.theme"
 export const TODAY_GOAL_KEY = "focusquote.todayGoal"
 
 export const applyTheme = (theme: Theme) => {
@@ -11,10 +11,9 @@ export const applyTheme = (theme: Theme) => {
 }
 
 export const loadTheme = (storage: StorageService) =>
-  Effect.gen(function* () {
-    const stored = yield* storage.get<Theme>(THEME_KEY)
-    return (stored ?? "dark") as Theme
-  })
+  loadPrefs(storage).pipe(Effect.map((p) => p.theme))
 
 export const saveTheme = (storage: StorageService, theme: Theme) =>
-  storage.set(THEME_KEY, theme)
+  loadPrefs(storage).pipe(
+    Effect.flatMap((p) => savePrefs(storage, { ...p, theme })),
+  )
