@@ -1,7 +1,18 @@
 import { serve } from "@hono/node-server"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
+import { migrate } from "drizzle-orm/libsql/migrator"
 import { env } from "./env"
+import { db } from "./db/client"
+
+// Apply pending migrations before accepting traffic.
+try {
+  await migrate(db, { migrationsFolder: "./drizzle" })
+  console.log("[server] migrations applied")
+} catch (err) {
+  console.error("[server] migration failed:", err)
+  process.exit(1)
+}
 
 const app = new Hono()
 
