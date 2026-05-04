@@ -4,6 +4,7 @@ import { cors } from "hono/cors"
 import { migrate } from "drizzle-orm/libsql/migrator"
 import { env } from "./env"
 import { db } from "./db/client"
+import { auth } from "./auth"
 
 // Apply pending migrations before accepting traffic.
 try {
@@ -19,13 +20,16 @@ const app = new Hono()
 app.use(
   "*",
   cors({
-    origin: [env.EXTENSION_ORIGIN],
+    origin: [env.EXTENSION_ORIGIN, env.BETTER_AUTH_URL],
     credentials: true,
     allowHeaders: ["Authorization", "Content-Type"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     maxAge: 600,
   }),
 )
+
+// Better Auth owns its own routes under /api/auth/*
+app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw))
 
 app.get("/health", (c) =>
   c.json({ ok: true, service: "focus-quote", ts: new Date().toISOString() }),
