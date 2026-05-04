@@ -12,5 +12,27 @@ export const buildConfig = {
   tursoAuthToken: __TURSO_AUTH_TOKEN__,
 } as const
 
-export const isTursoConfigured = () =>
-  buildConfig.tursoDbUrl.length > 0 && buildConfig.tursoAuthToken.length > 0
+const VALID_PROTOCOLS = /^(libsql|https?|wss?|file):/i
+
+export interface TursoConfigStatus {
+  ok: boolean
+  reason?: string
+}
+
+export const tursoConfigStatus = (): TursoConfigStatus => {
+  const { tursoDbUrl, tursoAuthToken } = buildConfig
+  if (!tursoDbUrl) return { ok: false, reason: "TURSO_DB_URL is empty" }
+  if (!tursoAuthToken)
+    return { ok: false, reason: "TURSO_AUTH_TOKEN is empty" }
+  if (!VALID_PROTOCOLS.test(tursoDbUrl)) {
+    // most common cause: URL and token were swapped in .env
+    const looksLikeJwt = /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(tursoDbUrl)
+    const reason = looksLikeJwt
+      ? "TURSO_DB_URL looks like a JWT — did you swap it with TURSO_AUTH_TOKEN in .env?"
+      : `TURSO_DB_URL must start with libsql://, https://, http://, ws(s)://, or file:`
+    return { ok: false, reason }
+  }
+  return { ok: true }
+}
+
+export const isTursoConfigured = () => tursoConfigStatus().ok

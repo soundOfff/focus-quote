@@ -1,6 +1,6 @@
 import { createClient, type Client, type InValue, type ResultSet } from "@libsql/client/web"
 import { Effect } from "effect"
-import { buildConfig, isTursoConfigured } from "../shared/config"
+import { buildConfig, tursoConfigStatus } from "../shared/config"
 import { DatabaseError } from "../shared/errors"
 
 const SCHEMA_STATEMENTS: ReadonlyArray<string> = [
@@ -36,7 +36,11 @@ const SCHEMA_STATEMENTS: ReadonlyArray<string> = [
 ]
 
 const initClient = (): Client | null => {
-  if (!isTursoConfigured()) return null
+  const status = tursoConfigStatus()
+  if (!status.ok) {
+    console.warn(`[FocusQuote] Turso not configured: ${status.reason}`)
+    return null
+  }
   try {
     return createClient({
       url: buildConfig.tursoDbUrl,

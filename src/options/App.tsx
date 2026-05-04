@@ -11,7 +11,7 @@ import {
   loadTheme,
   saveTheme,
 } from "../shared/theme"
-import { isTursoConfigured } from "../shared/config"
+import { tursoConfigStatus } from "../shared/config"
 import type { Theme } from "../shared/schema"
 import { runP } from "./runtime"
 
@@ -178,9 +178,11 @@ export function App() {
         <section class="rounded bg-card-light p-5 shadow-sm dark:bg-card-dark/60 dark:shadow-none">
           <h2 class="mb-1 text-sm font-medium">Turso connection</h2>
           <p class="mb-3 text-xs opacity-60">
-            {isTursoConfigured()
-              ? "URL and token were baked at build time."
-              : "Not configured at build time. Set TURSO_DB_URL and TURSO_AUTH_TOKEN in .env and rebuild."}
+            {(() => {
+              const s = tursoConfigStatus()
+              if (s.ok) return "URL and token were baked at build time."
+              return s.reason ?? "Not configured at build time. Set TURSO_DB_URL and TURSO_AUTH_TOKEN in .env and rebuild."
+            })()}
           </p>
           <div class="flex items-center gap-3">
             <button
