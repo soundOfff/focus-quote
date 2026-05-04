@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+**/dist
+**/coverage
+**/.vite
+**/tsconfig.tsbuildinfo
+**/.env
+**/.env.local
+**/.env.*.local
+.git
+.gitignore
+*.log
+.DS_Store
+
+# Extension-only artifacts
+apps/extension/dist
+apps/extension/assets

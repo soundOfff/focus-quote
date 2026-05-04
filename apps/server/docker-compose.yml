@@ -1,0 +1,12 @@
+services:
+  server:
+    build:
+      context: ../..
+      dockerfile: apps/server/Dockerfile
+    image: focus-quote-server:dev
+    container_name: focus-quote-server
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-3000}:3000"
+    restart: unless-stopped
