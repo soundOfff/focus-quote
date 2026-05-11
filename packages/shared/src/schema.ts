@@ -6,6 +6,9 @@ export type QuoteId = Schema.Schema.Type<typeof QuoteId>
 export const SessionId = Schema.String.pipe(Schema.brand("SessionId"))
 export type SessionId = Schema.Schema.Type<typeof SessionId>
 
+export const SessionUrlId = Schema.String.pipe(Schema.brand("SessionUrlId"))
+export type SessionUrlId = Schema.Schema.Type<typeof SessionUrlId>
+
 const NullableString = Schema.NullOr(Schema.String)
 
 export const Quote = Schema.Struct({
@@ -44,6 +47,29 @@ export const NewSession = Schema.Struct({
   breakMinutes: Schema.Number.pipe(Schema.nonNegative()),
 })
 export type NewSession = Schema.Schema.Type<typeof NewSession>
+
+export const SessionUrl = Schema.Struct({
+  id: SessionUrlId,
+  sessionId: SessionId,
+  url: Schema.String,
+  hostname: Schema.String,
+  title: NullableString,
+  visitedAt: Schema.String,
+  category: NullableString,
+  distractionScore: Schema.NullOr(Schema.Number),
+  summary: NullableString,
+})
+export type SessionUrl = Schema.Schema.Type<typeof SessionUrl>
+
+export const NewSessionUrl = Schema.Struct({
+  id: SessionUrlId,
+  sessionId: SessionId,
+  url: Schema.String.pipe(Schema.minLength(1)),
+  hostname: Schema.String.pipe(Schema.minLength(1)),
+  title: NullableString,
+  visitedAt: Schema.String,
+})
+export type NewSessionUrl = Schema.Schema.Type<typeof NewSessionUrl>
 
 export const Theme = Schema.Literal("dark", "light")
 export type Theme = Schema.Schema.Type<typeof Theme>
@@ -85,6 +111,15 @@ export const SyncJob = Schema.Union(
     completed: Schema.Boolean,
     startedAt: Schema.String,
     endedAt: NullableString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("upsertSessionUrl"),
+    id: SessionUrlId,
+    sessionId: SessionId,
+    url: Schema.String,
+    hostname: Schema.String,
+    title: NullableString,
+    visitedAt: Schema.String,
   }),
 )
 export type SyncJob = Schema.Schema.Type<typeof SyncJob>

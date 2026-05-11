@@ -1,4 +1,12 @@
-import type { Quote, NewQuote, Session, NewSession, SyncJob } from "./schema"
+import type {
+  Quote,
+  NewQuote,
+  Session,
+  NewSession,
+  SessionUrl,
+  NewSessionUrl,
+  SyncJob,
+} from "./schema"
 
 // ---- Quotes ----
 
@@ -36,6 +44,45 @@ export interface UpsertSessionRequest extends NewSession {
 export interface UpsertSessionResponse {
   session: Session
 }
+
+// ---- Session URLs (AI analysis) ----
+
+export interface SessionUrlBatchRequest {
+  urls: ReadonlyArray<NewSessionUrl>
+}
+
+export interface SessionUrlBatchResponse {
+  urls: ReadonlyArray<SessionUrl>
+}
+
+export interface ListSessionUrlsQuery {
+  sessionId: string
+}
+
+export interface ListSessionUrlsResponse {
+  urls: ReadonlyArray<SessionUrl>
+}
+
+/** Event payloads streamed back over SSE during a session. */
+export type SessionStreamEvent =
+  | {
+      type: "classification"
+      sessionUrlId: string
+      url: string
+      category: string
+      distractionScore: number
+    }
+  | {
+      type: "nudge"
+      sessionUrlId: string
+      message: string
+    }
+  | {
+      type: "summary"
+      sessionId: string
+      summary: string
+    }
+  | { type: "ping" }
 
 // ---- Sync ----
 
