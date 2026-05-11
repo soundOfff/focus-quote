@@ -10,6 +10,9 @@ import type {
   ListSessionsResponse,
   UpsertSessionRequest,
   UpsertSessionResponse,
+  SessionUrlBatchRequest,
+  SessionUrlBatchResponse,
+  ListSessionUrlsResponse,
   SyncBatchRequest,
   SyncBatchResponse,
   MeResponse,
@@ -135,6 +138,17 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
         request<UpsertSessionResponse>("/api/focus-sessions", {
           method: "POST",
           json: body,
+        }),
+
+      // Session URLs (AI analysis)
+      postSessionUrls: (body: SessionUrlBatchRequest) =>
+        request<SessionUrlBatchResponse>("/api/session-urls", {
+          method: "POST",
+          json: body,
+        }),
+      getSessionUrls: (sessionId: string) =>
+        request<ListSessionUrlsResponse>("/api/session-urls", {
+          query: { sessionId },
         }),
 
       // Sync
