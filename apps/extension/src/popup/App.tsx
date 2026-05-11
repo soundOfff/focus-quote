@@ -12,6 +12,7 @@ import {
 } from "../shared/prefs"
 import { applyTheme } from "../shared/theme"
 import { runP } from "./runtime"
+import { AnalysisPanel } from "./components/AnalysisPanel"
 import { QuoteList } from "./components/QuoteList"
 import { SearchBar } from "./components/SearchBar"
 import { SessionPanel } from "./components/SessionPanel"
@@ -159,6 +160,8 @@ export function App() {
         defaultDurationMinutes={prefs.defaultDurationMinutes}
         defaultBreakMinutes={prefs.defaultBreakMinutes}
       />
+
+      <AnalysisPanel />
 
       <SearchBar value={query} onInput={setQuery} />
       <QuoteList quotes={quotes} onDelete={handleDelete} />

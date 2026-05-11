@@ -9,6 +9,7 @@ import { OPENROUTER_KEY_KEY } from "../shared/settings"
 import { applyTheme, loadTheme, saveTheme } from "../shared/theme"
 import type { Theme, User } from "@focus-quote/shared"
 import { runP } from "./runtime"
+import { PrivacySection } from "./components/PrivacySection"
 
 const loadInitial = Effect.gen(function* () {
   const storage = yield* StorageService
@@ -183,6 +184,8 @@ export function App() {
             </button>
           </div>
         </section>
+
+        <PrivacySection />
 
         <section class="rounded bg-card-light p-5 shadow-sm dark:bg-card-dark/60 dark:shadow-none">
           <h2 class="mb-1 text-sm font-medium">Data</h2>
