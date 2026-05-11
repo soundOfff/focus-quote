@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import { zValidator } from "@hono/zod-validator"
 import { and, eq } from "drizzle-orm"
 import { db } from "../db/client"
-import { quotes, focusSessions } from "../db/schema"
+import { quotes, focusSessions, sessionUrls } from "../db/schema"
 import { requireUser, type RequireUserVariables } from "../middleware/require-user"
 import { SyncBatchInput, type SyncJobInput } from "../lib/api-schemas"
 
@@ -86,6 +86,34 @@ async function applyJob(userId: string, job: SyncJobInput): Promise<void> {
             endedAt: job.endedAt,
           },
         })
+      return
+    }
+    case "upsertSessionUrl": {
+      // Ensure the parent session belongs to this user.
+      const [owned] = await db
+        .select({ id: focusSessions.id })
+        .from(focusSessions)
+        .where(
+          and(
+            eq(focusSessions.id, job.sessionId),
+            eq(focusSessions.userId, userId),
+          ),
+        )
+        .limit(1)
+      if (!owned) throw new Error("Session not owned by user")
+
+      await db
+        .insert(sessionUrls)
+        .values({
+          id: job.id,
+          userId,
+          sessionId: job.sessionId,
+          url: job.url,
+          hostname: job.hostname,
+          title: job.title,
+          visitedAt: job.visitedAt,
+        })
+        .onConflictDoNothing({ target: sessionUrls.id })
       return
     }
   }

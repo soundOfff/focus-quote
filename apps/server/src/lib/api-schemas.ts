@@ -35,6 +35,28 @@ export type UpsertFocusSessionInput = z.infer<typeof UpsertFocusSessionInput>
 
 const ISO = z.string().min(1)
 
+// ---- Session URL (AI analysis) ----
+
+export const NewSessionUrlInput = z.object({
+  id: z.string().min(1),
+  sessionId: z.string().min(1),
+  url: z.string().min(1).max(2048),
+  hostname: z.string().min(1).max(255),
+  title: NullableString,
+  visitedAt: z.string().min(1),
+})
+export type NewSessionUrlInput = z.infer<typeof NewSessionUrlInput>
+
+export const SessionUrlBatchInput = z.object({
+  urls: z.array(NewSessionUrlInput).min(1).max(20),
+})
+export type SessionUrlBatchInput = z.infer<typeof SessionUrlBatchInput>
+
+export const ListSessionUrlsQuery = z.object({
+  sessionId: z.string().min(1),
+})
+export type ListSessionUrlsQuery = z.infer<typeof ListSessionUrlsQuery>
+
 export const SyncJobInput = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("upsertQuote"),
@@ -59,6 +81,15 @@ export const SyncJobInput = z.discriminatedUnion("kind", [
     completed: z.boolean(),
     startedAt: ISO,
     endedAt: z.string().nullable(),
+  }),
+  z.object({
+    kind: z.literal("upsertSessionUrl"),
+    id: z.string().min(1),
+    sessionId: z.string().min(1),
+    url: z.string().min(1).max(2048),
+    hostname: z.string().min(1).max(255),
+    title: z.string().nullable(),
+    visitedAt: ISO,
   }),
 ])
 export type SyncJobInput = z.infer<typeof SyncJobInput>

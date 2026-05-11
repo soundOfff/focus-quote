@@ -27,6 +27,9 @@ const EnvSchema = z.object({
   // Email (optional in dev — falls back to stdout)
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().email().optional(),
+
+  // Anthropic (server-side AI analysis of session URLs)
+  ANTHROPIC_API_KEY: z.string().optional(),
 })
 
 export type Env = z.infer<typeof EnvSchema>
