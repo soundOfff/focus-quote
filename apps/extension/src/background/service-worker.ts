@@ -4,6 +4,8 @@ import { ApiService } from "../services/api"
 import { SyncService } from "../services/sync"
 import { QuotesService } from "../services/quotes"
 import { SessionsService } from "../services/sessions"
+import { UrlTrackerService } from "../services/urlTracker"
+import { RealtimeStreamService } from "../services/realtimeStream"
 import {
   isRuntimeMessage,
   type RuntimeMessage,
@@ -16,6 +18,8 @@ const SYNC_ALARM = "focusquote.sync.tick"
 const SYNC_PERIOD_MIN = 2
 const SESSION_END_ALARM = "focusquote.session.end"
 const SESSION_TICK_ALARM = "focusquote.session.tick"
+const URL_FLUSH_ALARM = "focusquote.urls.flush"
+const URL_FLUSH_PERIOD_MIN = 0.5 // 30s
 const CONTEXT_MENU_ID = "focusquote.saveQuote"
 
 const ServicesLayer = Layer.mergeAll(
@@ -24,6 +28,8 @@ const ServicesLayer = Layer.mergeAll(
   SyncService.Default,
   QuotesService.Default,
   SessionsService.Default,
+  UrlTrackerService.Default,
+  RealtimeStreamService.Default,
 )
 
 type AllServices =
@@ -32,6 +38,8 @@ type AllServices =
   | SyncService
   | QuotesService
   | SessionsService
+  | UrlTrackerService
+  | RealtimeStreamService
 
 const runWithServices = <A, E>(eff: Effect.Effect<A, E, AllServices>) =>
   Effect.runPromise(eff.pipe(Effect.provide(ServicesLayer)))
@@ -80,7 +88,7 @@ const handleSessionStart = (msg: RuntimeMessage) =>
   Effect.gen(function* () {
     if (msg.type !== "focusquote.session.start") return
     const sessions = yield* SessionsService
-    const { active } = yield* sessions.start({
+    const { session, active } = yield* sessions.start({
       goal: msg.goal,
       durationMinutes: msg.durationMinutes,
       breakMinutes: msg.breakMinutes,
@@ -89,25 +97,43 @@ const handleSessionStart = (msg: RuntimeMessage) =>
       when: new Date(active.expectedEndAt).getTime(),
     })
     chrome.alarms.create(SESSION_TICK_ALARM, { periodInMinutes: 1 })
+    chrome.alarms.create(URL_FLUSH_ALARM, {
+      periodInMinutes: URL_FLUSH_PERIOD_MIN,
+    })
     updateBadge(active.durationMinutes)
+
+    // Open real-time event channel for AI nudges. Best-effort; tracker
+    // still records URLs even if stream fails.
+    const stream = yield* RealtimeStreamService
+    yield* stream.open(session.id).pipe(Effect.catchAll(() => Effect.void))
   })
 
 const handleSessionCancel = Effect.gen(function* () {
   const sessions = yield* SessionsService
+  const tracker = yield* UrlTrackerService
+  const stream = yield* RealtimeStreamService
   yield* sessions.cancel
+  yield* tracker.flush.pipe(Effect.catchAll(() => Effect.void))
+  yield* stream.closeAll
   yield* Effect.promise(() => chrome.alarms.clear(SESSION_END_ALARM))
   yield* Effect.promise(() => chrome.alarms.clear(SESSION_TICK_ALARM))
+  yield* Effect.promise(() => chrome.alarms.clear(URL_FLUSH_ALARM))
   updateBadge(0)
 })
 
 const handleSessionEnd = Effect.gen(function* () {
   const sessions = yield* SessionsService
+  const tracker = yield* UrlTrackerService
+  const stream = yield* RealtimeStreamService
   const active = yield* sessions.getActive.pipe(
     Effect.orElseSucceed(() => null),
   )
   if (!active) return
   yield* sessions.complete(active.sessionId as SessionId, true)
+  yield* tracker.flush.pipe(Effect.catchAll(() => Effect.void))
+  yield* stream.closeAll
   yield* Effect.promise(() => chrome.alarms.clear(SESSION_TICK_ALARM))
+  yield* Effect.promise(() => chrome.alarms.clear(URL_FLUSH_ALARM))
   updateBadge(0)
   chrome.notifications.create({
     type: "basic",
@@ -118,6 +144,49 @@ const handleSessionEnd = Effect.gen(function* () {
       : "Focus session complete",
     priority: 1,
   })
+})
+
+// ---- URL tracking ----
+const handleNavigation = (
+  details: chrome.webNavigation.WebNavigationFramedCallbackDetails,
+) =>
+  Effect.gen(function* () {
+    if (details.frameId !== 0) return
+    if (!/^https?:/i.test(details.url)) return
+
+    const sessions = yield* SessionsService
+    const active = yield* sessions.getActive.pipe(
+      Effect.orElseSucceed(() => null),
+    )
+    if (!active) return
+
+    let hostname: string
+    try {
+      hostname = new URL(details.url).hostname
+    } catch {
+      return
+    }
+
+    const title = yield* Effect.tryPromise({
+      try: () => chrome.tabs.get(details.tabId),
+      catch: () => null,
+    }).pipe(
+      Effect.map((tab) => tab?.title ?? null),
+      Effect.catchAll(() => Effect.succeed<string | null>(null)),
+    )
+
+    const tracker = yield* UrlTrackerService
+    yield* tracker.record({
+      sessionId: active.sessionId,
+      url: details.url,
+      hostname,
+      title,
+    })
+  })
+
+const flushUrls = Effect.gen(function* () {
+  const tracker = yield* UrlTrackerService
+  yield* tracker.flush.pipe(Effect.catchAll(() => Effect.void))
 })
 
 // ---- context menu ----
@@ -219,6 +288,20 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     )
     return
   }
+  if (alarm.name === URL_FLUSH_ALARM) {
+    runWithServices(flushUrls).catch((err) =>
+      console.warn("[FocusQuote] url flush failed:", err),
+    )
+    return
+  }
+})
+
+// webNavigation must be registered at the top level so it fires after the
+// service worker wakes from idle.
+chrome.webNavigation.onCompleted.addListener((details) => {
+  runWithServices(handleNavigation(details)).catch((err) =>
+    console.warn("[FocusQuote] nav handle failed:", err),
+  )
 })
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {

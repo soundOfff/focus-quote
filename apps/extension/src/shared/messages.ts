@@ -26,6 +26,17 @@ export interface SaveQuoteMessage {
   tag: string | null
 }
 
+/**
+ * Broadcast from the service worker to popup/newtab when a session-stream
+ * event arrives. Receivers must listen with chrome.runtime.onMessage and
+ * filter on `type === "focusquote.stream.event"`.
+ */
+export interface StreamEventBroadcast {
+  type: "focusquote.stream.event"
+  sessionId: string
+  event: import("@focus-quote/shared").SessionStreamEvent
+}
+
 export type RuntimeMessage =
   | SessionStartMessage
   | SessionCancelMessage
