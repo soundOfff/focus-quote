@@ -132,3 +132,45 @@ export const focusSessions = sqliteTable(
     ),
   }),
 )
+
+// URLs visited during a focus session. AI classifies each visit.
+export const sessionUrls = sqliteTable(
+  "session_urls",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => focusSessions.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    hostname: text("hostname").notNull(),
+    title: text("title"),
+    visitedAt: text("visited_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    category: text("category"),
+    distractionScore: integer("distraction_score"),
+    summary: text("summary"),
+  },
+  (t) => ({
+    sessionVisitedIdx: index("session_urls_session_visited_idx").on(
+      t.sessionId,
+      t.visitedAt,
+    ),
+    userVisitedIdx: index("session_urls_user_visited_idx").on(
+      t.userId,
+      t.visitedAt,
+    ),
+  }),
+)
+
+// Hostname → category cache so repeat visits skip the LLM call.
+export const urlClassifications = sqliteTable("url_classifications", {
+  hostname: text("hostname").primaryKey(),
+  category: text("category").notNull(),
+  updatedAt: text("updated_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+})
