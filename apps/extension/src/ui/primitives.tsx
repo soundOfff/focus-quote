@@ -9,6 +9,8 @@ type ButtonSize = "sm" | "md"
 interface ButtonProps extends preact.JSX.HTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
   size?: ButtonSize
+  type?: "button" | "submit" | "reset"
+  disabled?: boolean
 }
 
 export function Button({
@@ -36,7 +38,7 @@ export function Button({
         "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70 disabled:cursor-not-allowed disabled:opacity-50",
         variantClass,
         sizeClass,
-        className,
+        typeof className === "string" ? className : undefined,
       )}
       {...props}
     />

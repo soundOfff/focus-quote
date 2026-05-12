@@ -10,6 +10,7 @@ import {
 } from "../../shared/privacy"
 import { DEBUG_OVERLAY_KEY } from "../../shared/debug"
 import { runP } from "../runtime"
+import { Button, SectionHeader, Surface, Toggle } from "../../ui/primitives"
 
 const load = Effect.gen(function* () {
   const storage = yield* StorageService
@@ -76,42 +77,35 @@ export function PrivacySection() {
     })
 
   return (
-    <section class="rounded bg-card-light p-5 shadow-sm dark:bg-card-dark/60 dark:shadow-none">
-      <h2 class="mb-1 flex items-center gap-2 text-sm font-medium">
-        {privacy.trackUrls ? (
-          <Eye size={14} class="text-accent" />
-        ) : (
-          <EyeOff size={14} class="text-accent" />
-        )}{" "}
-        URL tracking
-      </h2>
-      <p class="mb-3 text-xs opacity-60">
+    <Surface>
+      <SectionHeader
+        title="URL tracking"
+        icon={
+          privacy.trackUrls ? (
+            <Eye size={14} class="text-mute" />
+          ) : (
+            <EyeOff size={14} class="text-mute" />
+          )
+        }
+      />
+      <p class="mb-3 text-xs text-mute">
         When enabled, URLs visited during a focus session are sent to the server
         and classified by AI to surface distractions and recommendations.
         Hostnames in the blocklist below are never sent.
       </p>
 
       <div class="mb-4 flex items-center justify-between">
-        <span class="text-sm">
+        <span class="text-sm text-ink">
           {privacy.trackUrls ? "Tracking enabled" : "Tracking disabled"}
         </span>
-        <button
-          type="button"
-          onClick={handleToggle}
-          aria-pressed={privacy.trackUrls}
-          class={`relative h-6 w-11 rounded-full transition ${
-            privacy.trackUrls ? "bg-accent" : "bg-bg-light dark:bg-bg-dark/60"
-          }`}
-        >
-          <span
-            class={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
-              privacy.trackUrls ? "left-5" : "left-0.5"
-            }`}
-          />
-        </button>
+        <Toggle
+          enabled={privacy.trackUrls}
+          onToggle={handleToggle}
+          ariaLabel="Toggle URL tracking"
+        />
       </div>
 
-      <div class="mb-2 text-xs font-medium opacity-80">Blocklist</div>
+      <div class="mb-2 text-xs font-medium text-body">Blocklist</div>
       <div class="mb-2 flex items-center gap-2">
         <input
           type="text"
@@ -121,31 +115,27 @@ export function PrivacySection() {
           onKeyDown={(e) => {
             if ((e as KeyboardEvent).key === "Enter") handleAdd()
           }}
-          class="flex-1 rounded bg-bg-light px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent dark:bg-bg-dark/60"
+          class="flex-1 rounded-md border border-hairline bg-surface px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-focus-ring"
         />
-        <button
-          type="button"
-          onClick={handleAdd}
-          class="flex items-center gap-1 rounded border border-accent/40 px-3 py-2 text-xs text-accent transition hover:bg-accent/10"
-        >
+        <Button onClick={handleAdd} variant="outline" size="sm">
           <Plus size={12} /> Add
-        </button>
+        </Button>
       </div>
       {privacy.blocklist.length === 0 ? (
-        <p class="text-xs opacity-50">No domains blocked.</p>
+        <p class="text-xs text-mute">No domains blocked.</p>
       ) : (
         <ul class="space-y-1">
           {privacy.blocklist.map((rule) => (
             <li
               key={rule}
-              class="flex items-center justify-between rounded bg-bg-light px-2 py-1 text-xs dark:bg-bg-dark/40"
+              class="flex items-center justify-between rounded-md border border-hairline-soft bg-surface-doc px-2 py-1 text-xs"
             >
               <span class="font-mono">{rule}</span>
               <button
                 type="button"
                 onClick={() => handleRemove(rule)}
                 aria-label={`Remove ${rule}`}
-                class="opacity-50 transition hover:opacity-100"
+                class="text-mute transition-opacity hover:opacity-100"
               >
                 <Trash2 size={12} />
               </button>
@@ -154,35 +144,26 @@ export function PrivacySection() {
         </ul>
       )}
 
-      <div class="mt-5 border-t border-bg-dark/10 pt-4 dark:border-bg-light/5">
-        <h3 class="mb-1 flex items-center gap-2 text-sm font-medium">
-          <Bug size={14} class="text-accent" /> Debug overlay
+      <div class="mt-5 border-t border-hairline-soft pt-4">
+        <h3 class="mb-1 flex items-center gap-2 text-sm font-medium text-ink">
+          <Bug size={14} class="text-mute" /> Debug overlay
         </h3>
-        <p class="mb-3 text-xs opacity-60">
+        <p class="mb-3 text-xs text-mute">
           Shows a floating panel on every page during a focus session with the
           tracker pipeline in real time (navigation, buffer adds, flush
           results, errors). Useful for debugging — leave off in normal use.
         </p>
         <div class="flex items-center justify-between">
-          <span class="text-sm">
+          <span class="text-sm text-ink">
             {debugOverlay ? "Overlay enabled" : "Overlay disabled"}
           </span>
-          <button
-            type="button"
-            onClick={handleToggleDebug}
-            aria-pressed={debugOverlay}
-            class={`relative h-6 w-11 rounded-full transition ${
-              debugOverlay ? "bg-accent" : "bg-bg-light dark:bg-bg-dark/60"
-            }`}
-          >
-            <span
-              class={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
-                debugOverlay ? "left-5" : "left-0.5"
-              }`}
-            />
-          </button>
+          <Toggle
+            enabled={debugOverlay}
+            onToggle={handleToggleDebug}
+            ariaLabel="Toggle debug overlay"
+          />
         </div>
       </div>
-    </section>
+    </Surface>
   )
 }
