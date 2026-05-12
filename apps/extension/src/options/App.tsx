@@ -10,6 +10,7 @@ import { applyTheme, loadTheme, saveTheme } from "../shared/theme"
 import type { Theme, User } from "@focus-quote/shared"
 import { runP } from "./runtime"
 import { PrivacySection } from "./components/PrivacySection"
+import { Button, SectionHeader, Surface } from "../ui/primitives"
 
 const loadInitial = Effect.gen(function* () {
   const storage = yield* StorageService
@@ -113,55 +114,57 @@ export function App() {
   }
 
   return (
-    <div class="min-h-screen bg-bg-light text-text-light transition dark:bg-bg-dark dark:text-text-dark">
+    <div class="min-h-screen bg-canvas text-body">
       <div class="mx-auto flex max-w-xl flex-col gap-6 px-6 py-12">
         <header class="flex items-center justify-between">
-          <h1 class="text-2xl font-semibold text-accent">FocusQuote</h1>
-          <button
-            type="button"
+          <h1 class="text-2xl font-bold text-ink">FocusQuote</h1>
+          <Button
             onClick={handleToggleTheme}
             aria-label="Toggle theme"
-            class="rounded p-2 opacity-60 transition hover:bg-card-light hover:opacity-100 dark:hover:bg-card-dark/40"
+            variant="ghost"
+            size="sm"
           >
-            {theme === "dark" ? <Moon size={16} /> : <Sun size={16} />}
-          </button>
+            {theme === "dark" ? <Moon size={14} /> : <Sun size={14} />}
+          </Button>
         </header>
 
-        <section class="rounded bg-card-light p-5 shadow-sm dark:bg-card-dark/60 dark:shadow-none">
-          <h2 class="mb-2 flex items-center gap-2 text-sm font-medium">
-            <UserIcon size={14} class="text-accent" /> Account
-          </h2>
+        <Surface>
+          <SectionHeader
+            title="Account"
+            icon={<UserIcon size={14} class="text-mute" />}
+          />
           {user ? (
             <div class="flex items-center justify-between gap-3">
               <div class="min-w-0">
-                <div class="truncate text-sm font-medium">
+                <div class="truncate text-sm font-semibold text-ink">
                   {user.name ?? user.email}
                 </div>
                 {user.name && (
-                  <div class="truncate text-xs opacity-60">{user.email}</div>
+                  <div class="truncate text-xs text-mute">{user.email}</div>
                 )}
               </div>
-              <button
-                type="button"
+              <Button
                 onClick={handleSignOut}
-                class="flex shrink-0 items-center gap-1 rounded border border-accent/40 px-3 py-1.5 text-xs text-accent transition hover:bg-accent/10"
+                variant="outline"
+                size="sm"
               >
                 <LogOut size={12} />
                 Sign out
-              </button>
+              </Button>
             </div>
           ) : (
-            <p class="text-xs opacity-60">
+            <p class="text-xs text-mute">
               Open the FocusQuote popup from your toolbar to sign in.
             </p>
           )}
-        </section>
+        </Surface>
 
-        <section class="rounded bg-card-light p-5 shadow-sm dark:bg-card-dark/60 dark:shadow-none">
-          <h2 class="mb-1 flex items-center gap-2 text-sm font-medium">
-            <Key size={14} class="text-accent" /> OpenRouter API key
-          </h2>
-          <p class="mb-3 text-xs opacity-60">
+        <Surface>
+          <SectionHeader
+            title="OpenRouter API key"
+            icon={<Key size={14} class="text-mute" />}
+          />
+          <p class="mb-3 text-xs text-mute">
             Used for upcoming AI features (explain quote, smart search). Stored
             locally in this browser only.
           </p>
@@ -173,33 +176,25 @@ export function App() {
               onInput={(e) =>
                 setOpenrouterKey((e.currentTarget as HTMLInputElement).value)
               }
-              class="flex-1 rounded bg-bg-light px-3 py-2 text-sm outline-none ring-0 focus:ring-1 focus:ring-accent dark:bg-bg-dark/60"
+              class="flex-1 rounded-md border border-hairline bg-surface px-3 py-2 text-sm outline-none ring-0 focus:ring-1 focus:ring-focus-ring"
             />
-            <button
-              type="button"
-              onClick={handleSaveKey}
-              class="rounded bg-accent px-3 py-2 text-sm font-medium text-white transition hover:bg-accent/90"
-            >
+            <Button onClick={handleSaveKey} variant="primary">
               {keyStatus === "saved" ? "Saved" : "Save"}
-            </button>
+            </Button>
           </div>
-        </section>
+        </Surface>
 
         <PrivacySection />
 
-        <section class="rounded bg-card-light p-5 shadow-sm dark:bg-card-dark/60 dark:shadow-none">
-          <h2 class="mb-1 text-sm font-medium">Data</h2>
-          <p class="mb-3 text-xs opacity-60">
+        <Surface>
+          <SectionHeader title="Data" />
+          <p class="mb-3 text-xs text-mute">
             Download all locally cached quotes and sessions as JSON.
           </p>
-          <button
-            type="button"
-            onClick={handleExport}
-            class="flex items-center gap-2 rounded border border-accent/40 px-3 py-2 text-sm text-accent transition hover:bg-accent/10"
-          >
+          <Button onClick={handleExport} variant="outline">
             <Download size={14} /> Export JSON
-          </button>
-        </section>
+          </Button>
+        </Surface>
       </div>
     </div>
   )

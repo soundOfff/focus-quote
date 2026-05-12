@@ -5,5 +5,7 @@
 @layer base {
   body {
     font-family: theme("fontFamily.sans");
+    background-color: theme("colors.canvas");
+    color: theme("colors.body");
   }
 }
