@@ -8,6 +8,7 @@ import {
   isBlocked,
   defaultPrivacy,
 } from "../shared/privacy"
+import { emitDebug } from "../shared/debug"
 
 const URL_BUFFER_KEY = "focusquote.urlBuffer"
 
@@ -59,8 +60,20 @@ export class UrlTrackerService extends Effect.Service<UrlTrackerService>()(
           const privacy = yield* loadPrivacy(storage).pipe(
             Effect.catchAll(() => Effect.succeed(defaultPrivacy)),
           )
-          if (!privacy.trackUrls) return
-          if (isBlocked(privacy, input.hostname)) return
+          if (!privacy.trackUrls) {
+            void emitDebug({
+              type: "buffer:skip-privacy-off",
+              hostname: input.hostname,
+            })
+            return
+          }
+          if (isBlocked(privacy, input.hostname)) {
+            void emitDebug({
+              type: "buffer:skip-blocklist",
+              hostname: input.hostname,
+            })
+            return
+          }
 
           const entry: BufferEntry = {
             id: crypto.randomUUID() as SessionUrlId,
@@ -79,8 +92,20 @@ export class UrlTrackerService extends Effect.Service<UrlTrackerService>()(
               e.url === entry.url &&
               new Date(e.visitedAt).getTime() > cutoff,
           )
-          if (isRecentDup) return
+          if (isRecentDup) {
+            void emitDebug({
+              type: "buffer:skip-dedupe",
+              hostname: input.hostname,
+            })
+            return
+          }
           yield* writeBuffer(storage, [...buf, entry])
+          void emitDebug({
+            type: "buffer:add",
+            hostname: input.hostname,
+            title: input.title,
+            bufferLen: buf.length + 1,
+          })
         })
 
       /**
@@ -89,14 +114,30 @@ export class UrlTrackerService extends Effect.Service<UrlTrackerService>()(
        */
       const flush = Effect.gen(function* () {
         const buf = yield* readBuffer(storage)
-        if (buf.length === 0) return { posted: 0, queued: 0 }
+        if (buf.length === 0) {
+          void emitDebug({ type: "flush:empty" })
+          return { posted: 0, queued: 0 }
+        }
 
+        void emitDebug({ type: "flush:start", count: buf.length })
+        const startedAt =
+          typeof performance !== "undefined" ? performance.now() : Date.now()
         const result = yield* api
           .postSessionUrls({ urls: buf })
           .pipe(Effect.either)
+        const ms = Math.round(
+          (typeof performance !== "undefined"
+            ? performance.now()
+            : Date.now()) - startedAt,
+        )
 
         if (result._tag === "Right") {
           yield* writeBuffer(storage, [] as unknown as Buffer)
+          void emitDebug({
+            type: "flush:posted",
+            count: buf.length,
+            ms,
+          })
           return { posted: buf.length, queued: 0 }
         }
 
@@ -115,6 +156,14 @@ export class UrlTrackerService extends Effect.Service<UrlTrackerService>()(
             .pipe(Effect.catchAll(() => Effect.void))
         }
         yield* writeBuffer(storage, [] as unknown as Buffer)
+        const reason =
+          result.left instanceof Error ? result.left.message : String(result.left)
+        void emitDebug({
+          type: "flush:queued",
+          count: buf.length,
+          ms,
+          reason: reason.slice(0, 120),
+        })
         return { posted: 0, queued: buf.length }
       })
 

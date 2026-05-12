@@ -13,6 +13,7 @@ import {
   type SaveQuoteMessage,
 } from "../shared/messages"
 import type { SessionId } from "@focus-quote/shared"
+import { emitDebug } from "../shared/debug"
 
 const SYNC_ALARM = "focusquote.sync.tick"
 const SYNC_PERIOD_MIN = 2
@@ -102,6 +103,19 @@ const handleSessionStart = (msg: RuntimeMessage) =>
     })
     updateBadge(active.durationMinutes)
 
+    void emitDebug({
+      type: "session:start",
+      sessionId: active.sessionId,
+      goal: active.goal,
+    })
+
+    // Push the session row to the server NOW so subsequent URL flushes
+    // (which fire every 30s) don't 404 with "Session not found". Without
+    // this, URLs would bounce through the sync queue until the next
+    // SYNC_ALARM tick — up to 2 minutes of lost-looking state.
+    const syncSvc = yield* SyncService
+    yield* syncSvc.drain.pipe(Effect.either)
+
     // Open real-time event channel for AI nudges. Best-effort; tracker
     // still records URLs even if stream fails.
     const stream = yield* RealtimeStreamService
@@ -112,7 +126,9 @@ const handleSessionCancel = Effect.gen(function* () {
   const sessions = yield* SessionsService
   const tracker = yield* UrlTrackerService
   const stream = yield* RealtimeStreamService
+  const syncSvc = yield* SyncService
   yield* sessions.cancel
+  yield* syncSvc.drain.pipe(Effect.either)
   yield* tracker.flush.pipe(Effect.catchAll(() => Effect.void))
   yield* stream.closeAll
   yield* Effect.promise(() => chrome.alarms.clear(SESSION_END_ALARM))
@@ -129,7 +145,12 @@ const handleSessionEnd = Effect.gen(function* () {
     Effect.orElseSucceed(() => null),
   )
   if (!active) return
+  void emitDebug({ type: "session:end", sessionId: active.sessionId })
   yield* sessions.complete(active.sessionId as SessionId, true)
+  // Push session row(s) to the server before the final URL flush so the
+  // POST won't 404 on a session that only exists locally.
+  const syncSvc = yield* SyncService
+  yield* syncSvc.drain.pipe(Effect.either)
   yield* tracker.flush.pipe(Effect.catchAll(() => Effect.void))
   yield* stream.closeAll
   yield* Effect.promise(() => chrome.alarms.clear(SESSION_TICK_ALARM))
@@ -151,19 +172,34 @@ const handleNavigation = (
   details: chrome.webNavigation.WebNavigationFramedCallbackDetails,
 ) =>
   Effect.gen(function* () {
-    if (details.frameId !== 0) return
-    if (!/^https?:/i.test(details.url)) return
+    if (details.frameId !== 0) {
+      void emitDebug({
+        type: "nav:skip-frame",
+        frameId: details.frameId,
+        url: details.url,
+      })
+      return
+    }
+    if (!/^https?:/i.test(details.url)) {
+      void emitDebug({ type: "nav:skip-protocol", url: details.url })
+      return
+    }
+    void emitDebug({ type: "nav:received", url: details.url })
 
     const sessions = yield* SessionsService
     const active = yield* sessions.getActive.pipe(
       Effect.orElseSucceed(() => null),
     )
-    if (!active) return
+    if (!active) {
+      void emitDebug({ type: "nav:skip-no-session", url: details.url })
+      return
+    }
 
     let hostname: string
     try {
       hostname = new URL(details.url).hostname
     } catch {
+      void emitDebug({ type: "nav:skip-invalid-url", url: details.url })
       return
     }
 
