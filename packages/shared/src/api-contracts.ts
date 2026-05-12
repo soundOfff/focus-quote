@@ -45,6 +45,72 @@ export interface UpsertSessionResponse {
   session: Session
 }
 
+export interface SessionSummaryResponse {
+  summary: string | null
+}
+
+export interface SessionStudyTipsResponse {
+  tips: ReadonlyArray<string> | null
+}
+
+export interface RecallQuestion {
+  q: string
+  a: string
+}
+
+export interface SessionRecallResponse {
+  questions: ReadonlyArray<RecallQuestion> | null
+}
+
+export interface ResourceRecommendation {
+  url: string
+  title: string
+  why: string
+}
+
+export interface SessionResourcesResponse {
+  resources: ReadonlyArray<ResourceRecommendation> | null
+}
+
+export type RegenerateArtifact =
+  | "summary"
+  | "studyTips"
+  | "recallQuestions"
+  | "resourceRecommendations"
+  | "topic"
+
+export interface RegenerateRequest {
+  artifact: RegenerateArtifact
+}
+
+export interface RegenerateResponse {
+  ok: boolean
+}
+
+export type RecallVerdict = "correct" | "partial" | "incorrect"
+
+export interface RecallGradeRequest {
+  questionIndex: number
+  userAnswer: string
+}
+
+export interface RecallGradeResponse {
+  verdict: RecallVerdict
+  feedback: string
+}
+
+export interface Topic {
+  name: string
+  sessionCount: number
+  completedCount: number
+  totalActualMs: number
+  lastUsedAt: string
+}
+
+export interface ListTopicsResponse {
+  topics: ReadonlyArray<Topic>
+}
+
 // ---- Session URLs (AI analysis) ----
 
 export interface SessionUrlBatchRequest {
