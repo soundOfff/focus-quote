@@ -28,8 +28,21 @@ const EnvSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().email().optional(),
 
+  // LLM provider selection. If unset, auto: prefers Anthropic when both keys
+  // are present. Set explicitly to "openrouter" to force OpenRouter even if
+  // ANTHROPIC_API_KEY is also defined.
+  LLM_PROVIDER: z.enum(["anthropic", "openrouter"]).optional(),
+
   // Anthropic (server-side AI analysis of session URLs)
   ANTHROPIC_API_KEY: z.string().optional(),
+
+  // OpenRouter (OpenAI-compatible gateway, supports free models for testing).
+  // Model defaults to a free Llama instruct model; override with OPENROUTER_MODEL.
+  OPENROUTER_API_KEY: z.string().optional(),
+  OPENROUTER_MODEL: z
+    .string()
+    .min(1)
+    .default("google/gemini-2.0-flash-001"),
 })
 
 export type Env = z.infer<typeof EnvSchema>
