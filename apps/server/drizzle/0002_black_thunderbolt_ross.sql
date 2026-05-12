@@ -1,0 +1,1 @@
+ALTER TABLE `focus_sessions` ADD `summary` text;

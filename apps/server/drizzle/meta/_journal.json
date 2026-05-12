@@ -15,6 +15,27 @@
       "when": 1778533438197,
       "tag": "0001_melted_the_twelve",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1778605813734,
+      "tag": "0002_black_thunderbolt_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1778606741760,
+      "tag": "0003_burly_quasar",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1778607427565,
+      "tag": "0004_funny_vindicator",
+      "breakpoints": true
     }
   ]
 }

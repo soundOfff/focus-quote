@@ -124,6 +124,12 @@ export const focusSessions = sqliteTable(
       .notNull()
       .default(sql`(datetime('now'))`),
     endedAt: text("ended_at"),
+    summary: text("summary"),
+    // JSON blobs (string[] / Q&A[] / Resource[]) — see lib/study-artifacts.ts
+    studyTips: text("study_tips"),
+    recallQuestions: text("recall_questions"),
+    resourceRecommendations: text("resource_recommendations"),
+    topic: text("topic"),
   },
   (t) => ({
     userStartedIdx: index("focus_sessions_user_started_idx").on(
