@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks"
 import { Effect } from "effect"
-import { Eye, EyeOff, Plus, Trash2 } from "lucide-preact"
+import { Bug, Eye, EyeOff, Plus, Trash2 } from "lucide-preact"
 import { StorageService } from "../../services/storage"
 import {
   loadPrivacy,
@@ -8,11 +8,16 @@ import {
   defaultPrivacy,
   type Privacy,
 } from "../../shared/privacy"
+import { DEBUG_OVERLAY_KEY } from "../../shared/debug"
 import { runP } from "../runtime"
 
 const load = Effect.gen(function* () {
   const storage = yield* StorageService
-  return yield* loadPrivacy(storage)
+  const privacy = yield* loadPrivacy(storage)
+  const debugOverlay = yield* storage
+    .get<boolean>(DEBUG_OVERLAY_KEY)
+    .pipe(Effect.catchAll(() => Effect.succeed(false as boolean | null)))
+  return { privacy, debugOverlay: debugOverlay === true }
 })
 
 const persist = (p: Privacy) =>
@@ -21,13 +26,33 @@ const persist = (p: Privacy) =>
     yield* savePrivacy(storage, p)
   })
 
+const persistDebugOverlay = (enabled: boolean) =>
+  Effect.gen(function* () {
+    const storage = yield* StorageService
+    yield* storage.set(DEBUG_OVERLAY_KEY, enabled).pipe(
+      Effect.catchAll(() => Effect.void),
+    )
+  })
+
 export function PrivacySection() {
   const [privacy, setPrivacy] = useState<Privacy>(defaultPrivacy)
   const [newRule, setNewRule] = useState("")
+  const [debugOverlay, setDebugOverlay] = useState(false)
 
   useEffect(() => {
-    runP(load).then(setPrivacy).catch(console.error)
+    runP(load)
+      .then(({ privacy: p, debugOverlay: d }) => {
+        setPrivacy(p)
+        setDebugOverlay(d)
+      })
+      .catch(console.error)
   }, [])
+
+  const handleToggleDebug = () => {
+    const next = !debugOverlay
+    setDebugOverlay(next)
+    runP(persistDebugOverlay(next)).catch(console.error)
+  }
 
   const update = (next: Privacy) => {
     setPrivacy(next)
@@ -128,6 +153,36 @@ export function PrivacySection() {
           ))}
         </ul>
       )}
+
+      <div class="mt-5 border-t border-bg-dark/10 pt-4 dark:border-bg-light/5">
+        <h3 class="mb-1 flex items-center gap-2 text-sm font-medium">
+          <Bug size={14} class="text-accent" /> Debug overlay
+        </h3>
+        <p class="mb-3 text-xs opacity-60">
+          Shows a floating panel on every page during a focus session with the
+          tracker pipeline in real time (navigation, buffer adds, flush
+          results, errors). Useful for debugging — leave off in normal use.
+        </p>
+        <div class="flex items-center justify-between">
+          <span class="text-sm">
+            {debugOverlay ? "Overlay enabled" : "Overlay disabled"}
+          </span>
+          <button
+            type="button"
+            onClick={handleToggleDebug}
+            aria-pressed={debugOverlay}
+            class={`relative h-6 w-11 rounded-full transition ${
+              debugOverlay ? "bg-accent" : "bg-bg-light dark:bg-bg-dark/60"
+            }`}
+          >
+            <span
+              class={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
+                debugOverlay ? "left-5" : "left-0.5"
+              }`}
+            />
+          </button>
+        </div>
+      </div>
     </section>
   )
 }
