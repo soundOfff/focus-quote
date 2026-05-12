@@ -13,6 +13,15 @@ import type {
   SessionUrlBatchRequest,
   SessionUrlBatchResponse,
   ListSessionUrlsResponse,
+  SessionSummaryResponse,
+  SessionStudyTipsResponse,
+  SessionRecallResponse,
+  SessionResourcesResponse,
+  RegenerateRequest,
+  RegenerateResponse,
+  RecallGradeRequest,
+  RecallGradeResponse,
+  ListTopicsResponse,
   SyncBatchRequest,
   SyncBatchResponse,
   MeResponse,
@@ -139,6 +148,33 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
           method: "POST",
           json: body,
         }),
+      getSessionSummary: (sessionId: string) =>
+        request<SessionSummaryResponse>(
+          `/api/focus-sessions/${sessionId}/summary`,
+        ),
+      getStudyTips: (sessionId: string) =>
+        request<SessionStudyTipsResponse>(
+          `/api/focus-sessions/${sessionId}/study-tips`,
+        ),
+      getRecallQuestions: (sessionId: string) =>
+        request<SessionRecallResponse>(
+          `/api/focus-sessions/${sessionId}/recall`,
+        ),
+      getResourceRecommendations: (sessionId: string) =>
+        request<SessionResourcesResponse>(
+          `/api/focus-sessions/${sessionId}/resources`,
+        ),
+      regenerateArtifact: (sessionId: string, body: RegenerateRequest) =>
+        request<RegenerateResponse>(
+          `/api/focus-sessions/${sessionId}/regenerate`,
+          { method: "POST", json: body },
+        ),
+      gradeRecallAnswer: (sessionId: string, body: RecallGradeRequest) =>
+        request<RecallGradeResponse>(
+          `/api/focus-sessions/${sessionId}/recall/grade`,
+          { method: "POST", json: body },
+        ),
+      listTopics: () => request<ListTopicsResponse>("/api/topics"),
 
       // Session URLs (AI analysis)
       postSessionUrls: (body: SessionUrlBatchRequest) =>
