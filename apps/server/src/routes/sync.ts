@@ -5,6 +5,13 @@ import { db } from "../db/client"
 import { quotes, focusSessions, sessionUrls } from "../db/schema"
 import { requireUser, type RequireUserVariables } from "../middleware/require-user"
 import { SyncBatchInput, type SyncJobInput } from "../lib/api-schemas"
+import { maybeGenerateSummary } from "../lib/summary"
+import {
+  maybeGenerateRecallQuestions,
+  maybeGenerateResourceRecommendations,
+  maybeGenerateStudyTips,
+} from "../lib/study-artifacts"
+import { maybeGenerateTopic } from "../lib/topic"
 
 type Result = { ok: true } | { ok: false; error: string }
 
@@ -25,6 +32,26 @@ export const syncRoutes = new Hono<{ Variables: RequireUserVariables }>()
         })
       }
     }
+
+    // After the batch applies, kick off summary generation for any session
+    // that just became completed. URL upserts in the same batch land first,
+    // so summarizeSession sees the full visit history. Fire-and-forget.
+    const completedIds = new Set<string>()
+    for (let i = 0; i < jobs.length; i++) {
+      const job = jobs[i]!
+      if (job.kind !== "upsertSession") continue
+      if (!job.completed) continue
+      if (!results[i]?.ok) continue
+      completedIds.add(job.id)
+    }
+    for (const id of completedIds) {
+      void maybeGenerateSummary(userId, id)
+      void maybeGenerateStudyTips(userId, id)
+      void maybeGenerateRecallQuestions(userId, id)
+      void maybeGenerateResourceRecommendations(userId, id)
+      void maybeGenerateTopic(userId, id)
+    }
+
     return c.json({ results })
   })
 
