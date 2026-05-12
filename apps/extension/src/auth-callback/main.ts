@@ -35,28 +35,32 @@ const persist = (token: string, user: User) =>
     )
   })
 
+const decodeUser = (encoded: string): User => {
+  // base64(utf8(JSON)) — matches the server bridge's encoding
+  const bin = atob(encoded)
+  const json = decodeURIComponent(escape(bin))
+  return JSON.parse(json) as User
+}
+
 const main = async () => {
   try {
-    // The user just landed here from Better Auth's redirect. The session
-    // cookie is set on the backend domain. Fetch get-session with
-    // credentials:include and capture the bearer token from the response.
-    const res = await fetch(`${__API_BASE_URL__}/api/auth/get-session`, {
-      credentials: "include",
-    })
-    if (!res.ok) {
-      throw new Error(`session fetch ${res.status}`)
+    // The server-side magic-link bridge redirected here with the bearer token
+    // and user payload in the URL fragment. Fragments aren't sent to servers,
+    // so this is safe to consume here.
+    const hash = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : window.location.hash
+    const params = new URLSearchParams(hash)
+    const token = params.get("token") ?? ""
+    const userParam = params.get("user") ?? ""
+    if (!token || !userParam) {
+      throw new Error("Missing token or user in callback URL.")
     }
-    const token = res.headers.get("set-auth-token") ?? ""
-    if (!token) {
-      throw new Error(
-        "Backend did not return a bearer token (is the bearer plugin enabled?).",
-      )
-    }
-    const data = (await res.json()) as { user?: User } | null
-    if (!data?.user) {
-      throw new Error("No active session.")
-    }
-    await persist(token, data.user)
+    const user = decodeUser(userParam)
+    await persist(token, user)
+
+    // Clear the fragment so the token isn't left in the address bar / history.
+    window.history.replaceState(null, "", window.location.pathname)
 
     // Wake any open extension contexts (popup, newtab) so they re-render.
     chrome.runtime
