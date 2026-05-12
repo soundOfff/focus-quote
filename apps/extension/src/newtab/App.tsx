@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "preact/hooks"
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
 import { LogIn } from "lucide-preact"
 import { QuotesService } from "../services/quotes"
@@ -17,6 +17,11 @@ import { DailyQuote } from "./components/DailyQuote"
 import { StatsRow } from "./components/StatsRow"
 import { GoalEditor } from "./components/GoalEditor"
 import { ThemeToggle } from "./components/ThemeToggle"
+import { SessionsSection } from "./components/SessionsSection"
+import { TopicsSection } from "./components/TopicsSection"
+import { SessionDetail } from "./pages/SessionDetail"
+import { useRoute } from "./router"
+import { EmptyState } from "../ui/primitives"
 
 interface Stats {
   todaySessions: number
@@ -94,6 +99,7 @@ const greeting = () => {
 }
 
 export function App() {
+  const route = useRoute()
   const [user, setUser] = useState<User | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [randomQuote, setRandomQuote] = useState<Quote | null>(null)
@@ -105,7 +111,8 @@ export function App() {
   const [theme, setTheme] = useState<Theme>("dark")
   const [todayGoal, setTodayGoal] = useState("")
 
-  const refresh = () =>
+  const refresh = useCallback(
+    () =>
     runP(loadAll)
       .then((s) => {
         setUser(s.user)
@@ -116,7 +123,9 @@ export function App() {
         applyTheme(s.theme)
       })
       .catch((e) => console.error("[FocusQuote] newtab load:", e))
-      .finally(() => setAuthReady(true))
+      .finally(() => setAuthReady(true)),
+    [],
+  )
 
   useEffect(() => {
     refresh()
@@ -133,17 +142,17 @@ export function App() {
     return () => chrome.runtime.onMessage.removeListener(onMessage)
   }, [])
 
-  const handleToggleTheme = () => {
+  const handleToggleTheme = useCallback(() => {
     const next: Theme = theme === "dark" ? "light" : "dark"
     setTheme(next)
     applyTheme(next)
     runP(persistTheme(next)).catch(console.error)
-  }
+  }, [theme])
 
-  const handleGoalChange = (value: string) => {
+  const handleGoalChange = useCallback((value: string) => {
     setTodayGoal(value)
     runP(saveGoal(value)).catch(console.error)
-  }
+  }, [])
 
   const todayLabel = useMemo(
     () =>
@@ -157,39 +166,44 @@ export function App() {
 
   if (!authReady) {
     return (
-      <div class="flex min-h-screen items-center justify-center bg-bg-light text-text-light dark:bg-bg-dark dark:text-text-dark">
+      <div class="flex min-h-screen items-center justify-center bg-canvas text-body">
         <p class="text-sm opacity-60">Loading…</p>
       </div>
     )
   }
 
+  if (user && route.name === "session-detail") {
+    return <SessionDetail sessionId={route.sessionId} />
+  }
+
   return (
-    <div class="min-h-screen bg-bg-light text-text-light transition dark:bg-bg-dark dark:text-text-dark">
+    <div class="min-h-screen bg-canvas text-body">
       <div class="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-16">
         <header class="flex items-start justify-between">
           <div>
-            <p class="text-sm uppercase tracking-wide opacity-60">
+            <p class="text-xs uppercase tracking-wide text-mute">
               {todayLabel}
             </p>
-            <h1 class="mt-1 text-3xl font-semibold">{greeting()}.</h1>
+            <h1 class="mt-1 text-balance text-3xl font-bold text-ink">
+              {greeting()}.
+            </h1>
           </div>
           <ThemeToggle theme={theme} onToggle={handleToggleTheme} />
         </header>
 
         {!user ? (
-          <div class="rounded bg-card-light p-8 text-center shadow-sm dark:bg-card-dark/60 dark:shadow-none">
-            <LogIn size={28} class="mx-auto mb-3 text-accent" />
-            <h2 class="text-lg font-semibold">Sign in to FocusQuote</h2>
-            <p class="mx-auto mt-2 max-w-md text-sm opacity-60">
-              Click the FocusQuote icon in your toolbar to sign in. Your quotes
-              and focus sessions will sync across all your devices.
-            </p>
-          </div>
+          <EmptyState
+            icon={<LogIn size={20} />}
+            title="Sign in to FocusQuote"
+            description="Click the FocusQuote toolbar icon to sign in. Quotes and focus sessions sync across your devices."
+          />
         ) : (
           <>
             <GoalEditor goal={todayGoal} onChange={handleGoalChange} />
             <DailyQuote quote={randomQuote} />
             <StatsRow {...stats} />
+            <TopicsSection />
+            <SessionsSection />
           </>
         )}
       </div>
