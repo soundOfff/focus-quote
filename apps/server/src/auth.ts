@@ -25,7 +25,7 @@ export const auth = betterAuth({
   plugins: [
     magicLink({
       sendMagicLink: async ({ email, url }) => {
-        await sendMagicLinkEmail(email, url)
+        await sendMagicLinkEmail(email, rewriteMagicLinkUrl(url))
       },
       expiresIn: 60 * 5,
     }),
@@ -38,3 +38,20 @@ export const auth = betterAuth({
 })
 
 export type Auth = typeof auth
+
+/**
+ * Rewrites Better Auth's default magic-link URL (which would 302 directly to
+ * the chrome-extension callback and drop the bearer token) to point at our
+ * same-origin bridge page, which can read the token from a JSON response and
+ * forward it to the extension via URL fragment.
+ */
+function rewriteMagicLinkUrl(url: string): string {
+  const parsed = new URL(url)
+  const token = parsed.searchParams.get("token")
+  const callbackURL = parsed.searchParams.get("callbackURL")
+  if (!token || !callbackURL) return url
+  const bridge = new URL("/auth/magic-bridge", env.BETTER_AUTH_URL)
+  bridge.searchParams.set("vt", token)
+  bridge.searchParams.set("ext", callbackURL)
+  return bridge.toString()
+}

@@ -7,6 +7,8 @@ import { focusSessionsRoutes } from "./routes/focus-sessions"
 import { sessionUrlsRoutes } from "./routes/session-urls"
 import { streamRoutes } from "./routes/stream"
 import { syncRoutes } from "./routes/sync"
+import { authBridgeRoutes } from "./routes/auth-bridge"
+import { topicsRoutes } from "./routes/topics"
 
 export const app = new Hono()
 
@@ -25,9 +27,13 @@ app.use(
 // Better Auth owns its own routes under /api/auth/*
 app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw))
 
+// Bridge page for chrome-extension magic-link sign-in. See route file.
+app.route("/auth/magic-bridge", authBridgeRoutes)
+
 app.route("/api/quotes", quotesRoutes)
 app.route("/api/focus-sessions", focusSessionsRoutes)
 app.route("/api/session-urls", sessionUrlsRoutes)
+app.route("/api/topics", topicsRoutes)
 app.route("/api/sync", syncRoutes)
 app.route("/api/stream", streamRoutes)
 
