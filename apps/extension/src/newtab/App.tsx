@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
-import { LogIn, Settings } from "lucide-preact"
+import { LogIn } from "lucide-preact"
 import { QuotesService } from "../services/quotes"
 import { SessionsService } from "../services/sessions"
 import { StorageService } from "../services/storage"
@@ -23,12 +23,13 @@ import type { Quote, Theme, User } from "@focus-quote/shared"
 import { DailyQuote } from "./components/DailyQuote"
 import { StatsRow } from "./components/StatsRow"
 import { GoalEditor } from "./components/GoalEditor"
-import { ThemeToggle } from "./components/ThemeToggle"
 import { SessionsSection } from "./components/SessionsSection"
 import { TopicsSection } from "./components/TopicsSection"
 import { SessionDetail } from "./pages/SessionDetail"
 import { useRoute } from "./router"
-import { EmptyState } from "../ui/primitives"
+import { EmptyState, SkeletonCard } from "../ui/primitives"
+import { AppShell } from "../ui/AppShell"
+import { ToastProvider, useToast } from "../ui/Toast"
 
 interface Stats {
   todaySessions: number
@@ -112,7 +113,16 @@ const greeting = () => {
 }
 
 export function App() {
+  return (
+    <ToastProvider>
+      <AppInner />
+    </ToastProvider>
+  )
+}
+
+function AppInner() {
   const route = useRoute()
+  const toast = useToast()
   const [user, setUser] = useState<User | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [randomQuote, setRandomQuote] = useState<Quote | null>(null)
@@ -143,17 +153,21 @@ export function App() {
   useEffect(() => {
     refresh()
     const onMessage = (msg: unknown) => {
-      if (
-        typeof msg === "object" &&
-        msg !== null &&
-        (msg as { type?: string }).type === "focusquote.auth.signedIn"
-      ) {
+      if (typeof msg !== "object" || msg === null) return
+      const type = (msg as { type?: string }).type
+      if (type === "focusquote.auth.signedIn") {
+        refresh()
+      } else if (type === "focusquote.session.finished") {
+        toast.success("Focus session complete.")
+        refresh()
+      } else if (type === "focusquote.session.cancelled") {
+        toast.info("Session cancelled.")
         refresh()
       }
     }
     chrome.runtime.onMessage.addListener(onMessage)
     return () => chrome.runtime.onMessage.removeListener(onMessage)
-  }, [])
+  }, [toast])
 
   const handleToggleTheme = useCallback(() => {
     const next: Theme = theme === "dark" ? "light" : "dark"
@@ -189,9 +203,13 @@ export function App() {
 
   if (!authReady) {
     return (
-      <div class="flex min-h-screen items-center justify-center bg-canvas text-body">
-        <p class="text-sm opacity-60">Loading…</p>
-      </div>
+      <AppShell page="home" theme={theme} onToggleTheme={handleToggleTheme}>
+        <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-6 py-8">
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={4} />
+        </div>
+      </AppShell>
     )
   }
 
@@ -200,48 +218,35 @@ export function App() {
   }
 
   return (
-    <div class="min-h-screen bg-canvas text-body">
-      <div class="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-16">
-        <header class="flex items-start justify-between">
-          <div>
-            <p class="text-xs uppercase tracking-wide text-mute">
-              {todayLabel}
-            </p>
-            <h1 class="mt-1 text-balance text-3xl font-bold text-ink">
-              {greeting()}.
-            </h1>
-          </div>
-          <div class="flex items-center gap-1">
-            <ThemeToggle theme={theme} onToggle={handleToggleTheme} />
-            {user ? (
-              <button
-                type="button"
-                onClick={handleOpenOptions}
-                aria-label="Open full options"
-                class="rounded-md p-2 text-mute transition-colors hover:bg-surface-soft hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
-              >
-                <Settings size={16} />
-              </button>
-            ) : null}
-          </div>
-        </header>
+    <AppShell page="home" theme={theme} onToggleTheme={handleToggleTheme}>
+      <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-hidden">
+        <div class="flex shrink-0 flex-col gap-1 px-6 pt-8">
+          <p class="text-xs uppercase tracking-wide text-mute">{todayLabel}</p>
+          <h1 class="text-balance text-3xl font-bold text-ink">
+            {greeting()}.
+          </h1>
+        </div>
 
         {!user ? (
-          <EmptyState
-            icon={<LogIn size={20} />}
-            title="Sign in to FocusQuote"
-            description="Click the FocusQuote toolbar icon to sign in. Quotes and focus sessions sync across your devices."
-          />
+          <div class="px-6 pb-8 pt-6">
+            <EmptyState
+              icon={<LogIn size={20} />}
+              title="Sign in to FocusQuote"
+              description="Click the FocusQuote toolbar icon to sign in. Quotes and focus sessions sync across your devices."
+            />
+          </div>
         ) : (
-          <>
+          <div class="flex min-h-0 flex-1 flex-col gap-5 px-6 pb-6 pt-5">
             <GoalEditor goal={todayGoal} onChange={handleGoalChange} />
             <DailyQuote quote={randomQuote} />
             <StatsRow {...stats} />
-            <TopicsSection />
-            <SessionsSection />
-          </>
+            <div class="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pr-1">
+              <TopicsSection />
+              <SessionsSection />
+            </div>
+          </div>
         )}
       </div>
-    </div>
+    </AppShell>
   )
 }

@@ -38,8 +38,10 @@ import {
   EmptyState,
   ListRow,
   SectionHeader,
+  SkeletonCard,
   Surface,
 } from "../../ui/primitives"
+import { AppShell } from "../../ui/AppShell"
 
 interface UrlRow {
   id: string
@@ -573,17 +575,21 @@ export function SessionDetail({ sessionId }: Props) {
 
   if (loading && !data) {
     return (
-      <div class="flex min-h-screen items-center justify-center bg-canvas text-body">
-        <Loader2 size={20} class="animate-spin text-mute" />
-      </div>
+      <AppShell page="session-detail">
+        <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-6 py-8">
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={4} />
+          <SkeletonCard lines={5} />
+        </div>
+      </AppShell>
     )
   }
 
   if (!data?.session) {
     return (
-      <div class="min-h-screen bg-canvas text-body">
-        <div class="mx-auto max-w-3xl px-6 py-12">
-          <Button onClick={navigateHome} variant="ghost" size="sm" class="mb-6">
+      <AppShell page="session-detail">
+        <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-6 py-8">
+          <Button onClick={navigateHome} variant="ghost" size="sm" class="self-start">
             <ArrowLeft size={12} /> Back
           </Button>
           <EmptyState
@@ -591,7 +597,7 @@ export function SessionDetail({ sessionId }: Props) {
             description="This session may not be synced to this device yet."
           />
         </div>
-      </div>
+      </AppShell>
     )
   }
 
@@ -599,8 +605,8 @@ export function SessionDetail({ sessionId }: Props) {
   const d = derived!
 
   return (
-    <div class="min-h-screen bg-canvas text-body">
-      <div class="mx-auto flex max-w-3xl flex-col gap-5 px-6 py-12">
+    <AppShell page="session-detail">
+      <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 overflow-y-auto px-6 py-6">
         <div class="flex items-center justify-between">
           <Button onClick={navigateHome} variant="ghost" size="sm">
             <ArrowLeft size={12} /> Back
@@ -696,6 +702,6 @@ export function SessionDetail({ sessionId }: Props) {
 
         <UrlsBlock urls={data.urls} />
       </div>
-    </div>
+    </AppShell>
   )
 }
