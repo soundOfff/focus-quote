@@ -85,6 +85,7 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
     root.style.cssText = "display:flex;flex-direction:column;gap:8px;min-width:300px"
 
     const passageBox = document.createElement("div")
+    passageBox.setAttribute("data-fq-scrollbar", "")
     passageBox.style.cssText = [
       "padding:6px 8px",
       `background:${tokens.navyDeep}`,
@@ -100,6 +101,7 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
     ].join(";")
 
     const log = document.createElement("div")
+    log.setAttribute("data-fq-scrollbar", "")
     log.style.cssText = [
       "display:flex",
       "flex-direction:column",
@@ -109,9 +111,6 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
       "overflow-x:hidden",
       "padding-right:0",
       "margin-right:0",
-      `--border:${tokens.hairline}`,
-      "scrollbar-width:thin",
-      "scrollbar-color:var(--border) transparent",
     ].join(";")
 
     const inputRow = document.createElement("div")

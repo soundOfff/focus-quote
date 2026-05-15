@@ -563,6 +563,19 @@ chrome.runtime.onMessage.addListener(
         )
       return true
     }
+    if (
+      typeof msg === "object" &&
+      msg !== null &&
+      (msg as { type?: string }).type === "focusquote.ui.openPopup"
+    ) {
+      void chrome.action
+        .openPopup()
+        .catch(() => {
+          /* unsupported or no gesture */
+        })
+      respond({ ok: true })
+      return true
+    }
     if (!isRuntimeMessage(msg)) return false
     const program =
       msg.type === "focusquote.session.start"

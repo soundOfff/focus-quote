@@ -66,4 +66,13 @@ export const tokens = {
   zCursor: 2147483643,
   font: '13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif',
   fontMono: '12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',
+  /**
+   * Scrollbars — DESIGN.MD § Scrollbars; transparent track, hairline thumb.
+   * Used by injected `[data-fq-scrollbar]` rules on host pages.
+   */
+  scrollbar: {
+    track: "transparent",
+    thumb: "rgb(191 193 183 / 0.72)",
+    thumbHover: "rgb(108 110 99 / 0.88)",
+  },
 } as const

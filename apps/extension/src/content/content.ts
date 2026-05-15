@@ -8,12 +8,17 @@ import { initFocusToolbar } from "./toolbar"
 import { mountActionCapture } from "./actionCapture"
 import { extractPageContent } from "./pageContent"
 import { isAnyToolActive, subscribeToolState } from "./toolbar/tool-state"
+import { toolbarStore } from "./store"
 import { PREFS_KEY, defaultPrefs } from "../shared/prefs"
 import {
   TRANSLATE_LANGUAGES,
   isValidTranslateFrom,
   isValidTranslateTo,
 } from "../shared/translation"
+import { injectHostScrollbarStyles } from "./inject-scrollbar"
+
+// Themed scrollbars for in-page UI (save row, Quote+AI, debug panel, etc.)
+injectHostScrollbarStyles()
 
 // Floating focus-mode toolbar (only renders while a session is active).
 initFocusToolbar()
@@ -37,6 +42,10 @@ interface SaveRow {
 }
 
 let activeSession: ActiveSession = null
+// Tracks the last-known session id so we can detect transitions
+// (start, end, switch) and flush per-session toolbar chat history.
+let lastSessionId: string | null = null
+let lastSessionInitialized = false
 let privacy: Privacy = { trackUrls: false, blocklist: [] }
 let prefs: Prefs = {
   translateFromLang: defaultPrefs.translateFromLang,
@@ -89,6 +98,24 @@ const refreshSessionAndPrivacy = async () => {
   if (saveRow) {
     saveRow.fromSelect.value = prefs.translateFromLang
     saveRow.toSelect.value = prefs.translateToLang
+  }
+
+  // Each focus session gets a clean Quote+AI chat. Cross a session
+  // boundary (start, end, or switching to a different session) and we
+  // reset the persisted chat history so threads don't bleed between
+  // sessions. The initial page load establishes the baseline without
+  // wiping a thread the user might still be referencing.
+  const nextSessionId = activeSession?.sessionId ?? null
+  if (!lastSessionInitialized) {
+    lastSessionId = nextSessionId
+    lastSessionInitialized = true
+  } else if (nextSessionId !== lastSessionId) {
+    try {
+      toolbarStore.getState().resetChat()
+    } catch (err) {
+      console.warn("[FocusQuote] failed to flush chat on session change:", err)
+    }
+    lastSessionId = nextSessionId
   }
 }
 
@@ -434,6 +461,7 @@ const createSaveRow = (): SaveRow => {
     "overflow:auto",
     "box-shadow:0 4px 14px rgba(0,0,0,.10)",
   ].join(";")
+  resultCard.setAttribute("data-fq-scrollbar", "")
   root.appendChild(resultCard)
 
   return { root, saveBtn, resultCard, fromSelect, toSelect, translateBtn }
@@ -857,6 +885,7 @@ const ensureDebugPanel = (): HTMLDivElement => {
   header.append(title, close)
 
   const list = document.createElement("ul")
+  list.setAttribute("data-fq-scrollbar", "")
   list.style.cssText = [
     "list-style:none",
     "margin:0",

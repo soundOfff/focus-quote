@@ -186,8 +186,9 @@ function AppInner() {
       if (typeof msg !== "object" || msg === null) return
       const type = (msg as { type?: string }).type
       if (type === "focusquote.auth.signedIn") refreshAuth()
-      if (type === "focusquote.session.finished") toast.success("Focus session complete.")
-      if (type === "focusquote.session.cancelled") toast.info("Session cancelled.")
+      // Session start/finish/cancel toasts surface in the newtab navigator
+      // (see newtab/App.tsx). The popup stays quiet to avoid duplicate
+      // notifications when both surfaces are open.
     }
     chrome.runtime.onMessage.addListener(onMessage)
     return () => chrome.runtime.onMessage.removeListener(onMessage)

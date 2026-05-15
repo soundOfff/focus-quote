@@ -57,25 +57,40 @@ const renderGuideUI = (
   shell: ToolbarShell,
   opts: { resume?: boolean } = {},
 ): GuideController => {
+  // The cursor is two stacked elements:
+  //   - outer (`cursor`): driven by `offset-path` (or `left/top` fallback).
+  //     We avoid putting any transform on this element because the offset-path
+  //     animation overwrites `transform`, which would silently break centering.
+  //   - inner (`cursorInner`): owns the visual offset that points the SVG's
+  //     tip at the outer element's coordinate, plus the pulse halo behind it.
+  // The pulse ring sits on the inner element so its radius is measured from
+  // the SVG's tip, not from the outer element's top-left.
   const cursor = document.createElement("div")
   cursor.setAttribute("data-focusquote-guide-cursor", "")
   cursor.style.cssText = [
     "position:fixed",
     "top:0",
     "left:0",
-    "width:28px",
-    "height:28px",
+    "width:0",
+    "height:0",
     "pointer-events:none",
     `z-index:${tokens.zCursor}`,
-    "opacity:0.45",
-    "transform:translate(-14px,-14px)",
-    "will-change:offset-distance,transform",
+    "will-change:offset-distance,left,top",
   ].join(";")
   const cursorInner = document.createElement("div")
   cursorInner.style.cssText = [
+    "position:absolute",
     "width:28px",
     "height:28px",
-    "transform:translate(0,0)",
+    // Center the 28x28 visual on the outer's anchor point. The original code
+    // applied this translate to the outer element, but `offset-path` clobbers
+    // `transform` so the centering silently dropped — landing the cursor's
+    // tip several pixels away from the target.
+    "left:-14px",
+    "top:-14px",
+    "border-radius:50%",
+    "opacity:0.9",
+    "filter:drop-shadow(0 1px 2px rgba(0,0,0,0.35))",
   ].join(";")
   cursorInner.innerHTML = cursorSvg()
   cursor.appendChild(cursorInner)
@@ -85,14 +100,15 @@ const renderGuideUI = (
     style.id = "focusquote-guide-keyframes"
     style.textContent = `
       @keyframes focusquote-guide-cursor-pulse {
-        0%   { box-shadow: 0 0 0 0 rgba(233, 69, 96, 0.45); }
-        70%  { box-shadow: 0 0 0 12px rgba(233, 69, 96, 0); }
+        0%   { box-shadow: 0 0 0 0 rgba(233, 69, 96, 0.55); }
+        70%  { box-shadow: 0 0 0 14px rgba(233, 69, 96, 0); }
         100% { box-shadow: 0 0 0 0 rgba(233, 69, 96, 0); }
       }
     `
     document.head.appendChild(style)
   }
-  cursor.style.animation = "focusquote-guide-cursor-pulse 1300ms ease-out infinite"
+  cursorInner.style.animation =
+    "focusquote-guide-cursor-pulse 1300ms ease-out infinite"
 
   const tooltip = document.createElement("div")
   tooltip.setAttribute("data-focusquote-guide-tooltip", "")

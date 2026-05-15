@@ -72,6 +72,17 @@ Icons: 12px in dense rows (Badge content, popup header buttons), 14px standard (
 - `Toggle` — boolean switch using primary as the "on" state.
 - `Toast` — floating success/error/info, bottom-right, 2.5s auto-dismiss.
 
+## Scrollbars
+
+Scrollable regions use a **thin** bar with a **transparent track** (no gutter fill) so the canvas/surface shows through. The thumb uses the warm **hairline** tone at ~70% opacity; hover darkens toward **mute**. Light and dark themes each map thumb opacity to the same tokens so contrast stays balanced on `canvas` / `surface`.
+
+| Surface | Thumb | Track |
+|---------|--------|--------|
+| Light | `hairline` @ ~0.72 α | `transparent` |
+| Dark | `hairline` @ ~0.55 α (darker hairline rgb) | `transparent` |
+
+In-page UI (toolbar, save row, popovers) applies the same colors via `tokens.scrollbar` and the `data-fq-scrollbar` hook (injected stylesheet).
+
 ## In-page toolbar conventions
 
 The floating toolbar lives on arbitrary web pages, so it must read against any background. Same palette as the rest of the app, plus:

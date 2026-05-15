@@ -17,7 +17,6 @@ import {
   RotateCw,
   Send,
   Sparkles,
-  Timer,
   XCircle,
 } from "lucide-preact"
 import { SessionsService } from "../../services/sessions"
@@ -41,7 +40,6 @@ import {
   SkeletonCard,
   Surface,
 } from "../../ui/primitives"
-import { AppShell } from "../../ui/AppShell"
 
 interface UrlRow {
   id: string
@@ -181,14 +179,16 @@ function TipsBlock({
       regenerating={regenerating}
     >
       {tips && tips.length > 0 ? (
-        <ul class="space-y-2">
+        <ul class="space-y-3">
           {tips.map((t, i) => (
             <li
               key={i}
-              class="flex gap-2 text-sm leading-relaxed"
+              class="flex gap-3 text-sm leading-relaxed text-body"
             >
-              <span class="shrink-0 text-link-blue">{i + 1}.</span>
-              <span>{t}</span>
+              <span class="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md bg-accent-blue-soft text-xs font-semibold tabular-nums text-link-blue">
+                {i + 1}
+              </span>
+              <span class="min-w-0 pt-0.5">{t}</span>
             </li>
           ))}
         </ul>
@@ -438,6 +438,7 @@ function Section({
               size="sm"
               aria-label="Regenerate"
               title="Regenerate"
+              class="!text-[10px] !font-bold uppercase tracking-wider"
             >
               <RefreshCw size={11} class={regenerating ? "animate-spin" : ""} />
               {regenerating ? "Regenerating…" : "Regenerate"}
@@ -457,7 +458,7 @@ function UrlsBlock({ urls }: { urls: UrlRow[] }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        class="flex w-full items-center gap-2 p-5 text-left transition-colors hover:bg-surface-doc"
+        class="flex w-full items-center gap-2 px-2 py-3 rounded text-left transition-colors hover:bg-surface-doc"
       >
         <Globe size={14} class="text-mute" />
         <h2 class="text-sm font-semibold text-ink">
@@ -469,7 +470,7 @@ function UrlsBlock({ urls }: { urls: UrlRow[] }) {
         </span>
       </button>
       {open && (
-        <ul class="space-y-1.5 px-5 pb-5">
+        <ul class="space-y-3 px-5 pb-5 pt-3">
           {urls.map((u) => (
             <li key={u.id}>
               <ListRow class="text-xs">
@@ -516,6 +517,10 @@ interface Props {
   sessionId: string
 }
 
+// Note: the surrounding AppShell (nav bar + theme toggle + page chrome) is
+// rendered by `newtab/App.tsx` and stays mounted across home ↔ session-detail
+// transitions. Detail no longer wraps its own AppShell so popping back to home
+// doesn't tear down + refetch TopicsSection / SessionsSection.
 export function SessionDetail({ sessionId }: Props) {
   const [data, setData] = useState<PageData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -575,29 +580,25 @@ export function SessionDetail({ sessionId }: Props) {
 
   if (loading && !data) {
     return (
-      <AppShell page="session-detail">
-        <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-6 py-8">
-          <SkeletonCard lines={3} />
-          <SkeletonCard lines={4} />
-          <SkeletonCard lines={5} />
-        </div>
-      </AppShell>
+      <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-6 py-8">
+        <SkeletonCard lines={3} />
+        <SkeletonCard lines={4} />
+        <SkeletonCard lines={5} />
+      </div>
     )
   }
 
   if (!data?.session) {
     return (
-      <AppShell page="session-detail">
-        <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-6 py-8">
-          <Button onClick={navigateHome} variant="ghost" size="sm" class="self-start">
-            <ArrowLeft size={12} /> Back
-          </Button>
-          <EmptyState
-            title="Session not found"
-            description="This session may not be synced to this device yet."
-          />
-        </div>
-      </AppShell>
+      <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-6 py-8">
+        <Button onClick={navigateHome} variant="ghost" size="sm" class="self-start">
+          <ArrowLeft size={12} /> Back
+        </Button>
+        <EmptyState
+          title="Session not found"
+          description="This session may not be synced to this device yet."
+        />
+      </div>
     )
   }
 
@@ -605,14 +606,23 @@ export function SessionDetail({ sessionId }: Props) {
   const d = derived!
 
   return (
-    <AppShell page="session-detail">
-      <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 overflow-y-auto px-6 py-6">
-        <div class="flex items-center justify-between">
-          <Button onClick={navigateHome} variant="ghost" size="sm">
-            <ArrowLeft size={12} /> Back
-          </Button>
-          <Button onClick={refresh} variant="ghost" size="sm" aria-label="Refresh">
-            <RotateCw size={12} /> Refresh
+    <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 overflow-y-auto px-4 py-6 sm:px-6">
+        <div class="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={navigateHome}
+            class="inline-flex min-h-10 items-center gap-1 rounded-md px-2 text-xs font-semibold text-mute transition-[color,transform] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70 active:scale-[0.96] motion-reduce:active:scale-100"
+          >
+            <ArrowLeft size={14} strokeWidth={2} aria-hidden /> Back
+          </button>
+          <Button
+            onClick={refresh}
+            variant="outline"
+            size="sm"
+            aria-label="Refresh session"
+            class="gap-1.5 !font-semibold"
+          >
+            <RotateCw size={14} strokeWidth={2} /> Refresh
           </Button>
         </div>
 
@@ -639,25 +649,17 @@ export function SessionDetail({ sessionId }: Props) {
               <span class="text-mute">Session without a goal</span>
             )}
           </h1>
-          <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-mute">
-            <span class="inline-flex items-center gap-1">
-              <Timer size={11} />
-              <span class="tabular-nums">{fmtMinutes(d.plannedMs)}</span>
-              <span class="text-mute">planned</span>
-              {d.actualMs !== null && (
-                <>
-                  <span class="text-mute">·</span>
-                  <span class="tabular-nums">{fmtMinutes(d.actualMs)}</span>
-                  <span class="text-mute">actual</span>
-                </>
-              )}
-            </span>
-            <span>started {fmtTime(s.startedAt)}</span>
-            {s.endedAt && <span>ended {fmtTime(s.endedAt)}</span>}
-            <span class="tabular-nums text-mute">
-              {data.urls.length} URL{data.urls.length === 1 ? "" : "s"}
-            </span>
-          </div>
+          <p class="mt-3 text-balance font-mono text-[11px] uppercase leading-relaxed text-mute">
+            {[
+              `${fmtMinutes(d.plannedMs)} planned`,
+              d.actualMs !== null ? `${fmtMinutes(d.actualMs)} actual` : null,
+              `started ${fmtTime(s.startedAt)}`,
+              s.endedAt ? `ended ${fmtTime(s.endedAt)}` : null,
+              `${data.urls.length} URL${data.urls.length === 1 ? "" : "s"}`,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
         </Surface>
 
         {d.status === "completed" && (
@@ -701,7 +703,6 @@ export function SessionDetail({ sessionId }: Props) {
         )}
 
         <UrlsBlock urls={data.urls} />
-      </div>
-    </AppShell>
+    </div>
   )
 }

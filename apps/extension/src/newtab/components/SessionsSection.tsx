@@ -132,7 +132,7 @@ interface CardProps {
   session: Session
 }
 
-function SessionCard({ session }: CardProps) {
+export function SessionCard({ session }: CardProps) {
   const [expanded, setExpanded] = useState(false)
   const [urls, setUrls] = useState<UrlRow[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -203,7 +203,7 @@ function SessionCard({ session }: CardProps) {
   }
 
   return (
-    <div class="rounded-md border border-hairline bg-surface shadow-[0_1px_0_rgb(0_0_0_/_0.03)] dark:shadow-none">
+    <div class="rounded-md border border-hairline bg-surface">
       <button
         type="button"
         onClick={handleToggle}

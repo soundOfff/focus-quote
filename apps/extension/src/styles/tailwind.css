@@ -25,6 +25,11 @@
     --color-accent-red-soft: 247 214 211;
     --color-focus-ring: 59 130 246;
 
+    /* Scrollbars: transparent track, hairline-based thumb (see DESIGN.MD) */
+    --scrollbar-thumb: rgb(var(--color-hairline) / 0.72);
+    --scrollbar-thumb-hover: rgb(var(--color-mute) / 0.88);
+    --scrollbar-track: transparent;
+
     --legacy-bg-dark: 238 239 233;
     --legacy-bg-light: 238 239 233;
     --legacy-card-dark: 255 255 255;
@@ -55,6 +60,10 @@
     --color-accent-red-soft: 74 38 36;
     --color-focus-ring: 147 197 253;
 
+    --scrollbar-thumb: rgb(var(--color-hairline) / 0.58);
+    --scrollbar-thumb-hover: rgb(var(--color-mute) / 0.85);
+    --scrollbar-track: transparent;
+
     --legacy-bg-dark: 24 27 21;
     --legacy-bg-light: 238 239 233;
     --legacy-card-dark: 31 35 28;
@@ -63,9 +72,73 @@
     --legacy-text-light: 35 37 29;
   }
 
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+
   body {
     font-family: theme("fontFamily.sans");
     background-color: rgb(var(--color-canvas));
     color: rgb(var(--color-body));
+  }
+
+  /*
+   * Global scrollbars — extension pages (newtab, options, popup).
+   * Track stays transparent; thumb uses DESIGN.MD hairline/mute relationship.
+   */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  /** Explicit hook when a scroll container should match the global bar (optional). */
+  .fq-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+  .fq-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .fq-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .fq-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .fq-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+  }
+  .fq-scrollbar::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }

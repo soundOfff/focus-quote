@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks"
 import { Effect } from "effect"
 import {
-  BookOpen,
   Database,
   Download,
   ImageUp,
@@ -10,6 +9,7 @@ import {
   Minus,
   Plus,
   Shield,
+  Sparkles,
   Timer as TimerIcon,
   User as UserIcon,
 } from "lucide-preact"
@@ -175,6 +175,15 @@ export function App() {
     </ToastProvider>
   )
 }
+
+const shortHeaderDate = () =>
+  new Date()
+    .toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    })
+    .toUpperCase()
 
 function AppInner() {
   const toast = useToast()
@@ -431,8 +440,21 @@ function AppInner() {
       page="options"
       theme={prefs.theme}
       onToggleTheme={handleToggleTheme}
+      headerDate={shortHeaderDate()}
     >
-      <div class="mx-auto flex w-full max-w-2xl flex-1 flex-col overflow-hidden px-6 pt-6">
+      <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-hidden px-4 pb-8 pt-8 sm:px-6">
+        <header class="mb-6 shrink-0 space-y-1">
+          <p class="text-[10px] font-semibold uppercase tracking-[0.14em] text-mute">
+            Settings
+          </p>
+          <h1 class="text-balance text-3xl font-bold tracking-tight text-ink">
+            Options
+          </h1>
+          <p class="max-w-prose text-sm leading-relaxed text-mute">
+            Tune how FocusQuote behaves across your sessions, AI assistance and
+            data handling.
+          </p>
+        </header>
         <Tabs<OptionsTab>
           value={activeTab}
           onChange={handleTabChange}
@@ -440,7 +462,7 @@ function AppInner() {
           items={[
             { value: "account", label: "Account", icon: <UserIcon size={12} /> },
             { value: "session", label: "Session", icon: <TimerIcon size={12} /> },
-            { value: "ai", label: "AI", icon: <BookOpen size={12} /> },
+            { value: "ai", label: "AI", icon: <Sparkles size={12} /> },
             { value: "privacy", label: "Privacy", icon: <Shield size={12} /> },
             { value: "data", label: "Data", icon: <Database size={12} /> },
           ]}
@@ -549,7 +571,10 @@ function AppInner() {
 
               <TabPanel active={activeTab === "session"}>
                 <Surface>
-                  <SectionHeader title="Session defaults" />
+                  <SectionHeader
+                    title="Session defaults"
+                    icon={<TimerIcon size={14} class="text-primary" />}
+                  />
                   <div class="grid grid-cols-2 gap-2">
                     <TimeControl
                       label="Focus (min)"
@@ -868,7 +893,7 @@ function ImageField({
   onPick: (file: File | null) => void | Promise<void>
 }) {
   return (
-    <label class="flex flex-col gap-1">
+    <label class="relative flex flex-col gap-1">
       <span class="text-[10px] uppercase tracking-wider text-mute">{label}</span>
       <div class="flex cursor-pointer items-center gap-2 rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-body hover:bg-surface-soft">
         <ImageUp size={14} />
