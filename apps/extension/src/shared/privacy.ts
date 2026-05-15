@@ -1,7 +1,14 @@
 import { Effect, Schema } from "effect"
 import type { StorageService } from "../services/storage"
+import { ApiService } from "../services/api"
+import {
+  REMOTE_MIGRATION_FLAGS,
+  isMigrated,
+  markMigrated,
+} from "./remote-migration"
 
 export const PRIVACY_KEY = "focusquote.privacy"
+const PRIVACY_REMOTE_MIGRATED_KEY = REMOTE_MIGRATION_FLAGS.privacy
 
 export const Privacy = Schema.Struct({
   /** Master toggle for sending visited URLs to the server during sessions. */
@@ -55,3 +62,51 @@ export const isBlocked = (privacy: Privacy, hostname: string): boolean => {
     return h === r || h.endsWith(`.${r}`)
   })
 }
+
+/** Pull privacy state from server and cache locally. */
+export const pullPrivacyFromRemote = (
+  storage: StorageService,
+): Effect.Effect<Privacy, never, ApiService> =>
+  Effect.gen(function* () {
+    const api = yield* ApiService
+    const fallback = yield* loadPrivacy(storage)
+    const res = yield* Effect.either(api.getPrivacy())
+    if (res._tag === "Left") return fallback
+    const next: Privacy = {
+      trackUrls: res.right.privacy.trackUrls,
+      blocklist: [...res.right.privacy.blocklist],
+    }
+    yield* savePrivacy(storage, next)
+    return next
+  })
+
+export const pushPrivacyToRemote = (
+  next: Privacy,
+): Effect.Effect<void, never, ApiService> =>
+  Effect.gen(function* () {
+    const api = yield* ApiService
+    yield* api
+      .putPrivacy({ trackUrls: next.trackUrls, blocklist: [...next.blocklist] })
+      .pipe(
+        Effect.asVoid,
+        Effect.catchAll(() => Effect.void),
+      )
+  })
+
+export const ensurePrivacyMigrated = (
+  storage: StorageService,
+): Effect.Effect<void, never, ApiService> =>
+  Effect.gen(function* () {
+    if (yield* isMigrated(storage, PRIVACY_REMOTE_MIGRATED_KEY)) return
+    const api = yield* ApiService
+    const current = yield* loadPrivacy(storage)
+    const res = yield* Effect.either(
+      api.putPrivacy({
+        trackUrls: current.trackUrls,
+        blocklist: [...current.blocklist],
+      }),
+    )
+    if (res._tag === "Right") {
+      yield* markMigrated(storage, PRIVACY_REMOTE_MIGRATED_KEY)
+    }
+  })
