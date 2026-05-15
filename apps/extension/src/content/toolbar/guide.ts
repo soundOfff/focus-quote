@@ -4,12 +4,44 @@ import type { ToolbarShell } from "./shell"
 import {
   openPopover,
   popoverButton,
-  popoverInput,
+  popoverComposer,
   type PopoverHandle,
 } from "./popover"
 import { apiPost, ApiCallError } from "./api"
 import { toolbarStore } from "../store"
 import type { GuideStep, GuideStepsResponse } from "@focus-quote/shared"
+
+// Local persistence for the "Recent" section under Guide-me prompts. Stored
+// in localStorage so it's per-origin — the recents the user sees on x.com
+// are different from the ones on github.com. Capped at 5; we surface 2.
+const GUIDE_RECENTS_KEY = "focusquote.guide.recents.v1"
+const GUIDE_RECENTS_CAP = 5
+
+const loadRecents = (): string[] => {
+  try {
+    const raw = localStorage.getItem(GUIDE_RECENTS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((s): s is string => typeof s === "string").slice(0, GUIDE_RECENTS_CAP)
+  } catch {
+    return []
+  }
+}
+
+const pushRecent = (goal: string) => {
+  const trimmed = goal.trim()
+  if (!trimmed) return
+  try {
+    const prev = loadRecents().filter(
+      (s) => s.toLowerCase() !== trimmed.toLowerCase(),
+    )
+    const next = [trimmed, ...prev].slice(0, GUIDE_RECENTS_CAP)
+    localStorage.setItem(GUIDE_RECENTS_KEY, JSON.stringify(next))
+  } catch {
+    /* localStorage unavailable — non-fatal */
+  }
+}
 
 /**
  * Ghost Cursor Guide Me — Part 4.
@@ -443,52 +475,141 @@ const renderPromptForm = (
   onSubmit: (goal: string) => void,
 ) => {
   body.replaceChildren()
-  const wrap = document.createElement("div")
-  wrap.style.cssText = "display:flex;flex-direction:column;gap:8px"
-  const hint = document.createElement("div")
-  hint.style.cssText = `font-size:12px;color:${tokens.inkMute};line-height:1.5`
-  hint.textContent =
-    "Describe what you want to do (e.g. \"Show me how to disable my account\"). I'll trace a ghost cursor through the steps."
 
-  const input = popoverInput("How do I…")
-  input.value = initialGoal
-  const row = document.createElement("div")
-  row.style.cssText = "display:flex;justify-content:flex-end;gap:6px"
-  const go = popoverButton("Generate")
-  row.append(go)
+  // -- Instructional paragraph (with inline bold example) ------------------
+  const paraWrap = document.createElement("div")
+  paraWrap.style.cssText = "padding:12px 14px 4px"
 
-  wrap.append(hint, input, row)
-  body.appendChild(wrap)
-  setTimeout(() => input.focus(), 30)
+  const para = document.createElement("p")
+  para.style.cssText = [
+    "margin:0",
+    "font-size:12.5px",
+    "line-height:1.55",
+    `color:${tokens.ink2}`,
+  ].join(";")
+  const beforeExample = document.createTextNode(
+    "Describe what you want to do — for example, ",
+  )
+  const example = document.createElement("span")
+  example.style.cssText = `color:${tokens.ink};font-weight:600`
+  example.textContent = "“show me how to disable my account”"
+  const afterExample = document.createTextNode(
+    ". I’ll trace a ghost cursor through the steps.",
+  )
+  para.append(beforeExample, example, afterExample)
+  paraWrap.append(para)
 
-  const submit = () => {
-    const goal = input.value.trim()
+  // -- Recent list (if we have any) -----------------------------------------
+  const recents = loadRecents().filter(
+    (r) => r.toLowerCase() !== initialGoal.trim().toLowerCase(),
+  )
+  let recentWrap: HTMLDivElement | null = null
+  if (recents.length > 0) {
+    recentWrap = document.createElement("div")
+    recentWrap.style.cssText = "padding:0 14px 4px"
+
+    const label = document.createElement("div")
+    label.style.cssText = [
+      `font:${tokens.fontMono}`,
+      "font-size:9.5px",
+      "font-weight:500",
+      "letter-spacing:0.12em",
+      "text-transform:uppercase",
+      `color:${tokens.muted}`,
+      "margin-top:14px",
+      "margin-bottom:5px",
+    ].join(";")
+    label.textContent = "Recent"
+
+    const list = document.createElement("div")
+    list.style.cssText = "display:grid;gap:4px"
+
+    for (const recent of recents.slice(0, 2)) {
+      const btn = document.createElement("button")
+      btn.type = "button"
+      btn.style.cssText = [
+        "all:unset",
+        "box-sizing:border-box",
+        "width:100%",
+        "text-align:left",
+        "background:transparent",
+        `border:1px dashed ${tokens.rule2}`,
+        "border-radius:7px",
+        "padding:6px 9px",
+        "font-size:12px",
+        `color:${tokens.ink2}`,
+        "cursor:pointer",
+        "display:flex",
+        "align-items:center",
+        "gap:7px",
+        "transition:background-color 120ms ease,border-color 120ms ease",
+      ].join(";")
+      btn.addEventListener("mouseenter", () => {
+        btn.style.backgroundColor = tokens.paper2
+        btn.style.borderColor = tokens.popupBorder
+      })
+      btn.addEventListener("mouseleave", () => {
+        btn.style.backgroundColor = "transparent"
+        btn.style.borderColor = tokens.rule2
+      })
+      const arrow = document.createElement("span")
+      arrow.style.cssText = `display:inline-flex;align-items:center;color:${tokens.muted2}`
+      arrow.innerHTML = icons.arrowRight(10)
+      const text = document.createElement("span")
+      text.textContent = recent
+      text.style.cssText = "min-width:0;flex:1"
+      btn.append(arrow, text)
+      btn.addEventListener("click", () => {
+        composer.input.value = recent
+        composer.focus()
+        // Auto-submit when the user picks a recent — saves a click.
+        submit(recent)
+      })
+      list.appendChild(btn)
+    }
+
+    recentWrap.append(label, list)
+  }
+
+  // -- Composer ------------------------------------------------------------
+  const submit = (rawValue: string) => {
+    const goal = rawValue.trim()
     if (!goal) {
-      input.focus()
+      composer.focus()
       return
     }
+    pushRecent(goal)
     onSubmit(goal)
   }
-  go.addEventListener("click", submit)
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      submit()
-    }
+
+  const composer = popoverComposer({
+    placeholder: "How do I…",
+    buttonLabel: "Generate",
+    hint: "↵",
+    onSubmit: submit,
   })
+  composer.input.value = initialGoal
+
+  body.append(paraWrap)
+  if (recentWrap) body.append(recentWrap)
+  body.append(composer.root)
+
+  setTimeout(() => composer.focus(), 30)
 }
 
 const renderLoadingState = (body: HTMLElement) => {
   body.replaceChildren()
   const el = document.createElement("div")
   el.style.cssText = [
-    "padding:8px 10px",
-    `background:${tokens.navyDeep}`,
-    `border:1px solid ${tokens.hairline}`,
-    "border-radius:4px",
-    `color:${tokens.inkMute}`,
-    "font-size:13px",
-    "line-height:1.4",
+    "margin:14px",
+    "padding:10px 12px",
+    `background:${tokens.paper2}`,
+    `border:1px solid ${tokens.rule}`,
+    `border-radius:${tokens.radius}`,
+    `color:${tokens.muted}`,
+    "font-size:12.5px",
+    "line-height:1.5",
+    "font-style:italic",
   ].join(";")
   el.textContent = "Asking the AI for a step-by-step plan…"
   body.appendChild(el)
@@ -501,16 +622,17 @@ const renderErrorState = (
 ) => {
   body.replaceChildren()
   const wrap = document.createElement("div")
-  wrap.style.cssText = "display:flex;flex-direction:column;gap:8px"
+  wrap.style.cssText =
+    "display:flex;flex-direction:column;gap:8px;padding:12px 14px"
   const msg = document.createElement("div")
   msg.style.cssText = [
-    "padding:8px 10px",
-    `background:${tokens.navyDeep}`,
-    `border:1px solid ${tokens.accentDim}`,
-    "border-radius:4px",
-    `color:${tokens.ink}`,
-    "font-size:13px",
-    "line-height:1.4",
+    "padding:10px 12px",
+    `background:${tokens.claySoft}`,
+    `border:1px solid ${tokens.clayHairline}`,
+    `border-radius:${tokens.radius}`,
+    `color:${tokens.clayInk}`,
+    "font-size:12.5px",
+    "line-height:1.5",
   ].join(";")
   msg.textContent = message
   const row = document.createElement("div")

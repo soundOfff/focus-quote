@@ -76,6 +76,17 @@ export const icons = {
       `<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>`,
       s,
     ),
+  sparkle: (s?: number) =>
+    wrap(
+      `<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>`,
+      s,
+    ),
+  bolt: (s?: number) =>
+    wrap(`<path d="m13 3-8 11h6l-1 7 8-11h-6z"/>`, s),
+  undo: (s?: number) =>
+    wrap(`<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>`, s),
+  arrowRight: (s?: number) =>
+    wrap(`<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>`, s),
 } satisfies Record<string, (s?: number) => string>
 
 export type IconName = keyof typeof icons

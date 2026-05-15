@@ -99,23 +99,28 @@ const createButton = (
   btn.setAttribute(ATTR_BUTTON, options.id)
   btn.setAttribute("aria-label", options.label)
   btn.title = options.label
+  // Per the tools handoff: rail buttons are 34×32 with a 7px radius. Active
+  // state uses amber-soft fill with an amber-hairline border, ink colored
+  // amber-deep. Inactive is transparent with ink-2 text.
   btn.style.cssText = [
     "all:unset",
     "box-sizing:border-box",
-    "display:flex",
-    "align-items:center",
-    "justify-content:center",
+    "display:grid",
+    "place-items:center",
     `width:${tokens.size.tap}`,
-    `height:${tokens.size.tap}`,
+    `height:${tokens.size.tapH}`,
     `border-radius:${tokens.radius}`,
-    `color:${tokens.ink}`,
+    `color:${tokens.ink2}`,
+    "border:1px solid transparent",
     "cursor:pointer",
     "position:relative",
-    "transition:background-color 120ms ease,color 120ms ease",
+    "transition:background-color 120ms ease,color 120ms ease,border-color 120ms ease",
   ].join(";")
 
   btn.addEventListener("mouseenter", () => {
-    btn.style.backgroundColor = tokens.hairline
+    if (btn.getAttribute("data-active") !== "true") {
+      btn.style.backgroundColor = tokens.paper2
+    }
   })
   btn.addEventListener("mouseleave", () => {
     if (btn.getAttribute("data-active") !== "true") {
@@ -164,11 +169,13 @@ const createButton = (
     setActive(active) {
       btn.setAttribute("data-active", String(active))
       if (active) {
-        btn.style.backgroundColor = tokens.hairline
-        btn.style.color = tokens.teal
+        btn.style.backgroundColor = tokens.amberSoft
+        btn.style.color = tokens.amberDeep
+        btn.style.borderColor = tokens.amberHairline
       } else {
         btn.style.backgroundColor = "transparent"
-        btn.style.color = tokens.ink
+        btn.style.color = tokens.ink2
+        btn.style.borderColor = "transparent"
       }
     },
     setLabel(label) {
@@ -187,6 +194,10 @@ const createButton = (
 }
 
 export const mountToolbar = (): ToolbarShell => {
+  // Direction A tool rail. 42 wide, 11 radius, paper background, soft
+  // popup-style shadow so it reads against any host page (light or dark).
+  // We deliberately keep `width:42px` static and let the buttons drive
+  // height — the rail grows / shrinks with `addButton`.
   const host = document.createElement("div")
   host.setAttribute(ATTR_TOOLBAR, "")
   host.style.cssText = [
@@ -196,16 +207,16 @@ export const mountToolbar = (): ToolbarShell => {
     "display:flex",
     "flex-direction:column",
     "align-items:stretch",
-    `gap:${tokens.space.xs}`,
-    `padding:${tokens.space.sm}`,
-    `background:${tokens.navy}`,
-    `border:1px solid ${tokens.tealDim}`,
-    `border-radius:${tokens.radius}`,
-    `color:${tokens.ink}`,
+    "gap:2px",
+    "width:42px",
+    "padding:5px 4px",
+    `background:${tokens.paper}`,
+    `border:1px solid ${tokens.popupBorder}`,
+    "border-radius:11px",
+    `color:${tokens.ink2}`,
     `font:${tokens.font}`,
     `z-index:${tokens.zToolbar}`,
-    // Explicitly no shadow — the design system is flat.
-    "box-shadow:none",
+    `box-shadow:${tokens.shadowPopup}`,
     "pointer-events:auto",
     "user-select:none",
     "-webkit-font-smoothing:antialiased",
@@ -215,14 +226,15 @@ export const mountToolbar = (): ToolbarShell => {
   applySide(host, side)
 
   const buttonsHost = document.createElement("div")
-  buttonsHost.style.cssText = `display:flex;flex-direction:column;align-items:stretch;gap:${tokens.space.xs}`
+  buttonsHost.style.cssText =
+    "display:flex;flex-direction:column;align-items:stretch;gap:2px"
   host.appendChild(buttonsHost)
 
   // Side toggle goes below the feature buttons so it stays at the bottom
   // regardless of how many features the toolbar grows. Visually separated by
-  // a hairline rule.
+  // a hairline rule (5px breathing on either side per the handoff).
   const divider = document.createElement("div")
-  divider.style.cssText = `height:1px;background:${tokens.hairline};margin:${tokens.space.xs} 0`
+  divider.style.cssText = `height:1px;background:${tokens.rule};margin:5px 5px`
   host.appendChild(divider)
 
   const sideToggle = document.createElement("button")
@@ -232,13 +244,13 @@ export const mountToolbar = (): ToolbarShell => {
   sideToggle.style.cssText = [
     "all:unset",
     "box-sizing:border-box",
-    "display:flex",
-    "align-items:center",
-    "justify-content:center",
+    "display:grid",
+    "place-items:center",
     `width:${tokens.size.tap}`,
-    `height:${tokens.size.sideToggleH}`,
+    `height:${tokens.size.tapH}`,
     `border-radius:${tokens.radius}`,
-    `color:${tokens.inkMute}`,
+    `color:${tokens.ink2}`,
+    "border:1px solid transparent",
     "cursor:pointer",
     "transition:background-color 120ms ease,color 120ms ease",
   ].join(";")
@@ -247,12 +259,10 @@ export const mountToolbar = (): ToolbarShell => {
       ? icons.chevronLeft(tokens.icon.sm)
       : icons.chevronRight(tokens.icon.sm)
   sideToggle.addEventListener("mouseenter", () => {
-    sideToggle.style.backgroundColor = tokens.hairline
-    sideToggle.style.color = tokens.ink
+    sideToggle.style.backgroundColor = tokens.paper2
   })
   sideToggle.addEventListener("mouseleave", () => {
     sideToggle.style.backgroundColor = "transparent"
-    sideToggle.style.color = tokens.inkMute
   })
   sideToggle.addEventListener("mousedown", (e) => e.preventDefault())
   host.appendChild(sideToggle)

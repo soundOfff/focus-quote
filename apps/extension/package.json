@@ -15,6 +15,9 @@
   },
   "dependencies": {
     "@focus-quote/shared": "*",
+    "@fontsource/geist-sans": "^5.2.5",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/newsreader": "^5.2.10",
     "effect": "^3.10.4",
     "lucide-preact": "^0.460.0",
     "preact": "^10.24.3",

@@ -2,89 +2,209 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * Design tokens — Direction A "Editorial Column".
+ *
+ * Two layers:
+ *   1. Direction-A raw tokens (`--paper`, `--ink`, `--amber`, …) — usable as
+ *      hex inline (e.g. `style="border-color: var(--rule)"`) AND as channel
+ *      triplets (`--<name>-rgb: r g b`) so Tailwind can compose alpha via
+ *      `rgb(var(--paper-rgb) / <alpha-value>)`.
+ *   2. Legacy `--color-*` aliases that POINT at the new tokens. Tailwind's
+ *      pre-existing utilities (`bg-canvas`, `bg-surface`, `text-ink`, …) all
+ *      resolve through these aliases, so every surface inherits the new
+ *      palette without per-file rewrites. As surfaces are re-skinned to
+ *      Direction A spec we'll migrate them onto the raw tokens directly.
+ *
+ * The handoff is light-mode only; the `.dark` block is our derived dark
+ * variant (deep paper) to keep the Appearance toggle meaningful.
+ */
 @layer base {
   :root {
     color-scheme: light;
-    --color-canvas: 238 239 233;
-    --color-surface: 255 255 255;
-    --color-surface-soft: 229 231 224;
-    --color-surface-doc: 252 252 250;
-    --color-hairline: 191 193 183;
-    --color-hairline-soft: 220 223 210;
-    --color-ink: 35 37 29;
-    --color-body: 77 79 70;
-    --color-mute: 108 110 99;
-    --color-primary: 247 165 1;
-    --color-primary-pressed: 221 144 1;
-    --color-link-blue: 29 78 216;
-    --color-accent-blue: 44 132 224;
-    --color-accent-blue-soft: 220 234 246;
-    --color-accent-green: 44 140 102;
-    --color-accent-green-soft: 217 237 223;
-    --color-accent-red: 205 66 57;
-    --color-accent-red-soft: 247 214 211;
-    --color-focus-ring: 59 130 246;
 
-    /* Scrollbars: transparent track, hairline-based thumb (see DESIGN.MD) */
-    --scrollbar-thumb: rgb(var(--color-hairline) / 0.72);
-    --scrollbar-thumb-hover: rgb(var(--color-mute) / 0.88);
+    /* Paper surfaces */
+    --paper: #FBFAF6;
+    --paper-rgb: 251 250 246;
+    --paper-2: #F4F2EC;
+    --paper-2-rgb: 244 242 236;
+
+    /* Ink */
+    --ink: #1A1814;
+    --ink-rgb: 26 24 20;
+    --ink-2: #3A362F;
+    --ink-2-rgb: 58 54 47;
+    --muted: #807A6F;
+    --muted-rgb: 128 122 111;
+    --muted-2: #B5AEA0;
+    --muted-2-rgb: 181 174 160;
+
+    /* Hairlines */
+    --rule: #E5E0D5;
+    --rule-rgb: 229 224 213;
+    --rule-2: #D9D3C5;
+    --rule-2-rgb: 217 211 197;
+
+    /* Brand amber — sole CTA color per surface */
+    --amber: #F2A03C;
+    --amber-rgb: 242 160 60;
+    --amber-deep: #C77A1F;
+    --amber-deep-rgb: 199 122 31;
+    --amber-soft: #FBE6C8;
+    --amber-soft-rgb: 251 230 200;
+    /* Gradient stops for the amber primary button (top → bottom) */
+    --amber-grad-from: #F4AC4F;
+    --amber-grad-to: #EE9B30;
+
+    /* Status tints — soft callouts only */
+    --blue-soft: #E0EBF1;
+    --blue-soft-rgb: 224 235 241;
+    --blue-ink: #2E5C73;
+    --blue-ink-rgb: 46 92 115;
+    --sage-soft: #E1EBDF;
+    --sage-soft-rgb: 225 235 223;
+    --sage-ink: #4A6A47;
+    --sage-ink-rgb: 74 106 71;
+    --clay-soft: #F2DDD3;
+    --clay-soft-rgb: 242 221 211;
+    --clay-ink: #A04B26;
+    --clay-ink-rgb: 160 75 38;
+
+    /* Outer-page + popup chrome */
+    --page: #E9E7E1;
+    --page-rgb: 233 231 225;
+    --popup-border: #DAD3C2;
+    --popup-border-rgb: 218 211 194;
+
+    /* Composite shadows */
+    --shadow-popup:
+      0 1px 0 rgba(255, 255, 255, 0.7) inset,
+      0 12px 28px -12px rgba(40, 30, 15, 0.18),
+      0 2px 6px -2px rgba(40, 30, 15, 0.10);
+    --shadow-toolbar:
+      0 1px 0 rgba(255, 255, 255, 0.7) inset,
+      0 14px 32px -10px rgba(40, 30, 15, 0.22),
+      0 3px 8px -2px rgba(40, 30, 15, 0.10);
+    --shadow-segmented-active: 0 1px 2px rgba(40, 30, 15, 0.08);
+
+    /* --- Legacy aliases. Every Tailwind `bg-canvas`, `text-ink`, … resolves
+     * through these. Don't add new uses; we'll fade these out as surfaces
+     * migrate to the raw token utilities (`bg-paper`, `text-ink-2`, …). */
+    --color-canvas: var(--paper-rgb);
+    --color-surface: var(--paper-rgb);
+    --color-surface-soft: var(--paper-2-rgb);
+    --color-surface-doc: var(--paper-rgb);
+    --color-hairline: var(--rule-rgb);
+    --color-hairline-soft: var(--rule-2-rgb);
+    --color-ink: var(--ink-rgb);
+    --color-body: var(--ink-2-rgb);
+    --color-mute: var(--muted-rgb);
+    --color-primary: var(--amber-rgb);
+    --color-primary-pressed: var(--amber-deep-rgb);
+    --color-link-blue: var(--blue-ink-rgb);
+    --color-accent-blue: var(--blue-ink-rgb);
+    --color-accent-blue-soft: var(--blue-soft-rgb);
+    --color-accent-green: var(--sage-ink-rgb);
+    --color-accent-green-soft: var(--sage-soft-rgb);
+    --color-accent-red: var(--clay-ink-rgb);
+    --color-accent-red-soft: var(--clay-soft-rgb);
+    --color-focus-ring: var(--amber-deep-rgb);
+
+    /* Scrollbars — hairline thumb on transparent track (DESIGN.MD). */
+    --scrollbar-thumb: rgb(var(--rule-rgb) / 0.72);
+    --scrollbar-thumb-hover: rgb(var(--muted-rgb) / 0.88);
     --scrollbar-track: transparent;
 
-    --legacy-bg-dark: 238 239 233;
-    --legacy-bg-light: 238 239 233;
-    --legacy-card-dark: 255 255 255;
-    --legacy-card-light: 255 255 255;
-    --legacy-text-dark: 35 37 29;
-    --legacy-text-light: 35 37 29;
+    /* Older deep-cards may still read these. Resolved to new tokens. */
+    --legacy-bg-dark: var(--paper-rgb);
+    --legacy-bg-light: var(--paper-rgb);
+    --legacy-card-dark: var(--paper-rgb);
+    --legacy-card-light: var(--paper-rgb);
+    --legacy-text-dark: var(--ink-rgb);
+    --legacy-text-light: var(--ink-rgb);
   }
 
+  /**
+   * Dark variant — derived from Direction A's paper palette. Inverts the
+   * paper surfaces to a warm near-black while keeping amber unchanged, so
+   * the brand still reads as the same product.
+   */
   .dark {
     color-scheme: dark;
-    --color-canvas: 18 20 15;
-    --color-surface: 26 29 23;
-    --color-surface-soft: 35 40 32;
-    --color-surface-doc: 32 36 29;
-    --color-hairline: 59 66 54;
-    --color-hairline-soft: 44 50 40;
-    --color-ink: 243 245 237;
-    --color-body: 208 213 199;
-    --color-mute: 155 163 143;
-    --color-primary: 247 165 1;
-    --color-primary-pressed: 212 141 22;
-    --color-link-blue: 143 180 255;
-    --color-accent-blue: 106 168 243;
-    --color-accent-blue-soft: 34 54 75;
-    --color-accent-green: 102 193 154;
-    --color-accent-green-soft: 32 57 46;
-    --color-accent-red: 242 132 125;
-    --color-accent-red-soft: 74 38 36;
-    --color-focus-ring: 147 197 253;
 
-    --scrollbar-thumb: rgb(var(--color-hairline) / 0.58);
-    --scrollbar-thumb-hover: rgb(var(--color-mute) / 0.85);
+    --paper: #15140F;
+    --paper-rgb: 21 20 15;
+    --paper-2: #1F1E18;
+    --paper-2-rgb: 31 30 24;
+
+    --ink: #F1ECDD;
+    --ink-rgb: 241 236 221;
+    --ink-2: #C9C2B0;
+    --ink-2-rgb: 201 194 176;
+    --muted: #8B8576;
+    --muted-rgb: 139 133 118;
+    --muted-2: #6E6759;
+    --muted-2-rgb: 110 103 89;
+
+    --rule: #2A2820;
+    --rule-rgb: 42 40 32;
+    --rule-2: #34312A;
+    --rule-2-rgb: 52 49 42;
+
+    /* Amber + amber-deep unchanged — same CTA on both themes. */
+    --amber-soft: #3A2A12;
+    --amber-soft-rgb: 58 42 18;
+
+    --blue-soft: #1F2E38;
+    --blue-soft-rgb: 31 46 56;
+    --blue-ink: #94B8CC;
+    --blue-ink-rgb: 148 184 204;
+    --sage-soft: #233326;
+    --sage-soft-rgb: 35 51 38;
+    --sage-ink: #9FC09B;
+    --sage-ink-rgb: 159 192 155;
+    --clay-soft: #3A201A;
+    --clay-soft-rgb: 58 32 26;
+    --clay-ink: #E29B7E;
+    --clay-ink-rgb: 226 155 126;
+
+    --popup-border: #2A2820;
+    --popup-border-rgb: 42 40 32;
+
+    --shadow-popup:
+      0 1px 0 rgba(255, 255, 255, 0.04) inset,
+      0 12px 28px -12px rgba(0, 0, 0, 0.55),
+      0 2px 6px -2px rgba(0, 0, 0, 0.40);
+    --shadow-toolbar:
+      0 1px 0 rgba(255, 255, 255, 0.04) inset,
+      0 14px 32px -10px rgba(0, 0, 0, 0.65),
+      0 3px 8px -2px rgba(0, 0, 0, 0.45);
+    --shadow-segmented-active: 0 1px 2px rgba(0, 0, 0, 0.45);
+
+    /* Legacy aliases auto-track because they pointed at the same var names. */
+    --color-focus-ring: var(--amber-deep-rgb);
+
+    --scrollbar-thumb: rgb(var(--rule-rgb) / 0.85);
+    --scrollbar-thumb-hover: rgb(var(--muted-rgb) / 0.95);
     --scrollbar-track: transparent;
-
-    --legacy-bg-dark: 24 27 21;
-    --legacy-bg-light: 238 239 233;
-    --legacy-card-dark: 31 35 28;
-    --legacy-card-light: 255 255 255;
-    --legacy-text-dark: 243 245 237;
-    --legacy-text-light: 35 37 29;
   }
 
   html {
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
     font-family: theme("fontFamily.sans");
-    background-color: rgb(var(--color-canvas));
-    color: rgb(var(--color-body));
+    background-color: rgb(var(--paper-rgb));
+    color: rgb(var(--ink-2-rgb));
+    /* Optical kerning + slight ligature pass to make the new fonts breathe. */
+    font-feature-settings: "ss01", "cv11", "calt", "kern";
   }
 
   /*
    * Global scrollbars — extension pages (newtab, options, popup).
-   * Track stays transparent; thumb uses DESIGN.MD hairline/mute relationship.
+   * Track stays transparent; thumb uses the rule/mute relationship.
    */
   * {
     scrollbar-width: thin;
@@ -140,5 +260,15 @@
   }
   .fq-scrollbar::-webkit-scrollbar-corner {
     background: transparent;
+  }
+
+  /* Direction A amber gradient — applied to the SINGLE primary button per
+   * surface. Defined as a utility so we don't repeat the gradient stops. */
+  .bg-amber-gradient {
+    background: linear-gradient(
+      180deg,
+      var(--amber-grad-from) 0%,
+      var(--amber-grad-to) 100%
+    );
   }
 }

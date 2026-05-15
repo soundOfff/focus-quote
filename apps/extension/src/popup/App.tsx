@@ -1,7 +1,12 @@
-import { useEffect, useState } from "preact/hooks"
+import { useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
-import { Settings as SettingsIcon } from "lucide-preact"
+import {
+  Flame,
+  Settings as SettingsIcon,
+  Target as TargetIcon,
+} from "lucide-preact"
 import { QuotesService } from "../services/quotes"
+import { SessionsService } from "../services/sessions"
 import { StorageService } from "../services/storage"
 import { AuthService } from "../services/auth"
 import { ApiService } from "../services/api"
@@ -21,16 +26,16 @@ import {
   saveProfilePrefs,
 } from "../shared/profile"
 import { ensureOpenrouterMigrated } from "../shared/settings"
-import { applyTheme } from "../shared/theme"
+import { applyTheme, loadTodayGoal } from "../shared/theme"
 import { runP } from "./runtime"
-import { AnalysisPanel } from "./components/AnalysisPanel"
+import { useAnalysisInsight } from "./components/AnalysisPanel"
 import { QuoteList } from "./components/QuoteList"
 import { SearchBar } from "./components/SearchBar"
 import { SessionPanel } from "./components/SessionPanel"
 import { SettingsView } from "./components/SettingsView"
 import { SignIn } from "./components/SignIn"
 import type { Quote, User } from "@focus-quote/shared"
-import { Button, SkeletonCard } from "../ui/primitives"
+import { MonoLabel, SkeletonCard } from "../ui/primitives"
 import { ToastProvider, useToast } from "../ui/Toast"
 
 const loadQuotes = (query: string) =>
@@ -78,7 +83,6 @@ const loadCachedProfilePhotoDataUrl = Effect.gen(function* () {
 const revalidateProfilePhotoDataUrl = Effect.gen(function* () {
   const storage = yield* StorageService
   const api = yield* ApiService
-  // Refresh profile from server (best-effort) so the photo id is current.
   let profile = yield* pullProfileFromRemote(storage).pipe(
     Effect.catchAll(() => loadProfilePrefs(storage)),
   )
@@ -97,15 +101,24 @@ const revalidateProfilePhotoDataUrl = Effect.gen(function* () {
   return profile.photoDataUrl
 })
 
-type View = "main" | "settings"
-
-const openOptionsPage = () => {
-  if (chrome.runtime.openOptionsPage) {
-    chrome.runtime.openOptionsPage()
-  } else {
-    chrome.tabs.create({ url: chrome.runtime.getURL("src/options/index.html") })
+const loadPopupExtras = Effect.gen(function* () {
+  const storage = yield* StorageService
+  const sessions = yield* SessionsService
+  const quotes = yield* QuotesService
+  const [todayGoal, sessionStats, allQuotes] = yield* Effect.all([
+    loadTodayGoal(storage),
+    sessions.stats,
+    quotes.list(),
+  ])
+  return {
+    todayGoal,
+    streak: sessionStats.streakDays,
+    todayCount: sessionStats.todayCount,
+    totalQuotes: allQuotes.length,
   }
-}
+})
+
+type View = "main" | "settings"
 
 export function App() {
   return (
@@ -124,10 +137,21 @@ function AppInner() {
   const [user, setUser] = useState<User | null>(null)
   const [profilePhotoDataUrl, setProfilePhotoDataUrl] = useState("")
   const [authReady, setAuthReady] = useState(false)
+  const [todayGoal, setTodayGoal] = useState("")
+  const [streak, setStreak] = useState(0)
+  const [todayCount, setTodayCount] = useState(0)
+  const [totalQuotes, setTotalQuotes] = useState(0)
+
+  // AnalysisPanel collapsed into a hook — its insight line piggy-backs on
+  // the Today's Intent band so the popup keeps just four primary regions.
+  const analysis = useAnalysisInsight()
 
   const refresh = (q: string) =>
     runP(loadQuotes(q))
-      .then(setQuotes)
+      .then((next) => {
+        setQuotes(next)
+        setTotalQuotes(next.length)
+      })
       .catch((e) => console.error("[FocusQuote] load quotes:", e))
 
   const refreshAuth = () =>
@@ -135,6 +159,16 @@ function AppInner() {
       .then(setUser)
       .catch(() => setUser(null))
       .finally(() => setAuthReady(true))
+
+  const refreshExtras = () =>
+    runP(loadPopupExtras)
+      .then((s) => {
+        setTodayGoal(s.todayGoal)
+        setStreak(s.streak)
+        setTodayCount(s.todayCount)
+        setTotalQuotes(s.totalQuotes)
+      })
+      .catch(() => {})
 
   useEffect(() => {
     // Paint from local cache immediately so the popup doesn't block on the
@@ -172,6 +206,7 @@ function AppInner() {
   useEffect(() => {
     if (!user) return
     refresh(query)
+    refreshExtras()
   }, [user])
 
   useEffect(() => {
@@ -180,15 +215,14 @@ function AppInner() {
     return () => clearTimeout(t)
   }, [query, user])
 
-  // listen for the auth-callback page broadcasting a successful sign-in
+  // Listen for auth-callback broadcasting a sign-in. Session start/finish/
+  // cancel toasts surface in the newtab navigator (see newtab/App.tsx); the
+  // popup stays quiet to avoid duplicate notifications.
   useEffect(() => {
     const onMessage = (msg: unknown) => {
       if (typeof msg !== "object" || msg === null) return
       const type = (msg as { type?: string }).type
       if (type === "focusquote.auth.signedIn") refreshAuth()
-      // Session start/finish/cancel toasts surface in the newtab navigator
-      // (see newtab/App.tsx). The popup stays quiet to avoid duplicate
-      // notifications when both surfaces are open.
     }
     chrome.runtime.onMessage.addListener(onMessage)
     return () => chrome.runtime.onMessage.removeListener(onMessage)
@@ -197,8 +231,8 @@ function AppInner() {
   const handleDelete = (id: Quote["id"]) => {
     runP(
       Effect.gen(function* () {
-        const quotes = yield* QuotesService
-        yield* quotes.remove(id)
+        const quotesSvc = yield* QuotesService
+        yield* quotesSvc.remove(id)
       }),
     )
       .then(() => {
@@ -216,10 +250,24 @@ function AppInner() {
     runP(persistPrefs(next)).catch(console.error)
   }
 
+  // EEE · MMM d, uppercase — matches `FRI · MAY 15` in the handoff.
+  const dateLabel = useMemo(() => {
+    const d = new Date()
+    const weekday = d
+      .toLocaleDateString(undefined, { weekday: "short" })
+      .toUpperCase()
+      .replace(/\.$/, "")
+    const month = d
+      .toLocaleDateString(undefined, { month: "short" })
+      .toUpperCase()
+      .replace(/\.$/, "")
+    return `${weekday} · ${month} ${d.getDate()}`
+  }, [])
+
   if (!authReady) {
     return (
-      <div class="h-[460px] w-[360px] bg-canvas text-body">
-        <div class="flex h-full flex-col gap-3 p-4">
+      <div class="flex min-h-[460px] w-[380px] flex-col bg-paper text-ink-2">
+        <div class="flex flex-1 flex-col gap-3 p-4">
           <SkeletonCard lines={2} />
           <SkeletonCard lines={2} />
           <SkeletonCard lines={3} />
@@ -230,7 +278,7 @@ function AppInner() {
 
   if (!user) {
     return (
-      <div class="h-[460px] w-[360px] overflow-y-auto bg-canvas text-body">
+      <div class="min-h-[460px] w-[380px] overflow-y-auto bg-paper text-ink-2">
         <SignIn onSignedIn={refreshAuth} />
       </div>
     )
@@ -238,7 +286,7 @@ function AppInner() {
 
   if (view === "settings") {
     return (
-      <div class="h-[460px] w-[360px] overflow-y-auto bg-canvas text-body">
+      <div class="min-h-[460px] w-[380px] overflow-y-auto bg-paper text-ink-2">
         <SettingsView
           prefs={prefs}
           user={user}
@@ -252,40 +300,124 @@ function AppInner() {
   }
 
   return (
-    <div class="flex h-[460px] w-[360px] flex-col overflow-hidden bg-canvas text-body">
-      <div class="flex shrink-0 flex-col gap-3 px-4 pb-2 pt-4">
-        <header class="flex items-center justify-between">
-          <h1 class="text-base font-semibold text-ink">FocusQuote</h1>
-          <Button
-            onClick={() => setView("settings")}
-            variant="ghost"
-            size="sm"
-            aria-label="Settings"
+    <div class="flex max-h-[760px] min-h-[460px] w-[380px] flex-col overflow-hidden bg-paper text-ink-2">
+      {/* 1. Header bar */}
+      <header class="flex shrink-0 items-center justify-between border-b border-rule px-4 pb-3 pt-[14px]">
+        <div class="flex items-baseline gap-2">
+          <h1 class="font-serif text-[18px] font-semibold tracking-[-0.01em] text-ink">
+            Focus<span class="text-amber-deep">Quote</span>
+          </h1>
+          <span class="font-mono text-[9.5px] uppercase tracking-mono-wide text-muted-2">
+            {dateLabel}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setView("settings")}
+          aria-label="Settings"
+          class="rounded-chip p-[6px] text-muted transition-colors hover:bg-paper-2 hover:text-ink-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40"
+        >
+          <SettingsIcon size={14} strokeWidth={1.7} />
+        </button>
+      </header>
+
+      {/* 2. Today's intent band */}
+      <section class="shrink-0 border-b border-rule bg-paper-2 px-4 pb-[6px] pt-3">
+        <div class="mb-1 flex items-center gap-[6px] text-blue-ink">
+          <TargetIcon size={11} strokeWidth={2} aria-hidden />
+          <MonoLabel tone="info" class="leading-none">
+            Today's intent
+          </MonoLabel>
+        </div>
+        <p class="mb-2 text-[13px] font-medium leading-[1.4] text-ink-2">
+          {todayGoal?.trim() || (
+            <span class="text-muted-2">
+              Set an intent for today on the new tab.
+            </span>
+          )}
+        </p>
+        {analysis.insightLine && (
+          <p class="mb-2 text-[11.5px] italic leading-[1.45] text-muted">
+            {analysis.insightLine}
+          </p>
+        )}
+      </section>
+
+      {/* 3. Focus session */}
+      <section class="flex shrink-0 flex-col gap-3 px-4 pb-4 pt-[14px]">
+        <SessionPanel
+          defaultDurationMinutes={prefs.defaultDurationMinutes}
+          defaultBreakMinutes={prefs.defaultBreakMinutes}
+          onChange={refreshExtras}
+        />
+        <StatsLine
+          streak={streak}
+          today={todayCount}
+          totalQuotes={totalQuotes}
+        />
+      </section>
+
+      {/* 4. Saved quotes drawer */}
+      <section class="flex min-h-0 flex-1 flex-col border-t border-rule bg-paper-2">
+        <header class="flex shrink-0 items-center justify-between px-4 pb-2 pt-3">
+          <div class="flex items-baseline gap-2">
+            <MonoLabel>Saved quotes</MonoLabel>
+            <span class="font-mono text-[10.5px] text-muted-2">
+              · {totalQuotes}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              chrome.tabs.create({
+                url: chrome.runtime.getURL("src/newtab/index.html"),
+              })
+            }
+            class="inline-flex items-center gap-1 text-[11px] font-medium text-blue-ink transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40"
           >
-            <SettingsIcon size={14} />
-          </Button>
+            All <span aria-hidden>→</span>
+          </button>
         </header>
+        <div class="shrink-0 px-3 pb-1">
+          <SearchBar value={query} onInput={setQuery} />
+        </div>
+        <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3 pt-2">
+          <QuoteList quotes={quotes} onDelete={handleDelete} />
+        </div>
+      </section>
+    </div>
+  )
+}
 
-        <section class="flex flex-col gap-2">
-          <h2 class="text-[10px] font-medium uppercase tracking-wider text-mute">
-            Focus session
-          </h2>
-          <SessionPanel
-            defaultDurationMinutes={prefs.defaultDurationMinutes}
-            defaultBreakMinutes={prefs.defaultBreakMinutes}
-          />
-          <AnalysisPanel />
-        </section>
-
-        <h2 class="mt-1 text-[10px] font-medium uppercase tracking-wider text-mute">
-          Saved quotes
-        </h2>
-        <SearchBar value={query} onInput={setQuery} />
-      </div>
-
-      <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pb-4">
-        <QuoteList quotes={quotes} onDelete={handleDelete} />
-      </div>
+function StatsLine({
+  streak,
+  today,
+  totalQuotes,
+}: {
+  streak: number
+  today: number
+  totalQuotes: number
+}) {
+  return (
+    <div class="flex items-center gap-[10px] text-[11.5px] text-muted">
+      <span class="inline-flex items-center gap-[5px]">
+        <Flame size={12} strokeWidth={1.8} class="text-amber-deep" aria-hidden />
+        <strong class="font-semibold text-ink-2">{streak}</strong> day streak
+      </span>
+      <span
+        aria-hidden
+        class="inline-block h-[3px] w-[3px] rounded-pill bg-muted-2"
+      />
+      <span>
+        <strong class="font-semibold text-ink-2">{today}</strong> today
+      </span>
+      <span
+        aria-hidden
+        class="inline-block h-[3px] w-[3px] rounded-pill bg-muted-2"
+      />
+      <span>
+        <strong class="font-semibold text-ink-2">{totalQuotes}</strong> quotes
+      </span>
     </div>
   )
 }

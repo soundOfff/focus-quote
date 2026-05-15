@@ -1,9 +1,15 @@
-import { useEffect, useState } from "preact/hooks"
+import { useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
 import { Play, Square, Timer } from "lucide-preact"
 import { SessionsService, type ActiveSession } from "../../services/sessions"
 import type { SessionStartMessage } from "../../shared/messages"
 import { runP } from "../runtime"
+import {
+  Button,
+  MonoLabel,
+  Segmented,
+  type SegmentedItem,
+} from "../../ui/primitives"
 
 const formatRemaining = (expectedEndAt: string) => {
   const ms = new Date(expectedEndAt).getTime() - Date.now()
@@ -12,6 +18,24 @@ const formatRemaining = (expectedEndAt: string) => {
   const m = Math.floor(total / 60)
   const s = total % 60
   return `${m}:${s.toString().padStart(2, "0")}`
+}
+
+// Direction A's focus-session segmented control offers three preset
+// durations. Any value outside this set (e.g. a 30-min custom default set
+// via the options page Stepper) still loads cleanly — we just leave the
+// segmented selection un-highlighted in that case.
+const DURATION_PRESETS = [15, 25, 45] as const
+type DurationPreset = (typeof DURATION_PRESETS)[number]
+
+const segmentedItems: ReadonlyArray<SegmentedItem<DurationPreset>> =
+  DURATION_PRESETS.map((m) => ({ value: m, label: String(m) }))
+
+const snapDuration = (
+  prefDuration: number,
+  selected: number | null,
+): number => {
+  if (selected !== null) return selected
+  return prefDuration
 }
 
 interface Props {
@@ -27,12 +51,22 @@ export function SessionPanel({
 }: Props) {
   const [active, setActive] = useState<ActiveSession | null>(null)
   const [goal, setGoal] = useState("")
-  const [duration, setDuration] = useState(defaultDurationMinutes)
+  const [selected, setSelected] = useState<DurationPreset | null>(null)
   const [remaining, setRemaining] = useState("")
 
-  useEffect(() => {
-    setDuration(defaultDurationMinutes)
-  }, [defaultDurationMinutes])
+  const duration = useMemo(
+    () => snapDuration(defaultDurationMinutes, selected),
+    [defaultDurationMinutes, selected],
+  )
+
+  // Mark the segmented active state only when one of the three preset
+  // values matches the resolved duration — otherwise it stays neutral.
+  const activeSegment = useMemo<DurationPreset | null>(() => {
+    for (const preset of DURATION_PRESETS) {
+      if (preset === duration) return preset
+    }
+    return null
+  }, [duration])
 
   const refresh = () =>
     runP(
@@ -87,59 +121,61 @@ export function SessionPanel({
 
   if (active) {
     return (
-      <div class="rounded bg-card-light p-3 shadow-sm dark:bg-card-dark dark:shadow-none">
-        <div class="flex items-center justify-between gap-2">
+      <div class="flex flex-col gap-3">
+        <MonoLabel>Focus session</MonoLabel>
+        <div class="flex items-center justify-between gap-3 rounded-card border border-rule bg-paper-2 px-3 py-[10px]">
           <div class="flex min-w-0 items-center gap-2">
-            <Timer size={16} class="text-accent" />
+            <Timer
+              size={14}
+              strokeWidth={1.8}
+              class="shrink-0 text-amber-deep"
+              aria-hidden
+            />
             <div class="min-w-0">
-              <div class="text-base font-medium tabular-nums">{remaining}</div>
-              <div class="truncate text-xs opacity-60">
+              <div class="font-mono text-[18px] font-medium leading-none tracking-[-0.005em] text-ink">
+                {remaining}
+              </div>
+              <div class="mt-1 truncate text-[11.5px] text-muted">
                 {active.goal ?? "Focusing…"}
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleStop}
-            class="flex items-center gap-1 rounded border border-accent/40 px-2 py-1 text-xs text-accent transition hover:bg-accent/10"
-          >
-            <Square size={12} />
+          <Button variant="ghost" size="sm" onClick={handleStop}>
+            <Square size={11} strokeWidth={2} />
             Stop
-          </button>
+          </Button>
         </div>
       </div>
     )
   }
 
   return (
-    <div class="rounded bg-card-light p-3 shadow-sm dark:bg-card-dark dark:shadow-none">
-      <div class="flex items-center gap-2">
-        <input
-          type="text"
-          placeholder="Goal for this session…"
-          value={goal}
-          onInput={(e) => setGoal((e.currentTarget as HTMLInputElement).value)}
-          class="flex-1 rounded bg-bg-light px-2 py-1.5 text-sm placeholder:opacity-50 focus:outline-none focus:ring-1 focus:ring-accent dark:bg-bg-dark/60"
+    <div class="flex flex-col gap-[10px]">
+      <MonoLabel>Focus session</MonoLabel>
+      <input
+        type="text"
+        placeholder="What are you focusing on?"
+        value={goal}
+        onInput={(e) => setGoal((e.currentTarget as HTMLInputElement).value)}
+        class="rounded-control border border-rule-2 bg-paper-2 px-[11px] py-[9px] text-[13px] text-ink placeholder:text-muted-2 focus:border-amber-deep focus:outline-none focus:ring-[3px] focus:ring-amber/15"
+      />
+      <div class="flex items-stretch gap-2">
+        <Segmented
+          items={segmentedItems}
+          value={activeSegment ?? DURATION_PRESETS[1]}
+          onChange={(next) => setSelected(next)}
+          size="sm"
+          class="h-9 font-mono text-[12px]"
         />
-        <input
-          type="number"
-          min={1}
-          max={180}
-          value={duration}
-          onInput={(e) =>
-            setDuration(Number((e.currentTarget as HTMLInputElement).value))
-          }
-          class="w-14 rounded bg-bg-light px-2 py-1.5 text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-accent dark:bg-bg-dark/60"
-        />
+        <Button
+          variant="primary"
+          onClick={handleStart}
+          class="h-9 flex-1 min-h-9 px-3.5 text-[13px]"
+        >
+          <Play size={13} strokeWidth={1.8} />
+          Start {duration}-min session
+        </Button>
       </div>
-      <button
-        type="button"
-        onClick={handleStart}
-        class="mt-2 flex w-full items-center justify-center gap-2 rounded bg-accent py-2 text-sm font-medium text-white transition hover:bg-accent/90"
-      >
-        <Play size={14} />
-        Start focus session
-      </button>
     </div>
   )
 }

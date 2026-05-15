@@ -1,4 +1,5 @@
 import { render } from "preact"
+import "../main-fonts"
 import "../styles/tailwind.css"
 import { App } from "./App"
 

@@ -3,9 +3,15 @@ import { icons } from "./icons"
 import type { ToolbarShell, ToolbarSide } from "./shell"
 
 /**
- * Lightweight popover panel anchored next to a toolbar button. We use a
- * single, swappable popover layer (only one open at a time) instead of one
- * panel per feature so dismissal behavior is uniform.
+ * Lightweight popover panel anchored next to a toolbar button. Single,
+ * swappable popover layer (only one open at a time) keeps dismissal
+ * behavior uniform across features.
+ *
+ * Direction A chrome:
+ *   - Outer panel: paper bg, popup-border, 12px radius, shadowPanel
+ *   - Header: paper-2 fill, mono kicker with amber dot, close X right
+ *   - Body: paper bg, padding owned by the feature (we don't pad here so
+ *     the quote+AI "passage card" can bleed to the panel's edges)
  */
 
 export interface PopoverHandle {
@@ -18,7 +24,7 @@ export interface PopoverHandle {
 }
 
 interface OpenOptions {
-  /** Title shown in the popover header. */
+  /** Title shown in the popover header (rendered uppercase, mono). */
   title: string
   /** Anchor button rect — popover positions next to it. */
   anchor: () => DOMRect
@@ -61,68 +67,89 @@ export const openPopover = (opts: OpenOptions): PopoverHandle => {
   panel.setAttribute(POPOVER_ATTR, "")
   panel.style.cssText = [
     "position:fixed",
-    "min-width:260px",
-    "max-width:340px",
-    `background:${tokens.navy}`,
-    `border:1px solid ${tokens.tealDim}`,
-    `border-radius:${tokens.radiusMd}`,
+    "width:320px",
+    `background:${tokens.paper}`,
+    `border:1px solid ${tokens.popupBorder}`,
+    `border-radius:${tokens.radiusLg}`,
     `color:${tokens.ink}`,
     `font:${tokens.font}`,
     `z-index:${tokens.zPopover}`,
-    "box-shadow:none",
+    `box-shadow:${tokens.shadowPanel}`,
     "display:flex",
     "flex-direction:column",
     "pointer-events:auto",
     "overflow:hidden",
   ].join(";")
 
+  // -- Header: paper-2 band with mono kicker + amber dot + close X --------
   const header = document.createElement("div")
   header.style.cssText = [
     "display:flex",
     "align-items:center",
     "justify-content:space-between",
-    `gap:${tokens.space.sm}`,
-    `padding:${tokens.space.sm} ${tokens.space.md}`,
-    `border-bottom:1px solid ${tokens.hairline}`,
-    "font-size:12px",
-    "letter-spacing:0.04em",
-    "text-transform:uppercase",
-    `color:${tokens.inkMute}`,
+    "padding:10px 12px 10px 14px",
+    `border-bottom:1px solid ${tokens.rule}`,
+    `background:${tokens.paper2}`,
   ].join(";")
-  const title = document.createElement("span")
-  title.textContent = opts.title
+
+  const kicker = document.createElement("div")
+  kicker.style.cssText = [
+    `font:${tokens.fontMono}`,
+    "font-size:10px",
+    "font-weight:600",
+    "letter-spacing:0.12em",
+    "text-transform:uppercase",
+    `color:${tokens.amberDeep}`,
+    "display:inline-flex",
+    "align-items:center",
+    "gap:6px",
+  ].join(";")
+  const dot = document.createElement("span")
+  dot.style.cssText = `width:5px;height:5px;border-radius:${tokens.radiusPill};background:${tokens.amber}`
+  const kickerText = document.createElement("span")
+  kickerText.textContent = opts.title
+  kicker.append(dot, kickerText)
+
   const closeBtn = document.createElement("button")
   closeBtn.type = "button"
   closeBtn.setAttribute("aria-label", "Close")
   closeBtn.style.cssText = [
     "all:unset",
     "cursor:pointer",
-    `color:${tokens.inkMute}`,
-    "display:flex",
-    "align-items:center",
-    "justify-content:center",
-    "width:20px",
-    "height:20px",
-    `border-radius:${tokens.radius}`,
+    `color:${tokens.muted}`,
+    "display:grid",
+    "place-items:center",
+    "width:22px",
+    "height:22px",
+    "border-radius:5px",
+    "transition:background-color 120ms ease,color 120ms ease",
   ].join(";")
-  closeBtn.innerHTML = icons.x(tokens.icon.sm - 2)
+  closeBtn.innerHTML = icons.x(12)
   closeBtn.addEventListener("mouseenter", () => {
-    closeBtn.style.backgroundColor = tokens.hairline
-    closeBtn.style.color = tokens.ink
+    closeBtn.style.backgroundColor = tokens.paper
+    closeBtn.style.color = tokens.ink2
   })
   closeBtn.addEventListener("mouseleave", () => {
     closeBtn.style.backgroundColor = "transparent"
-    closeBtn.style.color = tokens.inkMute
+    closeBtn.style.color = tokens.muted
   })
-  header.append(title, closeBtn)
+  header.append(kicker, closeBtn)
   panel.appendChild(header)
 
+  // -- Body: feature owns its padding so cards / composers can fan to the
+  // -- panel edges without an outer gutter.
   const body = document.createElement("div")
   body.setAttribute("data-role", "body")
-  body.style.cssText = `padding:${tokens.space.md};display:flex;flex-direction:column;gap:${tokens.space.sm}`
+  body.style.cssText =
+    "display:flex;flex-direction:column;gap:0;background:" + tokens.paper
   if (opts.body !== undefined) {
-    if (typeof opts.body === "string") body.textContent = opts.body
-    else body.appendChild(opts.body)
+    if (typeof opts.body === "string") {
+      // Plain text bodies still get a reasonable default gutter.
+      body.style.padding = "12px 14px"
+      body.textContent = opts.body
+    } else {
+      body.appendChild(opts.body)
+    }
   }
   panel.appendChild(body)
   ;(document.documentElement || document.body).appendChild(panel)
@@ -132,8 +159,6 @@ export const openPopover = (opts: OpenOptions): PopoverHandle => {
     const margin = 8
     const edge = 8
     const measured = panel.getBoundingClientRect()
-    // Vertically align the popover's top edge with the button's top edge,
-    // then clamp into the viewport so it never overflows the screen.
     const top = Math.max(
       edge,
       Math.min(window.innerHeight - measured.height - edge, r.top),
@@ -148,7 +173,6 @@ export const openPopover = (opts: OpenOptions): PopoverHandle => {
     }
   }
   position(opts.shell.getSide())
-  // Re-run after the first frame so the panel's measured size is final.
   requestAnimationFrame(() => position(opts.shell.getSide()))
 
   let unsubSide: (() => void) | null = opts.shell.onSideChange((s) =>
@@ -158,8 +182,6 @@ export const openPopover = (opts: OpenOptions): PopoverHandle => {
   window.addEventListener("resize", onResize, { passive: true })
 
   const onDocPointerDown = (e: MouseEvent) => {
-    // Click inside popover, the anchor button, or the toolbar itself: keep
-    // the popover open and let the underlying handler run. Otherwise close.
     const target = e.target as Node | null
     if (panel.contains(target)) return
     if (opts.shell.el.contains(target)) return
@@ -199,8 +221,13 @@ export const openPopover = (opts: OpenOptions): PopoverHandle => {
   const handle: PopoverHandle = {
     setBody(node) {
       body.replaceChildren()
-      if (typeof node === "string") body.textContent = node
-      else body.appendChild(node)
+      body.style.padding = ""
+      if (typeof node === "string") {
+        body.style.padding = "12px 14px"
+        body.textContent = node
+      } else {
+        body.appendChild(node)
+      }
       requestAnimationFrame(() => position(opts.shell.getSide()))
     },
     close,
@@ -210,7 +237,27 @@ export const openPopover = (opts: OpenOptions): PopoverHandle => {
 }
 
 /**
- * Convenience: a styled in-popover button matching the design system.
+ * Mono small-caps label. Use anywhere the design system asks for a "kicker"
+ * — section header, badge, meta line. Caller controls color via inline
+ * style or sets it on the returned element.
+ */
+export const popoverMonoLabel = (text: string): HTMLSpanElement => {
+  const el = document.createElement("span")
+  el.style.cssText = [
+    `font:${tokens.fontMono}`,
+    "font-size:9.5px",
+    "font-weight:500",
+    "letter-spacing:0.12em",
+    "text-transform:uppercase",
+    `color:${tokens.muted}`,
+  ].join(";")
+  el.textContent = text
+  return el
+}
+
+/**
+ * Direction A panel button. Primary = the amber gradient pill (one per
+ * surface); ghost = paper-2 + rule + ink-2.
  */
 export const popoverButton = (
   label: string,
@@ -226,23 +273,41 @@ export const popoverButton = (
     "display:inline-flex",
     "align-items:center",
     "justify-content:center",
-    `gap:${tokens.space.xs}`,
-    `padding:${tokens.space.sm} ${tokens.space.md}`,
+    "gap:6px",
+    "padding:6px 11px",
     `border-radius:${tokens.radius}`,
     "font-weight:600",
     "font-size:12px",
+    "letter-spacing:-0.005em",
     "cursor:pointer",
-    "min-height:28px",
-    "transition:background-color 120ms ease",
+    "white-space:nowrap",
+    "transition:filter 120ms ease,background-color 120ms ease,border-color 120ms ease",
     isPrimary
-      ? `background:${tokens.accent};color:#fff`
-      : `background:transparent;color:${tokens.ink};border:1px solid ${tokens.hairline}`,
+      ? `background:${tokens.amberGradient};color:#2A1A05;border:1px solid ${tokens.amberDeep};box-shadow:${tokens.shadowAmber}`
+      : `background:${tokens.paper2};color:${tokens.ink2};border:1px solid ${tokens.rule}`,
   ].join(";")
+  if (isPrimary) {
+    btn.addEventListener("mouseenter", () => {
+      btn.style.filter = "brightness(1.03)"
+    })
+    btn.addEventListener("mouseleave", () => {
+      btn.style.filter = "none"
+    })
+  } else {
+    btn.addEventListener("mouseenter", () => {
+      btn.style.backgroundColor = tokens.paper
+    })
+    btn.addEventListener("mouseleave", () => {
+      btn.style.backgroundColor = tokens.paper2
+    })
+  }
   return btn
 }
 
 /**
- * Convenience: a styled text input matching the design system.
+ * Bare text input — matches the composer's inline input (no border on its
+ * own; the composer shell wraps it). Pass `paper` if you want a standalone
+ * field (used by the in-popover prompt before the chat opens).
  */
 export const popoverInput = (placeholder = ""): HTMLInputElement => {
   const input = document.createElement("input")
@@ -252,18 +317,124 @@ export const popoverInput = (placeholder = ""): HTMLInputElement => {
     "all:unset",
     "box-sizing:border-box",
     "width:100%",
-    `padding:${tokens.space.sm} ${tokens.space.md}`,
-    `background:${tokens.navyDeep}`,
-    `border:1px solid ${tokens.hairline}`,
-    `border-radius:${tokens.radius}`,
+    "padding:8px 10px",
+    `background:${tokens.paper}`,
+    `border:1px solid ${tokens.rule}`,
+    `border-radius:9px`,
     `color:${tokens.ink}`,
-    "font-size:13px",
+    "font-size:12.5px",
   ].join(";")
   input.addEventListener("focus", () => {
-    input.style.borderColor = tokens.tealDim
+    input.style.borderColor = tokens.amberDeep
+    input.style.boxShadow = "0 0 0 3px rgba(242,160,60,0.15)"
   })
   input.addEventListener("blur", () => {
-    input.style.borderColor = tokens.hairline
+    input.style.borderColor = tokens.rule
+    input.style.boxShadow = "none"
   })
   return input
+}
+
+export interface ComposerOptions {
+  placeholder: string
+  buttonLabel: string
+  /** Right-hand mono hint, e.g. `"⌘ ↵"` or `"↵"`. */
+  hint: string
+  onSubmit: (value: string) => void
+}
+
+export interface ComposerHandle {
+  root: HTMLDivElement
+  input: HTMLInputElement
+  button: HTMLButtonElement
+  setBusy: (busy: boolean) => void
+  focus: () => void
+}
+
+/**
+ * Footer composer used by the Quote+AI and Guide panels. Lives inside a
+ * paper-2 band that's stuck to the bottom of the panel; the inner shell
+ * is a paper card holding the input, mono hint, and the single amber
+ * action.
+ */
+export const popoverComposer = (opts: ComposerOptions): ComposerHandle => {
+  const root = document.createElement("div")
+  root.style.cssText = [
+    "padding:10px 12px 12px",
+    `border-top:1px solid ${tokens.rule}`,
+    `background:${tokens.paper2}`,
+    "margin-top:12px",
+  ].join(";")
+
+  const inner = document.createElement("div")
+  inner.style.cssText = [
+    `background:${tokens.paper}`,
+    `border:1px solid ${tokens.rule}`,
+    "border-radius:9px",
+    "padding:8px 8px 8px 11px",
+    "display:flex",
+    "align-items:center",
+    "gap:8px",
+    "transition:border-color 120ms ease,box-shadow 120ms ease",
+  ].join(";")
+
+  const input = document.createElement("input")
+  input.type = "text"
+  input.placeholder = opts.placeholder
+  input.style.cssText = [
+    "all:unset",
+    "flex:1",
+    "min-width:0",
+    `color:${tokens.ink}`,
+    "font-size:12.5px",
+  ].join(";")
+  input.addEventListener("focus", () => {
+    inner.style.borderColor = tokens.amberDeep
+    inner.style.boxShadow = "0 0 0 3px rgba(242,160,60,0.15)"
+  })
+  input.addEventListener("blur", () => {
+    inner.style.borderColor = tokens.rule
+    inner.style.boxShadow = "none"
+  })
+
+  const hint = document.createElement("span")
+  hint.style.cssText = [
+    `font:${tokens.fontMono}`,
+    "font-size:9px",
+    `color:${tokens.muted2}`,
+    "letter-spacing:0.04em",
+  ].join(";")
+  hint.textContent = opts.hint
+
+  const button = popoverButton(opts.buttonLabel, "primary")
+
+  const submit = () => {
+    const value = input.value.trim()
+    if (button.getAttribute("data-busy") === "true") return
+    opts.onSubmit(value)
+  }
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      submit()
+    }
+  })
+  button.addEventListener("click", submit)
+
+  inner.append(input, hint, button)
+  root.appendChild(inner)
+
+  return {
+    root,
+    input,
+    button,
+    setBusy(busy) {
+      button.setAttribute("data-busy", String(busy))
+      button.style.opacity = busy ? "0.65" : "1"
+      button.style.pointerEvents = busy ? "none" : "auto"
+    },
+    focus() {
+      input.focus()
+    },
+  }
 }

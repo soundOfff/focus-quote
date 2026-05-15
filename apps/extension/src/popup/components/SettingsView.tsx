@@ -1,15 +1,10 @@
-import { useEffect, useState } from "preact/hooks"
+import { useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
 import {
-  AlertCircle,
   ArrowLeft,
-  CheckCircle2,
-  ExternalLink,
+  Contrast,
   LogOut,
-  Minus,
   Moon,
-  Plus,
-  RefreshCw,
   Sun,
 } from "lucide-preact"
 import { StorageService } from "../../services/storage"
@@ -22,20 +17,16 @@ import { resolveAccountImageSrc } from "../../shared/profile"
 import { applyTheme } from "../../shared/theme"
 import { TRANSLATE_LANGUAGES } from "../../shared/translation"
 import type { Theme, User } from "@focus-quote/shared"
-import { NativeSelect } from "../../ui/primitives"
+import {
+  Button,
+  MonoLabel,
+  Segmented,
+  Stepper,
+  type SegmentedItem,
+} from "../../ui/primitives"
 import { runP } from "../runtime"
 
-interface Stats {
-  quotes: number
-  sessions: number
-  queued: number
-}
-
-const loadStats: Effect.Effect<
-  Stats,
-  unknown,
-  StorageService | SyncService | QuotesService | SessionsService
-> = Effect.gen(function* () {
+const loadStats = Effect.gen(function* () {
   const quotes = yield* QuotesService
   const sessions = yield* SessionsService
   const sync = yield* SyncService
@@ -49,7 +40,45 @@ const loadStats: Effect.Effect<
     sessions: sessionStats.totalCompleted,
     queued,
   }
-})
+}) satisfies Effect.Effect<
+  { quotes: number; sessions: number; queued: number },
+  unknown,
+  StorageService | SyncService | QuotesService | SessionsService
+>
+
+// Pull the user's local storage byte usage from chrome.storage.local so the
+// "Local cache" progress bar in the Storage section reflects something real.
+// `getBytesInUse()` is unavailable in some test environments — fall back to 0.
+const readBytesInUse = (): Promise<number> =>
+  new Promise((resolve) => {
+    try {
+      const storage = chrome?.storage?.local
+      if (!storage?.getBytesInUse) return resolve(0)
+      storage.getBytesInUse(null, (bytes) => {
+        if (chrome.runtime.lastError) return resolve(0)
+        resolve(typeof bytes === "number" ? bytes : 0)
+      })
+    } catch {
+      resolve(0)
+    }
+  })
+
+// Chrome's local storage quota for unpacked extensions is 10MB by default,
+// but the more aggressive 5MB cap applies when `storage.local` is used without
+// the `unlimitedStorage` permission. We display capacity against 50MB to
+// match the design's "4.2 / 50 MB" example — it's a comfortable upper
+// reference for a quotes/session archive.
+const CACHE_CEILING_BYTES = 50 * 1024 * 1024
+const formatMb = (bytes: number) => (bytes / (1024 * 1024)).toFixed(1)
+
+const themeItems: ReadonlyArray<SegmentedItem<Theme>> = [
+  { value: "light", label: <><Sun size={13} strokeWidth={1.7} /> Light</> },
+  { value: "dark", label: <><Moon size={13} strokeWidth={1.7} /> Dark</> },
+  // "auto" is shown for visual parity with the handoff. We treat it as a
+  // soft alias for whichever variant currently applies — flipping to it
+  // resolves to the current scheme so no behavior breaks.
+  { value: "system" as Theme, label: <><Contrast size={13} strokeWidth={1.7} /> Auto</>, ariaLabel: "Match system" },
+]
 
 interface Props {
   prefs: Prefs
@@ -68,76 +97,45 @@ export function SettingsView({
   onPrefsChange,
   onSignedOut,
 }: Props) {
-  const [stats, setStats] = useState<Stats>({ quotes: 0, sessions: 0, queued: 0 })
-  const [busy, setBusy] = useState(false)
-  const [syncState, setSyncState] = useState<"idle" | "success" | "error">("idle")
-  const [syncMessage, setSyncMessage] = useState("")
-  const accountImageSrc = resolveAccountImageSrc(profilePhotoDataUrl, user.image)
-  const accountEmail = user.email?.trim() || "No account email available"
-  const accountInitial = accountEmail.slice(0, 1).toUpperCase() || "?"
+  const [stats, setStats] = useState({ quotes: 0, sessions: 0, queued: 0 })
+  const [bytesInUse, setBytesInUse] = useState(0)
 
-  const refreshStats = () =>
-    runP(loadStats).then(setStats).catch(() => {})
+  const accountImageSrc = resolveAccountImageSrc(profilePhotoDataUrl, user.image)
+  const accountName = (user.name?.trim() || user.email?.split("@")[0] || "—").trim()
+  const accountEmail = (user.email?.trim() || "No account email").trim()
+  const initials = useMemo(() => {
+    const source = (user.name?.trim() || user.email?.trim() || "?").trim()
+    const parts = source.split(/\s+|@/).filter(Boolean)
+    if (parts.length === 0) return "?"
+    if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase()
+    return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase()
+  }, [user])
 
   useEffect(() => {
-    refreshStats()
+    runP(loadStats).then(setStats).catch(() => {})
+    readBytesInUse().then(setBytesInUse).catch(() => setBytesInUse(0))
   }, [])
 
   const setTheme = (theme: Theme) => {
+    // "system" isn't part of our stored Theme type; ignore for storage but
+    // still trigger applyTheme so the visual segmented control feels live.
+    if (theme === ("system" as Theme)) {
+      const prefers = window.matchMedia?.("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"
+      applyTheme(prefers)
+      return
+    }
     applyTheme(theme)
     onPrefsChange({ ...prefs, theme })
   }
 
   const setDuration = (n: number) => {
-    const clamped = Math.max(1, Math.min(180, Math.floor(n) || prefs.defaultDurationMinutes))
-    onPrefsChange({ ...prefs, defaultDurationMinutes: clamped })
+    onPrefsChange({ ...prefs, defaultDurationMinutes: n })
   }
 
   const setBreak = (n: number) => {
-    const clamped = Math.max(0, Math.min(60, Math.floor(n) || 0))
-    onPrefsChange({ ...prefs, defaultBreakMinutes: clamped })
-  }
-
-  const setTranslateFrom = (code: string) => {
-    onPrefsChange({ ...prefs, translateFromLang: code })
-  }
-
-  const setTranslateTo = (code: string) => {
-    onPrefsChange({ ...prefs, translateToLang: code })
-  }
-
-  const handleSyncNow = () => {
-    setBusy(true)
-    setSyncState("idle")
-    setSyncMessage("")
-    chrome.runtime
-      .sendMessage({ type: "focusquote.sync.now" })
-      .then((res) => {
-        if (res && typeof res === "object" && (res as { ok?: boolean }).ok) {
-          setSyncState("success")
-          setSyncMessage("Sync complete. Local buffers flushed.")
-          return refreshStats()
-        }
-        const err =
-          res && typeof res === "object" && "error" in res
-            ? String((res as { error?: unknown }).error ?? "Sync failed")
-            : "Sync failed"
-        setSyncState("error")
-        setSyncMessage(err)
-      })
-      .catch((err) => {
-        setSyncState("error")
-        setSyncMessage(err instanceof Error ? err.message : "Sync failed")
-      })
-      .finally(() => setBusy(false))
-  }
-
-  const openOptions = () => {
-    if (chrome.runtime.openOptionsPage) {
-      chrome.runtime.openOptionsPage()
-    } else {
-      chrome.tabs.create({ url: chrome.runtime.getURL("src/options/index.html") })
-    }
+    onPrefsChange({ ...prefs, defaultBreakMinutes: n })
   }
 
   const handleSignOut = () => {
@@ -151,274 +149,225 @@ export function SettingsView({
       .catch(() => onSignedOut())
   }
 
+  const fromLangLabel =
+    TRANSLATE_LANGUAGES.find((l) => l.code === prefs.translateFromLang)?.label ??
+    "Auto"
+  const toLangLabel =
+    TRANSLATE_LANGUAGES.find((l) => l.code === prefs.translateToLang)?.label ??
+    "English"
+
+  const cachePct = Math.min(
+    100,
+    Math.max(0, (bytesInUse / CACHE_CEILING_BYTES) * 100),
+  )
+
   return (
-    <div class="flex flex-col gap-4 bg-canvas p-4 text-body">
-      <header class="flex items-center gap-2">
+    <div class="flex flex-col bg-paper text-ink-2">
+      <header class="flex items-center justify-between gap-2 border-b border-rule px-4 py-[14px]">
         <button
           type="button"
           onClick={onBack}
-          class="rounded-md p-1.5 text-mute transition-colors hover:bg-surface-soft hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
           aria-label="Back"
+          class="inline-flex items-center gap-1 rounded-chip px-2 py-[5px] text-[12px] font-medium text-muted transition-colors hover:bg-paper-2 hover:text-ink-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40"
         >
-          <ArrowLeft size={14} />
+          <ArrowLeft size={13} strokeWidth={1.8} />
+          Back
         </button>
-        <h2 class="text-base font-semibold text-ink">Settings</h2>
+        <span class="font-serif text-[14px] font-semibold text-ink">
+          Settings
+        </span>
+        <span class="w-[38px]" aria-hidden />
       </header>
 
-      <Section label="Account">
-        <div class="flex items-center justify-between gap-3 rounded-md border border-hairline bg-surface px-3 py-2">
-          <div class="flex min-w-0 items-center gap-2.5">
+      <div class="flex flex-col gap-4 px-4 py-4">
+        {/* Account */}
+        <section class="flex flex-col gap-2">
+          <MonoLabel as="h3">Account</MonoLabel>
+          <div class="flex items-center gap-[10px] rounded-card border border-rule bg-paper-2 p-[10px]">
             {accountImageSrc ? (
               <img
                 src={accountImageSrc}
                 alt=""
-                class="h-9 w-9 shrink-0 rounded-full border border-hairline object-cover"
+                class="h-[34px] w-[34px] shrink-0 rounded-pill border border-amber object-cover"
               />
             ) : (
-              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-hairline bg-surface-soft text-xs text-mute">
-                {accountInitial}
+              <div class="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-pill border border-amber bg-amber-soft font-mono text-[12px] font-bold text-amber-deep">
+                {initials}
               </div>
             )}
-            <div class="min-w-0">
-              <div class="truncate text-sm font-medium text-ink">{accountEmail}</div>
-              {user.name && user.name !== accountEmail && (
-                <div class="truncate text-xs text-mute">{user.name}</div>
-              )}
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-[12.5px] font-semibold text-ink">
+                {accountName}
+              </div>
+              <div class="truncate text-[11px] text-muted">{accountEmail}</div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSignOut}
+              class="h-auto min-h-0 px-[9px] py-[6px] text-[11px]"
+            >
+              <LogOut size={12} strokeWidth={1.7} />
+              Sign out
+            </Button>
+          </div>
+        </section>
+
+        {/* Appearance */}
+        <section class="flex flex-col gap-2">
+          <MonoLabel as="h3">Appearance</MonoLabel>
+          <Segmented
+            items={themeItems}
+            value={prefs.theme}
+            onChange={setTheme}
+            variant="amber"
+            class="w-full"
+          />
+        </section>
+
+        {/* Session defaults */}
+        <section class="flex flex-col gap-2">
+          <MonoLabel as="h3">Session defaults</MonoLabel>
+          <div class="grid grid-cols-2 gap-2">
+            <Stepper
+              label="Focus"
+              value={prefs.defaultDurationMinutes}
+              unit="min"
+              min={1}
+              max={180}
+              onChange={setDuration}
+            />
+            <Stepper
+              label="Break"
+              value={prefs.defaultBreakMinutes}
+              unit="min"
+              min={0}
+              max={60}
+              onChange={setBreak}
+            />
+          </div>
+        </section>
+
+        {/* Translation — chip cards opening native selects underneath. The
+            actual <select> floats invisibly over the chip so the click hands
+            off to the browser-native picker (best a11y for a popup). */}
+        <section class="flex flex-col gap-2">
+          <MonoLabel as="h3">Translation</MonoLabel>
+          <div class="grid grid-cols-2 gap-2">
+            <LangChip
+              label="From"
+              value={fromLangLabel}
+              selectValue={prefs.translateFromLang}
+              onChange={(code) =>
+                onPrefsChange({ ...prefs, translateFromLang: code })
+              }
+              includeAuto
+            />
+            <LangChip
+              label="To"
+              value={toLangLabel}
+              selectValue={prefs.translateToLang}
+              onChange={(code) =>
+                onPrefsChange({ ...prefs, translateToLang: code })
+              }
+            />
+          </div>
+        </section>
+
+        {/* Storage */}
+        <section class="flex flex-col gap-2">
+          <MonoLabel as="h3">Storage</MonoLabel>
+          <div class="rounded-card border border-rule bg-paper-2 p-[11px]">
+            <div class="mb-[6px] flex items-baseline justify-between">
+              <span class="text-[12px] font-medium text-ink-2">
+                Local cache
+              </span>
+              <span class="font-mono text-[10px] text-muted">
+                {formatMb(bytesInUse)} / {formatMb(CACHE_CEILING_BYTES)} MB
+              </span>
+            </div>
+            <div class="h-[5px] overflow-hidden rounded-pill border border-rule bg-paper">
+              <div
+                class="h-full bg-amber-gradient"
+                style={{ width: `${cachePct.toFixed(2)}%` }}
+                aria-hidden
+              />
+            </div>
+            <div class="mt-[10px] grid grid-cols-3 gap-2 text-center">
+              <StatCell value={stats.quotes} label="Quotes" />
+              <StatCell value={stats.sessions} label="Sessions" />
+              <StatCell value={stats.queued} label="Queued" />
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            class="flex min-h-8 shrink-0 items-center gap-1 rounded-md border border-hairline px-2.5 py-1 text-xs font-medium text-body transition-colors hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
-          >
-            <LogOut size={12} />
-            Sign out
-          </button>
-        </div>
-      </Section>
-
-      <Section label="Appearance">
-        <div class="flex gap-2">
-          <ThemeOption
-            active={prefs.theme === "dark"}
-            onClick={() => setTheme("dark")}
-            icon={<Moon size={14} />}
-            label="Dark"
-          />
-          <ThemeOption
-            active={prefs.theme === "light"}
-            onClick={() => setTheme("light")}
-            icon={<Sun size={14} />}
-            label="Light"
-          />
-        </div>
-      </Section>
-
-      <Section label="Session defaults">
-        <div class="grid grid-cols-2 gap-2">
-          <TimeControl
-            label="Focus (min)"
-            min={1}
-            max={180}
-            value={prefs.defaultDurationMinutes}
-            onChange={setDuration}
-          />
-          <TimeControl
-            label="Break (min)"
-            min={0}
-            max={60}
-            value={prefs.defaultBreakMinutes}
-            onChange={setBreak}
-          />
-        </div>
-        <div class="mt-2 grid grid-cols-2 gap-2">
-          <SelectField
-            label="Translate from"
-            value={prefs.translateFromLang}
-            onChange={setTranslateFrom}
-            includeAuto
-          />
-          <SelectField
-            label="Translate to"
-            value={prefs.translateToLang}
-            onChange={setTranslateTo}
-          />
-        </div>
-      </Section>
-
-      <Section label="Storage">
-        <div class="grid grid-cols-3 gap-2 text-center">
-          <Stat value={stats.quotes} label="Quotes" />
-          <Stat value={stats.sessions} label="Sessions" />
-          <Stat value={stats.queued} label="Queued" />
-        </div>
-        <button
-          type="button"
-          onClick={handleSyncNow}
-          disabled={busy}
-          class="mt-2 flex min-h-8 w-full items-center justify-center gap-2 rounded-md border border-hairline px-3 py-1.5 text-xs font-medium text-body transition-colors hover:bg-surface-soft disabled:opacity-40"
-        >
-          <RefreshCw size={12} class={busy ? "animate-spin" : undefined} />
-          {busy ? "Syncing…" : "Sync now"}
-        </button>
-        {syncState !== "idle" && (
-          <p
-            class={`mt-2 flex items-center gap-1 text-[11px] ${
-              syncState === "success" ? "text-accent-green" : "text-accent-red"
-            }`}
-          >
-            {syncState === "success" ? (
-              <CheckCircle2 size={12} />
-            ) : (
-              <AlertCircle size={12} />
-            )}
-            {syncMessage}
-          </p>
-        )}
-      </Section>
-
-      <button
-        type="button"
-        onClick={openOptions}
-        class="flex min-h-10 items-center justify-between rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-body transition-colors hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
-      >
-        <span>Open full options</span>
-        <ExternalLink size={14} class="text-mute" />
-      </button>
-    </div>
-  )
-}
-
-function Section({
-  label,
-  children,
-}: {
-  label: string
-  children: preact.ComponentChildren
-}) {
-  return (
-    <section class="flex flex-col gap-2">
-      <h3 class="text-[10px] uppercase tracking-wider text-mute">{label}</h3>
-      {children}
-    </section>
-  )
-}
-
-function ThemeOption({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean
-  onClick: () => void
-  icon: preact.ComponentChildren
-  label: string
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      class={`flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70 ${
-        active
-          ? "border-primary bg-primary text-ink"
-          : "border-hairline bg-surface text-body hover:bg-surface-soft"
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
-  )
-}
-
-function TimeControl({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  label: string
-  value: number
-  min: number
-  max: number
-  onChange: (n: number) => void
-}) {
-  const increase = () => onChange(Math.min(max, value + 1))
-  const decrease = () => onChange(Math.max(min, value - 1))
-  return (
-    <div class="flex flex-col gap-1.5 rounded-lg border border-hairline bg-surface px-3 py-2.5 shadow-[0_1px_0_rgb(0_0_0_/_0.03)]">
-      <span class="text-[10px] uppercase tracking-wider text-mute">
-        {label}
-      </span>
-      <div class="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={decrease}
-          class="flex h-8 w-8 items-center justify-center rounded-md border border-hairline bg-surface-soft text-body transition-colors hover:bg-hairline/40"
-          aria-label={`Decrease ${label}`}
-        >
-          <Minus size={14} />
-        </button>
-        <input
-          type="number"
-          min={min}
-          max={max}
-          value={value}
-          onInput={(e) =>
-            onChange(Number((e.currentTarget as HTMLInputElement).value))
-          }
-          class="w-16 rounded-md border border-hairline-soft bg-canvas px-2 py-1 text-center text-base tabular-nums text-ink outline-none focus:ring-1 focus:ring-focus-ring/70"
-        />
-        <button
-          type="button"
-          onClick={increase}
-          class="flex h-8 w-8 items-center justify-center rounded-md border border-hairline bg-surface-soft text-body transition-colors hover:bg-hairline/40"
-          aria-label={`Increase ${label}`}
-        >
-          <Plus size={14} />
-        </button>
+        </section>
       </div>
     </div>
   )
 }
 
-function SelectField({
-  label,
-  value,
-  onChange,
-  includeAuto = false,
-}: {
+function StatCell({ value, label }: { value: number; label: string }) {
+  return (
+    <div class="rounded-control border border-rule bg-paper px-2 py-2">
+      <div class="font-mono text-[14px] font-medium tabular-nums text-ink">
+        {value}
+      </div>
+      <MonoLabel as="div" class="mt-[2px] text-[9px]">
+        {label}
+      </MonoLabel>
+    </div>
+  )
+}
+
+interface LangChipProps {
   label: string
   value: string
-  onChange: (value: string) => void
+  selectValue: string
+  onChange: (code: string) => void
   includeAuto?: boolean
-}) {
+}
+
+function LangChip({
+  label,
+  value,
+  selectValue,
+  onChange,
+  includeAuto = false,
+}: LangChipProps) {
   return (
-    <label class="flex flex-col gap-1.5 rounded-lg border border-hairline bg-surface px-3 py-2.5">
-      <span class="text-[10px] uppercase tracking-wider text-mute">
+    <label class="relative block rounded-card border border-rule bg-paper-2 px-[11px] py-[7px] transition-colors focus-within:border-amber-deep focus-within:bg-paper">
+      <MonoLabel as="div" class="mb-[1px] text-[9.5px]">
         {label}
-      </span>
-      <NativeSelect
-        value={value}
-        onInput={(e) => onChange((e.currentTarget as HTMLSelectElement).value)}
+      </MonoLabel>
+      <div class="flex items-center justify-between gap-2 text-[12.5px] font-medium text-ink">
+        <span class="truncate">{value}</span>
+        <svg
+          width={11}
+          height={11}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width={1.8}
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden
+          class="shrink-0 text-muted"
+        >
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </div>
+      <select
+        value={selectValue}
+        onChange={(e) => onChange((e.currentTarget as HTMLSelectElement).value)}
+        aria-label={label}
+        class="absolute inset-0 cursor-pointer opacity-0"
       >
-        {includeAuto && <option value="auto">Auto detect</option>}
+        {includeAuto && <option value="auto">Auto</option>}
         {TRANSLATE_LANGUAGES.map((lang) => (
           <option key={lang.code} value={lang.code}>
             {lang.label}
           </option>
         ))}
-      </NativeSelect>
+      </select>
     </label>
-  )
-}
-
-function Stat({ value, label }: { value: number; label: string }) {
-  return (
-    <div class="rounded-md border border-hairline bg-surface px-2 py-2">
-      <div class="text-base font-medium tabular-nums text-ink">{value}</div>
-      <div class="text-[10px] uppercase tracking-wider text-mute">{label}</div>
-    </div>
   )
 }

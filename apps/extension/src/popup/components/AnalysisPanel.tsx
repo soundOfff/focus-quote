@@ -1,6 +1,5 @@
 import { useEffect, useState } from "preact/hooks"
 import { Effect } from "effect"
-import { AlertCircle, Globe } from "lucide-preact"
 import { SessionsService, type ActiveSession } from "../../services/sessions"
 import { ApiService } from "../../services/api"
 import { runP } from "../runtime"
@@ -24,6 +23,15 @@ interface Nudge {
   receivedAt: number
 }
 
+export interface AnalysisState {
+  active: ActiveSession | null
+  urls: UrlRow[]
+  /** The latest nudge surfaced by the classifier, if any. */
+  latestNudge: Nudge | null
+  /** A one-line summary suitable for the popup's Today's intent band. */
+  insightLine: string | null
+}
+
 const loadActiveAndUrls = Effect.gen(function* () {
   const sessions = yield* SessionsService
   const api = yield* ApiService
@@ -45,20 +53,41 @@ const loadActiveAndUrls = Effect.gen(function* () {
   return { active, urls }
 })
 
-const categoryColor = (c: string | null): string => {
-  const v = (c ?? "").toLowerCase()
-  if (v.includes("work") || v.includes("research") || v.includes("tools"))
-    return "text-emerald-500"
-  if (v.includes("social") || v.includes("entertainment"))
-    return "text-rose-500"
-  if (v.includes("news") || v.includes("shopping")) return "text-amber-500"
-  return "opacity-60"
+const buildInsightLine = (
+  urls: ReadonlyArray<UrlRow>,
+  nudge: Nudge | null,
+): string | null => {
+  // Live nudges always take precedence — they're the action signal we want
+  // pushed into the intent band.
+  if (nudge) return nudge.message
+  if (urls.length === 0) return null
+  const scored = urls.filter((u) => u.distractionScore !== null)
+  if (scored.length === 0) {
+    return `Tracking ${urls.length} ${urls.length === 1 ? "page" : "pages"} for this session.`
+  }
+  const avg = Math.round(
+    scored.reduce((acc, u) => acc + (u.distractionScore ?? 0), 0) /
+      scored.length,
+  )
+  if (avg >= 70) {
+    return `Drifting — average ${avg}/100 distraction across ${urls.length} pages.`
+  }
+  if (avg >= 40) {
+    return `Mixed focus — average ${avg}/100 distraction across ${urls.length} pages.`
+  }
+  return `On goal — average ${avg}/100 distraction across ${urls.length} pages.`
 }
 
-export function AnalysisPanel() {
+/**
+ * Background hook that polls + subscribes to the active session's analysis
+ * stream. The returned `insightLine` is rendered as a secondary line in the
+ * popup's Today's intent band — that's the only visible surface this hook
+ * still drives in Direction A (the old standalone panel is gone).
+ */
+export function useAnalysisInsight(): AnalysisState {
   const [active, setActive] = useState<ActiveSession | null>(null)
   const [urls, setUrls] = useState<UrlRow[]>([])
-  const [nudges, setNudges] = useState<Nudge[]>([])
+  const [latestNudge, setLatestNudge] = useState<Nudge | null>(null)
 
   const refresh = () =>
     runP(loadActiveAndUrls)
@@ -67,7 +96,7 @@ export function AnalysisPanel() {
         setUrls(u)
       })
       .catch(() => {
-        /* signed out or other transient — ignore */
+        /* signed-out or transient — ignore */
       })
 
   useEffect(() => {
@@ -99,15 +128,11 @@ export function AnalysisPanel() {
           ),
         )
       } else if (event.type === "nudge") {
-        setNudges((prev) => [
-          {
-            sessionUrlId: event.sessionUrlId,
-            message: event.message,
-            receivedAt: Date.now(),
-          },
-          ...prev,
-        ].slice(0, 5))
-        // Re-fetch to pick up the new URL row if it's not in state yet.
+        setLatestNudge({
+          sessionUrlId: event.sessionUrlId,
+          message: event.message,
+          receivedAt: Date.now(),
+        })
         refresh()
       }
     }
@@ -115,55 +140,10 @@ export function AnalysisPanel() {
     return () => chrome.runtime.onMessage.removeListener(onMessage)
   }, [])
 
-  if (!active) return null
-
-  return (
-    <div class="rounded bg-card-light p-3 shadow-sm dark:bg-card-dark dark:shadow-none">
-      <div class="mb-2 flex items-center gap-2 text-xs font-medium opacity-80">
-        <Globe size={12} class="text-accent" />
-        Session analysis
-      </div>
-
-      {nudges.length > 0 && (
-        <div class="mb-3 space-y-1.5">
-          {nudges.map((n) => (
-            <div
-              key={`${n.sessionUrlId}-${n.receivedAt}`}
-              class="flex items-start gap-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs"
-            >
-              <AlertCircle size={12} class="mt-0.5 shrink-0 text-amber-500" />
-              <div class="min-w-0">{n.message}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {urls.length === 0 ? (
-        <p class="text-xs opacity-50">
-          Visit a page in any tab — it'll show up here for analysis.
-        </p>
-      ) : (
-        <ul class="space-y-1">
-          {urls.slice(-10).reverse().map((u) => (
-            <li
-              key={u.id}
-              class="flex items-center justify-between gap-2 text-xs"
-            >
-              <div class="min-w-0 flex-1 truncate">
-                <span class="opacity-80">{u.title ?? u.hostname}</span>
-                <span class="ml-1 opacity-40">· {u.hostname}</span>
-              </div>
-              {u.category && (
-                <span
-                  class={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${categoryColor(u.category)}`}
-                >
-                  {u.category}
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
+  return {
+    active,
+    urls,
+    latestNudge,
+    insightLine: buildInsightLine(urls, latestNudge),
+  }
 }

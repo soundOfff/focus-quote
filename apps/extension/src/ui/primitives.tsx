@@ -1,11 +1,11 @@
 import type { ComponentChildren } from "preact"
 import { useLayoutEffect, useRef, useState } from "preact/hooks"
-import { Check } from "lucide-preact"
+import { Check, Minus, Plus } from "lucide-preact"
 
 const cx = (...parts: Array<string | false | null | undefined>) =>
   parts.filter(Boolean).join(" ")
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "outline"
+type ButtonVariant = "primary" | "secondary" | "ghost" | "outline" | "chip"
 type ButtonSize = "sm" | "md"
 
 interface ButtonProps extends preact.JSX.HTMLAttributes<HTMLButtonElement> {
@@ -37,14 +37,22 @@ export function Button({
   type = "button",
   ...props
 }: ButtonProps) {
+  // Direction A maps variants like this:
+  //   primary  → the SINGLE amber gradient action per surface
+  //   ghost    → paper-2 fill, rule-2 hairline, ink-2 text (the .btn-ghost)
+  //   outline  → paper fill, rule hairline, ink-2 text (used for "All →" etc)
+  //   secondary→ paper-2 fill, no border, ink text (compact pill alt)
+  //   chip     → narrow tonal chip (used in selection-toolbar LangPicker host)
   const variantClass =
     variant === "primary"
-      ? "bg-primary text-ink hover:bg-primary-pressed"
+      ? "bg-amber-gradient text-[#2A1A05] border border-amber-deep shadow-[0_1px_0_rgba(255,255,255,0.5)_inset,0_1px_2px_rgba(40,30,15,0.15)] hover:brightness-[1.03] active:brightness-[0.97]"
       : variant === "outline"
-        ? "border border-hairline bg-surface text-body hover:bg-surface-soft"
+        ? "border border-rule-2 bg-paper text-ink-2 hover:bg-paper-2"
         : variant === "ghost"
-          ? "bg-transparent text-body hover:bg-surface-soft"
-          : "bg-surface-soft text-ink hover:bg-hairline/50"
+          ? "border border-rule-2 bg-paper text-ink-2 hover:bg-paper-2"
+          : variant === "chip"
+            ? "border border-rule bg-paper-2 text-ink-2 hover:bg-paper"
+            : "bg-paper-2 text-ink hover:bg-rule/40"
 
   const sizeClass =
     size === "sm"
@@ -55,13 +63,209 @@ export function Button({
     <button
       type={type}
       class={cx(
-        "inline-flex items-center justify-center gap-1.5 rounded-md font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-out active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
+        "inline-flex items-center justify-center gap-1.5 rounded-control font-semibold transition-[color,background-color,border-color,box-shadow,transform,filter] duration-150 ease-out active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
         variantClass,
         sizeClass,
         typeof className === "string" ? className : undefined,
       )}
       {...props}
     />
+  )
+}
+
+// ---- Direction A typography helpers ----
+
+/**
+ * Mono small-caps label. Used for every section header, date stamp, and
+ * meta tag across all surfaces. Per TOKENS.md: mono 10.5px / 500 / muted /
+ * uppercase / `letter-spacing: 0.06em`.
+ *
+ * `tone="info"` colors the label `blue-ink` for the "Today's intent" band.
+ */
+export function MonoLabel({
+  children,
+  tone = "muted",
+  class: className,
+  as: As = "span",
+}: {
+  children: ComponentChildren
+  tone?: "muted" | "ink" | "info" | "amber"
+  class?: string
+  as?: "span" | "div" | "h2" | "h3" | "label"
+}) {
+  const toneClass =
+    tone === "info"
+      ? "text-blue-ink"
+      : tone === "ink"
+        ? "text-ink-2"
+        : tone === "amber"
+          ? "text-amber-deep"
+          : "text-muted"
+  return (
+    <As
+      class={cx(
+        "font-mono text-[10.5px] font-medium uppercase tracking-mono leading-none",
+        toneClass,
+        className,
+      )}
+    >
+      {children}
+    </As>
+  )
+}
+
+/**
+ * Pill chip. Used in saved-quote cards for the tag. See `.chip` in
+ * COMPONENTS.md generic primitives.
+ */
+export function Chip({
+  children,
+  class: className,
+}: {
+  children: ComponentChildren
+  class?: string
+}) {
+  return (
+    <span
+      class={cx(
+        "inline-flex items-center gap-1 rounded-pill border border-rule bg-paper-2 px-[7px] py-[3px] font-mono text-[10.5px] font-medium uppercase tracking-mono-tight text-muted",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  )
+}
+
+/**
+ * Generic segmented control. Used by the popup duration picker and the
+ * Settings Appearance row.
+ *
+ * Active item: paper fill + segmented-active shadow + ink text. Inactive
+ * items: transparent fill, muted text. Inner divider is a 1px rule.
+ */
+export interface SegmentedItem<T extends string | number> {
+  value: T
+  label: ComponentChildren
+  /** Optional explicit aria-label when `label` is non-text (e.g. icon). */
+  ariaLabel?: string
+}
+
+export function Segmented<T extends string | number>({
+  items,
+  value,
+  onChange,
+  size = "md",
+  variant = "neutral",
+  class: className,
+}: {
+  items: ReadonlyArray<SegmentedItem<T>>
+  value: T
+  onChange: (next: T) => void
+  size?: "sm" | "md"
+  /** "amber" tints the active segment with amber-soft (Appearance picker). */
+  variant?: "neutral" | "amber"
+  class?: string
+}) {
+  return (
+    <div
+      role="tablist"
+      class={cx(
+        "inline-flex shrink-0 overflow-hidden rounded-control border border-rule-2 bg-paper-2",
+        size === "sm" ? "h-8" : "h-9",
+        className,
+      )}
+    >
+      {items.map((item, i) => {
+        const active = item.value === value
+        const divider = i > 0 ? "border-l border-rule" : ""
+        const activeChrome =
+          variant === "amber"
+            ? "bg-amber-soft text-amber-deep font-semibold"
+            : "bg-paper text-ink font-semibold shadow-segmented-active"
+        const inactiveChrome = "bg-transparent text-muted font-medium"
+        return (
+          <button
+            key={String(item.value)}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            aria-label={item.ariaLabel}
+            onClick={() => onChange(item.value)}
+            class={cx(
+              "inline-flex h-full min-w-[40px] items-center justify-center gap-1.5 px-3 text-xs leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40",
+              divider,
+              active ? activeChrome : inactiveChrome,
+            )}
+          >
+            {item.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * `[−]  value  [+]` stepper card. Used by Session-defaults (focus / break).
+ * Renders the mono label inside so callers don't have to wrap it.
+ */
+export function Stepper({
+  label,
+  value,
+  unit,
+  min = 0,
+  max = 999,
+  onChange,
+  step = 1,
+}: {
+  label: string
+  value: number
+  unit?: string
+  min?: number
+  max?: number
+  step?: number
+  onChange: (next: number) => void
+}) {
+  const clamp = (n: number) => Math.max(min, Math.min(max, n))
+  const dec = () => onChange(clamp(value - step))
+  const inc = () => onChange(clamp(value + step))
+  const btnClass =
+    "grid h-[22px] w-[22px] place-items-center rounded-md border border-rule-2 bg-paper text-muted transition-colors hover:bg-paper-2 hover:text-ink-2 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40"
+  return (
+    <div class="rounded-card border border-rule bg-paper-2 px-3 py-2">
+      <MonoLabel as="div" class="mb-1 text-[9.5px]">
+        {label}
+      </MonoLabel>
+      <div class="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={dec}
+          disabled={value <= min}
+          aria-label={`Decrease ${label}`}
+          class={btnClass}
+        >
+          <Minus size={11} strokeWidth={2} />
+        </button>
+        <div class="font-mono text-[18px] font-medium leading-none tracking-[-0.02em] text-ink">
+          {value}
+          {unit && (
+            <span class="ml-[3px] text-[10px] font-medium text-muted">
+              {unit}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={inc}
+          disabled={value >= max}
+          aria-label={`Increase ${label}`}
+          class={btnClass}
+        >
+          <Plus size={11} strokeWidth={2} />
+        </button>
+      </div>
+    </div>
   )
 }
 

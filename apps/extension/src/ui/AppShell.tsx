@@ -74,8 +74,8 @@ export function AppNavBar({
   return (
     <header class="flex shrink-0 items-center justify-between gap-4 border-b border-hairline bg-surface px-4 py-3 sm:px-6">
       <div class="flex min-w-0 flex-1 items-center gap-4 sm:gap-8">
-        <span class="shrink-0 text-sm font-bold tracking-tight text-ink">
-          FocusQuote
+        <span class="shrink-0 font-serif text-[18px] font-semibold tracking-[-0.01em] text-ink">
+          Focus<span class="text-amber-deep">Quote</span>
         </span>
         <nav class="flex items-center gap-1">
           <NavLink
@@ -95,7 +95,7 @@ export function AppNavBar({
       <div class="flex shrink-0 items-center gap-2 sm:gap-3">
         {headerDate && (
           <time
-            class="hidden font-mono text-[10px] font-medium uppercase tracking-wide text-mute sm:block"
+            class="hidden font-mono text-[9.5px] font-medium uppercase tracking-mono-wide text-muted-2 sm:block"
             dateTime={new Date().toISOString().slice(0, 10)}
           >
             {headerDate}
@@ -106,10 +106,10 @@ export function AppNavBar({
             variant="primary"
             size="sm"
             type="button"
-            class="rounded-md font-bold shadow-none"
+            class="!h-9 rounded-control !px-3 !text-xs"
             onClick={() => requestOpenExtensionPopup()}
           >
-            <Plus size={14} strokeWidth={2.5} aria-hidden />
+            <Plus size={13} strokeWidth={1.8} aria-hidden />
             New session
           </Button>
         )}

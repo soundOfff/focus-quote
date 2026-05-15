@@ -3,6 +3,7 @@ import { Effect } from "effect"
 import { ArrowLeft, LogIn, Mail } from "lucide-preact"
 import { AuthService } from "../../services/auth"
 import { runP } from "../runtime"
+import { Button, MonoLabel } from "../../ui/primitives"
 
 interface Props {
   onSignedIn: () => void
@@ -47,12 +48,14 @@ export function SignIn({ onSignedIn }: Props) {
 
   if (magicSent) {
     return (
-      <div class="flex flex-col gap-3 p-6 text-center">
-        <Mail size={28} class="mx-auto text-accent" />
-        <h2 class="text-base font-medium">Check your inbox</h2>
-        <p class="text-sm opacity-60">
-          We sent a sign-in link to <strong>{email}</strong>. Click it in this
-          browser to continue.
+      <div class="flex flex-col gap-3 px-5 py-8 text-center">
+        <Mail size={28} strokeWidth={1.6} class="mx-auto text-amber-deep" />
+        <h2 class="font-serif text-base font-semibold text-ink">
+          Check your inbox
+        </h2>
+        <p class="text-[12.5px] leading-relaxed text-muted">
+          We sent a sign-in link to <strong class="text-ink-2">{email}</strong>.
+          Click it in this browser to continue.
         </p>
         <button
           type="button"
@@ -61,7 +64,7 @@ export function SignIn({ onSignedIn }: Props) {
             setMode("choose")
             setEmail("")
           }}
-          class="mt-2 text-xs underline opacity-60 hover:opacity-100"
+          class="mt-2 text-[11px] font-medium text-muted underline-offset-2 hover:text-ink-2 hover:underline"
         >
           Use a different email
         </button>
@@ -70,46 +73,53 @@ export function SignIn({ onSignedIn }: Props) {
   }
 
   return (
-    <div class="flex flex-col gap-4 p-6">
-      <header>
-        <h1 class="text-lg font-semibold text-accent">Sign in to FocusQuote</h1>
-        <p class="mt-1 text-xs opacity-60">
+    <div class="flex flex-col gap-4 px-5 py-6">
+      <header class="space-y-2">
+        <MonoLabel tone="info">Welcome</MonoLabel>
+        <h1 class="font-serif text-[20px] font-semibold tracking-[-0.01em] text-ink">
+          Sign in to Focus
+          <span class="text-amber-deep">Quote</span>
+        </h1>
+        <p class="text-[12.5px] leading-relaxed text-muted">
           Quotes and sessions sync across your devices once you're signed in.
         </p>
       </header>
 
       {error && (
-        <div class="rounded bg-accent/10 px-3 py-2 text-xs text-accent">
+        <div
+          role="alert"
+          class="rounded-card border border-clay-soft bg-clay-soft/60 px-3 py-2 text-[11.5px] leading-relaxed text-clay-ink"
+        >
           {error}
         </div>
       )}
 
       {mode === "choose" ? (
-        <>
-          <button
-            type="button"
+        <div class="flex flex-col gap-2">
+          <Button
+            variant="primary"
             onClick={handleGoogle}
             disabled={busy}
-            class="flex items-center justify-center gap-2 rounded bg-accent py-2 text-sm font-medium text-white transition hover:bg-accent/90 disabled:opacity-40"
+            class="w-full"
           >
-            <LogIn size={14} />
+            <LogIn size={13} strokeWidth={1.8} />
             Continue with Google
-          </button>
-          <div class="my-1 flex items-center gap-2 text-xs opacity-40">
-            <span class="h-px flex-1 bg-current" />
-            <span>or</span>
-            <span class="h-px flex-1 bg-current" />
+          </Button>
+          <div class="my-1 flex items-center gap-2">
+            <span class="h-px flex-1 bg-rule" aria-hidden />
+            <MonoLabel class="text-[9.5px]">or</MonoLabel>
+            <span class="h-px flex-1 bg-rule" aria-hidden />
           </div>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             onClick={() => setMode("magic")}
             disabled={busy}
-            class="flex items-center justify-center gap-2 rounded border border-accent/40 py-2 text-sm text-accent transition hover:bg-accent/10 disabled:opacity-40"
+            class="w-full"
           >
-            <Mail size={14} />
+            <Mail size={13} strokeWidth={1.8} />
             Email me a magic link
-          </button>
-        </>
+          </Button>
+        </div>
       ) : (
         <form onSubmit={handleMagic} class="flex flex-col gap-2">
           <input
@@ -121,21 +131,22 @@ export function SignIn({ onSignedIn }: Props) {
             }
             required
             autoFocus
-            class="rounded bg-card-light px-3 py-2 text-sm shadow-sm placeholder:opacity-50 focus:outline-none focus:ring-1 focus:ring-accent dark:bg-card-dark dark:shadow-none"
+            class="rounded-control border border-rule-2 bg-paper-2 px-3 py-[9px] text-[13px] text-ink placeholder:text-muted-2 focus:border-amber-deep focus:outline-none focus:ring-[3px] focus:ring-amber/15"
           />
-          <button
+          <Button
+            variant="primary"
             type="submit"
             disabled={busy || !email.trim()}
-            class="rounded bg-accent py-2 text-sm font-medium text-white transition hover:bg-accent/90 disabled:opacity-40"
+            class="w-full"
           >
             {busy ? "Sending…" : "Send magic link"}
-          </button>
+          </Button>
           <button
             type="button"
             onClick={() => setMode("choose")}
-            class="flex items-center justify-center gap-1 text-xs opacity-60 hover:opacity-100"
+            class="mt-1 flex items-center justify-center gap-1 text-[11px] font-medium text-muted hover:text-ink-2"
           >
-            <ArrowLeft size={11} /> Back
+            <ArrowLeft size={11} strokeWidth={1.8} /> Back
           </button>
         </form>
       )}

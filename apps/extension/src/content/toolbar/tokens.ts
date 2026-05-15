@@ -1,39 +1,97 @@
 /**
- * FocusQuote design tokens used by the in-page toolbar and its popovers.
- * Mirrors `apps/DESIGN.MD` and `src/styles/tailwind.css` so the in-page
- * chrome matches the rest of the extension UI: cream/white surfaces, ink
- * text, yellow primary accent, warm hairlines.
+ * FocusQuote design tokens used by the in-page floating UI (rail + panels +
+ * selection bar). Mirrors the Direction A handoff in
+ * `apps/extension/assets/design_handoff_tools/TOKENS.md`.
  *
- *   - 8px base spacing with finer 2/4/6px steps for tight inline gaps
- *   - {spacing.xxs..xxl} = 2 / 4 / 8 / 12 / 16 / 24 / 32 px
- *   - {rounded.sm} = 4px for inline buttons & form inputs
- *   - {rounded.md} = 6px for cards & CTAs
- *   - touch targets meet WCAG AA at >= 40x40 (`size.tap`)
- *   - product icon scale = 20–24px (`icon.md` = 20)
+ * Two layers:
+ *   1. RAW Direction A keys (`paper`, `paper2`, `popupBorder`, `amberSoft`,
+ *      `amberDeep`, `amberGradFrom/To`, `blueInk`, `sageInk`, `clayInk`, …)
+ *      — preferred for new code.
+ *   2. LEGACY keys (`navy`, `navyDeep`, `teal`, `tealDim`, `accent`,
+ *      `accentDim`, `hairline`, `ink`, `inkMute`) — point at the new
+ *      values so existing modules (`shell.ts`, `quoteAi.ts`, `annotate.ts`,
+ *      `guide.ts`, `popover.ts`) inherit the new look without per-file edits.
  *
- * Names kept for historical reasons; values now come from the cream/ink
- * palette in the global Tailwind layer.
+ * Content scripts can't reuse the extension's CSS variables (host pages
+ * have their own styles), so every value is a concrete hex string and the
+ * font stacks list system fallbacks before Geist/Newsreader/JetBrains Mono.
+ * The @fontsource webfonts only load on extension pages; host pages will
+ * gracefully fall back to system stacks here.
  */
 
+// -- Direction A raw palette -------------------------------------------------
+const paper = "#FBFAF6"
+const paper2 = "#F4F2EC"
+const ink = "#1A1814"
+const ink2 = "#3A362F"
+const muted = "#807A6F"
+const muted2 = "#B5AEA0"
+const rule = "#E5E0D5"
+const rule2 = "#D9D3C5"
+const popupBorder = "#DAD3C2"
+const amber = "#F2A03C"
+const amberDeep = "#C77A1F"
+const amberSoft = "#FBE6C8"
+const amberHairline = "#ECCE9E"
+const amberGradFrom = "#F4AC4F"
+const amberGradTo = "#EE9B30"
+const blueSoft = "#E0EBF1"
+const blueInk = "#2E5C73"
+const sageSoft = "#E1EBDF"
+const sageInk = "#4A6A47"
+const claySoft = "#F2DDD3"
+const clayInk = "#A04B26"
+const clayHairline = "#E8C7B7"
+
 export const tokens = {
-  // Surfaces (was the navy backdrop). Now matches the app's surface-doc
-  // and surface cards so the toolbar feels like part of the same product.
-  navy: "rgb(255 255 255)", // surface
-  navyDeep: "rgb(238 239 233)", // canvas
-  // "teal" historically marked active/positive states. Now maps to the
-  // success-green pair so the toolbar can still flash a "good" highlight.
-  teal: "rgb(44 140 102)",
-  tealDim: "rgba(44, 140, 102, 0.45)",
-  // "accent" is the product's primary call-to-action — yellow-orange.
-  accent: "rgb(247 165 1)",
-  accentDim: "rgba(247, 165, 1, 0.45)",
-  // Text. Was a near-white off-dark; now the warm ink + mute used by the
-  // rest of the app.
-  ink: "rgb(35 37 29)",
-  inkMute: "rgb(110 113 99)",
-  // Hairline border — same warm tone as the global `--color-hairline`.
-  hairline: "rgb(191 193 183)",
-  // Spacing scale (DESIGN.MD `{spacing.*}`).
+  // -- Direction A raw tokens (preferred) -----------------------------------
+  paper,
+  paper2,
+  ink,
+  ink2,
+  muted,
+  muted2,
+  rule,
+  rule2,
+  popupBorder,
+  amber,
+  amberDeep,
+  amberSoft,
+  amberHairline,
+  amberGradFrom,
+  amberGradTo,
+  amberGradient: `linear-gradient(180deg, ${amberGradFrom} 0%, ${amberGradTo} 100%)`,
+  blueSoft,
+  blueInk,
+  sageSoft,
+  sageInk,
+  claySoft,
+  clayInk,
+  clayHairline,
+
+  // -- Composite shadows ----------------------------------------------------
+  shadowPopup:
+    "0 1px 0 rgba(255,255,255,0.7) inset, 0 14px 30px -10px rgba(40,30,15,0.22), 0 3px 8px -2px rgba(40,30,15,0.10)",
+  shadowPanel:
+    "0 1px 0 rgba(255,255,255,0.7) inset, 0 18px 36px -12px rgba(40,30,15,0.22), 0 3px 10px -2px rgba(40,30,15,0.10)",
+  shadowToolbar:
+    "0 1px 0 rgba(255,255,255,0.7) inset, 0 14px 32px -10px rgba(40,30,15,0.22), 0 3px 8px -2px rgba(40,30,15,0.10)",
+  shadowAmber:
+    "0 1px 0 rgba(255,255,255,0.5) inset, 0 1px 2px rgba(40,30,15,0.15)",
+  shadowSegmented: "0 1px 2px rgba(40,30,15,0.08)",
+
+  // -- Legacy aliases. Modules that import `tokens.navy` etc. resolve through
+  // -- these and pick up the new look automatically.
+  navy: paper,
+  navyDeep: paper2,
+  teal: sageInk,
+  tealDim: popupBorder,
+  accent: amberDeep,
+  accentDim: amberHairline,
+  hairline: rule,
+  inkMute: muted,
+
+  // Spacing scale.
   space: {
     xxs: "2px",
     xs: "4px",
@@ -43,36 +101,44 @@ export const tokens = {
     xl: "24px",
     xxl: "32px",
   },
-  // Radius scale (DESIGN.MD `{rounded.*}`).
-  radius: "4px", // {rounded.sm} — default for inline buttons/inputs
-  radiusMd: "6px", // {rounded.md} — cards, CTAs, popover panels
+  // Radius scale.
+  radius: "7px", // small inline buttons / chips
+  radiusMd: "10px", // toolbars + cards
+  radiusLg: "12px", // panels
+  radiusPill: "9999px",
   // Touch-target & icon sizes.
   size: {
-    tap: "40px", // WCAG AA minimum, also the standard button height
-    sideToggleH: "28px", // shorter chevron at the bottom of the toolbar
+    tap: "34px", // rail buttons (34 wide × 32 tall)
+    tapH: "32px",
+    sideToggleH: "28px",
     badge: "7px",
   },
   icon: {
-    sm: 16,
-    md: 20, // canonical for product toolbar icons (DESIGN.MD 20–24px range)
-    lg: 24,
+    sm: 13,
+    md: 15, // rail icons per the handoff
+    lg: 18,
   },
-  // We compose the floating UI on top of (almost) every page. Use a value
-  // that's high enough to defeat sticky headers but lower than the toast
-  // (`2147483647`) so toasts can still pop over us.
+  // Z-index ladder.
   zToolbar: 2147483640,
   zPopover: 2147483641,
   zOverlay: 2147483642,
   zCursor: 2147483643,
-  font: '13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif',
-  fontMono: '12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',
+  // Font stacks. Geist/Newsreader/JetBrains Mono come first — they'll resolve
+  // on host pages that happen to have them (rare); otherwise the system
+  // stack picks up.
+  font:
+    '13px/1.4 "Geist",system-ui,-apple-system,"Segoe UI","Helvetica Neue",sans-serif',
+  fontMono:
+    '12px/1.4 "JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',
+  fontSerif:
+    '13px/1.45 "Newsreader","Iowan Old Style",Georgia,"Times New Roman",serif',
   /**
-   * Scrollbars — DESIGN.MD § Scrollbars; transparent track, hairline thumb.
-   * Used by injected `[data-fq-scrollbar]` rules on host pages.
+   * Scrollbars — transparent track, hairline thumb. Used by injected
+   * `[data-fq-scrollbar]` rules on host pages.
    */
   scrollbar: {
     track: "transparent",
-    thumb: "rgb(191 193 183 / 0.72)",
-    thumbHover: "rgb(108 110 99 / 0.88)",
+    thumb: "rgba(128,122,111,0.45)",
+    thumbHover: "rgba(128,122,111,0.75)",
   },
 } as const
