@@ -153,6 +153,9 @@ const handleSessionCancel = Effect.gen(function* () {
   yield* Effect.promise(() => chrome.alarms.clear(URL_FLUSH_ALARM))
   yield* Effect.promise(() => chrome.alarms.clear(ACTION_FLUSH_ALARM))
   updateBadge(0)
+  chrome.runtime
+    .sendMessage({ type: "focusquote.session.cancelled" })
+    .catch(() => {})
 })
 
 const handleSessionEnd = Effect.gen(function* () {
@@ -184,6 +187,15 @@ const handleSessionEnd = Effect.gen(function* () {
       : "Focus session complete",
     priority: 1,
   })
+  // Broadcast so any open extension page (newtab, popup) can react with a
+  // toast or refresh. sendMessage may have no listener — swallow errors.
+  chrome.runtime
+    .sendMessage({
+      type: "focusquote.session.finished",
+      sessionId: active.sessionId,
+      goal: active.goal ?? null,
+    })
+    .catch(() => {})
 })
 
 // ---- URL tracking ----

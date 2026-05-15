@@ -209,6 +209,32 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
           { method: "POST", json: body },
         ),
       listTopics: () => request<ListTopicsResponse>("/api/topics"),
+      listTopicMedia: (label: string) =>
+        request<{
+          items: Array<{
+            id: string
+            topic: string
+            fileId: string
+            note: string | null
+            createdAt: string
+            mimeType: string
+            dataBase64: string
+            byteSize: number
+          }>
+        }>(`/api/topics/${encodeURIComponent(label)}/media`),
+      attachTopicMedia: (
+        label: string,
+        body: { fileId: string; note?: string | null },
+      ) =>
+        request<{ ok: boolean; id: string }>(
+          `/api/topics/${encodeURIComponent(label)}/media`,
+          { method: "POST", json: body },
+        ),
+      deleteTopicMedia: (label: string, mediaId: string) =>
+        request<{ ok: boolean }>(
+          `/api/topics/${encodeURIComponent(label)}/media/${mediaId}`,
+          { method: "DELETE" },
+        ),
 
       // Session URLs (AI analysis)
       postSessionUrls: (body: SessionUrlBatchRequest) =>
