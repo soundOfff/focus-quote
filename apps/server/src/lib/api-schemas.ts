@@ -154,3 +154,83 @@ export const SyncBatchInput = z.object({
   jobs: z.array(SyncJobInput).min(1).max(500),
 })
 export type SyncBatchInput = z.infer<typeof SyncBatchInput>
+
+// ---- User settings / profile / privacy (remote source of truth) ----
+
+const ThemeInput = z.enum(["dark", "light"])
+
+export const UserSettingsInput = z.object({
+  theme: ThemeInput,
+  defaultDurationMinutes: z.number().int().min(1).max(180),
+  defaultBreakMinutes: z.number().int().min(0).max(60),
+  translateFromLang: z.string().min(1).max(16),
+  translateToLang: z.string().min(1).max(16),
+  todayGoal: z.string().max(280).nullable().optional(),
+  debugOverlayEnabled: z.boolean().optional(),
+  notificationsBlocked: z.boolean().optional(),
+  toolbarSide: z.enum(["left", "right"]).optional(),
+})
+export type UserSettingsInput = z.infer<typeof UserSettingsInput>
+
+export const UserProfileInput = z.object({
+  displayName: z.string().max(80).default(""),
+  headline: z.string().max(160).default(""),
+  photoMediaFileId: z.string().max(120).nullable().optional(),
+})
+export type UserProfileInput = z.infer<typeof UserProfileInput>
+
+export const UserPrivacyInput = z.object({
+  trackUrls: z.boolean(),
+  blocklist: z.array(z.string().min(1).max(255)).max(500),
+})
+export type UserPrivacyInput = z.infer<typeof UserPrivacyInput>
+
+// ---- Secrets ----
+
+export const SecretKindInput = z.enum(["openrouter"])
+export type SecretKindInput = z.infer<typeof SecretKindInput>
+
+export const PutSecretInput = z.object({
+  value: z.string().min(1).max(4096),
+})
+export type PutSecretInput = z.infer<typeof PutSecretInput>
+
+// ---- AI chat history ----
+
+export const AiThreadKindInput = z.enum(["quote_assistant", "guide_me"])
+export type AiThreadKindInput = z.infer<typeof AiThreadKindInput>
+
+export const CreateAiThreadInput = z.object({
+  id: z.string().min(1).max(120).optional(),
+  kind: AiThreadKindInput,
+  passage: NullableString,
+  sourceUrl: NullableString,
+  goal: NullableString,
+})
+export type CreateAiThreadInput = z.infer<typeof CreateAiThreadInput>
+
+export const ListAiThreadsQuery = z.object({
+  kind: AiThreadKindInput.optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+})
+export type ListAiThreadsQuery = z.infer<typeof ListAiThreadsQuery>
+
+export const AppendAiMessageInput = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string().min(1).max(8000),
+})
+export type AppendAiMessageInput = z.infer<typeof AppendAiMessageInput>
+
+// ---- Recall attempts ----
+
+export const ListRecallAttemptsQuery = z.object({
+  sessionId: z.string().min(1),
+})
+export type ListRecallAttemptsQuery = z.infer<typeof ListRecallAttemptsQuery>
+
+// ---- Toolbar runtime state ----
+
+export const PutToolbarStateInput = z.object({
+  payload: z.string().min(0).max(200_000),
+})
+export type PutToolbarStateInput = z.infer<typeof PutToolbarStateInput>
