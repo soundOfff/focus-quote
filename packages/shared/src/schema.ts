@@ -159,6 +159,98 @@ export const Settings = Schema.Struct({
 export type Settings = Schema.Schema.Type<typeof Settings>
 
 /**
+ * Cross-device user settings (server source of truth). Mirrors the wire
+ * payload from `/api/settings`. Optional UI fields (debug overlay, toolbar
+ * side, notifications block) are best-effort hints for the extension UI.
+ */
+export const UserSettings = Schema.Struct({
+  theme: Theme,
+  defaultDurationMinutes: Schema.Number,
+  defaultBreakMinutes: Schema.Number,
+  translateFromLang: Schema.String,
+  translateToLang: Schema.String,
+  todayGoal: NullableString,
+  debugOverlayEnabled: Schema.Boolean,
+  notificationsBlocked: Schema.Boolean,
+  toolbarSide: Schema.Literal("left", "right"),
+  updatedAt: Schema.String,
+})
+export type UserSettings = Schema.Schema.Type<typeof UserSettings>
+
+export const UserProfile = Schema.Struct({
+  displayName: Schema.String,
+  headline: Schema.String,
+  photoMediaFileId: NullableString,
+  updatedAt: Schema.String,
+})
+export type UserProfile = Schema.Schema.Type<typeof UserProfile>
+
+export const UserPrivacy = Schema.Struct({
+  trackUrls: Schema.Boolean,
+  blocklist: Schema.Array(Schema.String),
+  updatedAt: Schema.String,
+})
+export type UserPrivacy = Schema.Schema.Type<typeof UserPrivacy>
+
+export const SecretKind = Schema.Literal("openrouter")
+export type SecretKind = Schema.Schema.Type<typeof SecretKind>
+
+export const SecretSummary = Schema.Struct({
+  kind: SecretKind,
+  hasValue: Schema.Boolean,
+  hint: NullableString,
+  updatedAt: NullableString,
+})
+export type SecretSummary = Schema.Schema.Type<typeof SecretSummary>
+
+export const AiChatThreadKind = Schema.Literal("quote_assistant", "guide_me")
+export type AiChatThreadKind = Schema.Schema.Type<typeof AiChatThreadKind>
+
+export const AiChatRole = Schema.Literal("user", "assistant")
+export type AiChatRole = Schema.Schema.Type<typeof AiChatRole>
+
+export const AiChatMessage = Schema.Struct({
+  id: Schema.String,
+  threadId: Schema.String,
+  role: AiChatRole,
+  content: Schema.String,
+  createdAt: Schema.String,
+})
+export type AiChatMessage = Schema.Schema.Type<typeof AiChatMessage>
+
+export const AiChatThread = Schema.Struct({
+  id: Schema.String,
+  kind: AiChatThreadKind,
+  passage: NullableString,
+  sourceUrl: NullableString,
+  goal: NullableString,
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+})
+export type AiChatThread = Schema.Schema.Type<typeof AiChatThread>
+
+export const RecallVerdict = Schema.Literal("correct", "partial", "incorrect")
+export type RecallVerdict = Schema.Schema.Type<typeof RecallVerdict>
+
+export const RecallAttempt = Schema.Struct({
+  id: Schema.String,
+  sessionId: Schema.String,
+  questionIndex: Schema.Number,
+  userAnswer: Schema.String,
+  verdict: RecallVerdict,
+  feedback: Schema.String,
+  gradedAt: Schema.String,
+})
+export type RecallAttempt = Schema.Schema.Type<typeof RecallAttempt>
+
+export const ToolbarRuntimeState = Schema.Struct({
+  name: Schema.String,
+  payload: Schema.String,
+  updatedAt: Schema.String,
+})
+export type ToolbarRuntimeState = Schema.Schema.Type<typeof ToolbarRuntimeState>
+
+/**
  * SyncJob is the wire format for queued offline mutations posted to
  * the server's /api/sync/batch endpoint. The server resolves the
  * acting user from the bearer-auth session, so jobs carry no

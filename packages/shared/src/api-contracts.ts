@@ -10,6 +10,17 @@ import type {
   MediaFile,
   UserMediaRef,
   SyncJob,
+  UserSettings,
+  UserProfile,
+  UserPrivacy,
+  SecretSummary,
+  AiChatThread,
+  AiChatThreadKind,
+  AiChatMessage,
+  AiChatRole,
+  RecallAttempt,
+  RecallVerdict,
+  ToolbarRuntimeState,
 } from "./schema"
 
 // ---- Quotes ----
@@ -100,8 +111,6 @@ export interface RegenerateRequest {
 export interface RegenerateResponse {
   ok: boolean
 }
-
-export type RecallVerdict = "correct" | "partial" | "incorrect"
 
 export interface RecallGradeRequest {
   questionIndex: number
@@ -280,6 +289,125 @@ export interface GuideStep {
 
 export interface GuideStepsResponse {
   steps: ReadonlyArray<GuideStep>
+}
+
+// ---- Remote-first user state ----
+
+export interface GetUserSettingsResponse {
+  settings: UserSettings
+}
+
+export interface UpdateUserSettingsRequest {
+  theme: UserSettings["theme"]
+  defaultDurationMinutes: number
+  defaultBreakMinutes: number
+  translateFromLang: string
+  translateToLang: string
+  todayGoal?: string | null
+  debugOverlayEnabled?: boolean
+  notificationsBlocked?: boolean
+  toolbarSide?: "left" | "right"
+}
+
+export interface UpdateUserSettingsResponse {
+  settings: UserSettings
+}
+
+export interface GetUserProfileResponse {
+  profile: UserProfile
+}
+
+export interface UpdateUserProfileRequest {
+  displayName: string
+  headline: string
+  photoMediaFileId?: string | null
+}
+
+export interface UpdateUserProfileResponse {
+  profile: UserProfile
+}
+
+export interface GetUserPrivacyResponse {
+  privacy: UserPrivacy
+}
+
+export interface UpdateUserPrivacyRequest {
+  trackUrls: boolean
+  blocklist: ReadonlyArray<string>
+}
+
+export interface UpdateUserPrivacyResponse {
+  privacy: UserPrivacy
+}
+
+export interface GetSecretResponse {
+  secret: SecretSummary
+}
+
+export interface PutSecretRequest {
+  value: string
+}
+
+export interface PutSecretResponse {
+  secret: SecretSummary
+}
+
+export interface DeleteSecretResponse {
+  ok: true
+}
+
+export interface ListAiThreadsQuery {
+  kind?: AiChatThreadKind
+  limit?: number
+}
+
+export interface ListAiThreadsResponse {
+  threads: ReadonlyArray<AiChatThread>
+}
+
+export interface CreateAiThreadRequest {
+  id?: string
+  kind: AiChatThreadKind
+  passage?: string | null
+  sourceUrl?: string | null
+  goal?: string | null
+}
+
+export interface CreateAiThreadResponse {
+  thread: AiChatThread
+}
+
+export interface ListAiMessagesResponse {
+  messages: ReadonlyArray<AiChatMessage>
+}
+
+export interface AppendAiMessageRequest {
+  role: AiChatRole
+  content: string
+}
+
+export interface AppendAiMessageResponse {
+  message: AiChatMessage
+}
+
+export interface ListRecallAttemptsQuery {
+  sessionId: string
+}
+
+export interface ListRecallAttemptsResponse {
+  attempts: ReadonlyArray<RecallAttempt>
+}
+
+export interface GetToolbarStateResponse {
+  state: ToolbarRuntimeState | null
+}
+
+export interface PutToolbarStateRequest {
+  payload: string
+}
+
+export interface PutToolbarStateResponse {
+  state: ToolbarRuntimeState
 }
 
 // ---- Errors ----
