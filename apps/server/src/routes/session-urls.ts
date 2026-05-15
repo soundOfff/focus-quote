@@ -15,7 +15,12 @@ import {
   ListSessionUrlsQuery,
   SessionUrlBatchInput,
 } from "../lib/api-schemas"
-import { classifyUrl } from "../lib/llm"
+import {
+  classifyUrl,
+  cosineSimilarity,
+  embed,
+  similarityToDistraction,
+} from "../lib/llm"
 import { tryConsume } from "../lib/rate-limit"
 import { publish } from "../lib/session-bus"
 
@@ -101,10 +106,20 @@ const toDTO = (row: typeof sessionUrls.$inferSelect) => ({
 
 /**
  * Background classification. For each URL:
- *  1. Check hostname cache → skip LLM if hit.
- *  2. Otherwise consume a token-bucket token and call the LLM.
- *  3. Persist category + score + summary.
- *  4. Publish events to anyone subscribed to the session's SSE stream.
+ *  1. Resolve the session's anchor (goal, falling back to topic) and embed
+ *     it once so we can score this whole batch against the same target.
+ *  2. Compute an embedding-similarity distraction score per URL — that's
+ *     the headline metric the UI surfaces ("how far did this link drift
+ *     from what the user said they were doing").
+ *  3. For the *category* (and the kind-nudge text when score is high), we
+ *     still use the hostname cache + LLM classifier; both layers are
+ *     orthogonal to the score now.
+ *  4. Persist + publish to anyone subscribed to the session's SSE stream.
+ *
+ * Embedding scoring degrades gracefully: when no anchor is available, or
+ * when the embeddings provider isn't configured / fails, we fall back to
+ * the LLM-derived score (for new hostnames) or the heuristic-by-category
+ * score (for cached hostnames) — the same behavior we had before.
  */
 const classifyBatch = async (
   userId: string,
@@ -116,15 +131,28 @@ const classifyBatch = async (
     title: string | null
   }>,
 ) => {
-  // Look up the goal once per distinct session to feed the prompt.
-  const goalBySession = new Map<string, string | null>()
+  // Resolve and embed each session's anchor exactly once for this batch.
+  // The anchor is the user-typed goal when present, otherwise the
+  // LLM-derived topic (assigned at session-end). We don't fall back further
+  // than that; if neither exists, embedding scoring is skipped.
+  const anchorBySession = new Map<
+    string,
+    { text: string; vec: number[] | null } | null
+  >()
   for (const sid of new Set(urls.map((u) => u.sessionId))) {
     const [s] = await db
-      .select({ goal: focusSessions.goal })
+      .select({ goal: focusSessions.goal, topic: focusSessions.topic })
       .from(focusSessions)
       .where(eq(focusSessions.id, sid))
       .limit(1)
-    goalBySession.set(sid, s?.goal ?? null)
+    const anchorText =
+      (s?.goal && s.goal.trim()) || (s?.topic && s.topic.trim()) || ""
+    if (!anchorText) {
+      anchorBySession.set(sid, null)
+      continue
+    }
+    const vec = await embed(anchorText)
+    anchorBySession.set(sid, { text: anchorText, vec })
   }
 
   for (const u of urls) {
@@ -140,32 +168,56 @@ const classifyBatch = async (
       let distractionScore: number | null = null
       let nudge: string | null = null
 
+      // Always try embedding similarity first — it's anchor-aware, fast,
+      // and consistent across cached and uncached hostnames alike.
+      const anchor = anchorBySession.get(u.sessionId)
+      if (anchor?.vec) {
+        const urlVec = await embed(buildUrlEmbeddingInput(u))
+        if (urlVec) {
+          const sim = cosineSimilarity(anchor.vec, urlVec)
+          distractionScore = similarityToDistraction(sim)
+        }
+      }
+
       if (!cached) {
         if (!tryConsume(userId)) {
-          // Token bucket exhausted — skip LLM for this URL.
-          continue
-        }
-        const result = await classifyUrl({
-          url: u.url,
-          title: u.title,
-          goal: goalBySession.get(u.sessionId) ?? null,
-        })
-        if (!result) continue
-        category = result.category
-        distractionScore = result.distractionScore
-        nudge = result.nudge
-        await db
-          .insert(urlClassifications)
-          .values({ hostname: u.hostname, category })
-          .onConflictDoUpdate({
-            target: urlClassifications.hostname,
-            set: { category },
+          // Token bucket exhausted — skip LLM for this URL. If we already
+          // computed an embedding-only score, persist that; otherwise leave
+          // the row unclassified for the next pass.
+          if (distractionScore === null) continue
+        } else {
+          const result = await classifyUrl({
+            url: u.url,
+            title: u.title,
+            goal:
+              anchor?.text ??
+              null,
           })
-      } else {
-        // Cached hostname: keep category, still call LLM for score+nudge
-        // against THIS goal? For MVP: trust the cached category and use a
-        // simple heuristic for distractionScore so we don't burn tokens.
-        distractionScore = heuristicScore(category!)
+          if (result) {
+            category = result.category
+            // Only fall back to the LLM's score if embedding scoring
+            // didn't succeed — we trust the deterministic vector more.
+            if (distractionScore === null)
+              distractionScore = result.distractionScore
+            // Nudge thresholds are score-driven, but the LLM's wording is
+            // still the best we have. Keep its nudge when the score we
+            // landed on (embedding or LLM) crosses the threshold.
+            if ((distractionScore ?? 0) >= 70) nudge = result.nudge
+            await db
+              .insert(urlClassifications)
+              .values({ hostname: u.hostname, category })
+              .onConflictDoUpdate({
+                target: urlClassifications.hostname,
+                set: { category },
+              })
+          } else if (distractionScore === null) {
+            continue
+          }
+        }
+      } else if (distractionScore === null) {
+        // Cached hostname AND no embedding score — fall back to the old
+        // category-based heuristic so we still write *something*.
+        distractionScore = heuristicScore(category ?? "")
       }
 
       await db
@@ -194,6 +246,31 @@ const classifyBatch = async (
       console.warn("[session-urls] classify failed for", u.url, err)
     }
   }
+}
+
+/**
+ * Build the short string we embed for a URL. Title carries most of the
+ * semantic signal — the URL contributes hostname + slug words for cases
+ * where the title is empty or generic ("Untitled"). We avoid embedding
+ * raw query strings: they're noisy and rarely carry topical meaning.
+ */
+const buildUrlEmbeddingInput = (u: {
+  url: string
+  hostname: string
+  title: string | null
+}): string => {
+  let slug = ""
+  try {
+    const parsed = new URL(u.url)
+    slug = parsed.pathname
+      .split("/")
+      .filter((p) => p && p.length > 1)
+      .join(" ")
+      .replace(/[-_]+/g, " ")
+  } catch {
+    /* malformed URL — skip slug component */
+  }
+  return [u.title, u.hostname, slug].filter(Boolean).join(" — ").slice(0, 1000)
 }
 
 const heuristicScore = (category: string): number => {

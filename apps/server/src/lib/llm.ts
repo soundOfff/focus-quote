@@ -5,6 +5,11 @@ import { env } from "../env"
 const ANTHROPIC_HAIKU = "claude-haiku-4-5-20251001"
 const ANTHROPIC_SONNET = "claude-sonnet-4-5-20250929"
 
+// OpenRouter supports OpenAI-compatible embeddings. Small + cheap is fine
+// here — we're scoring short strings (URL + title vs. goal/topic) and the
+// signal we care about is "is this on-anchor or far from it".
+const EMBEDDING_MODEL = "openai/text-embedding-3-small"
+
 const SYSTEM_CLASSIFY = `You are a focus coach helping a user stay on task.
 For each URL the user visits during a focus session, you respond with strict JSON:
 {"category": string, "distractionScore": integer 0-100, "nudge": string | null}
@@ -566,6 +571,70 @@ export const summarizeSession = async (input: {
 
 const stripFences = (s: string): string =>
   s.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim()
+
+// ---------------- Embeddings ----------------
+//
+// Goal-aware distraction scoring. We embed the session's goal/topic anchor
+// once, then embed each visited (url + title) pair, and compute cosine
+// similarity. Close to the anchor → low distraction; far → high. This is
+// more consistent than the LLM-derived score because it doesn't depend on
+// the model's mood, and it works for cached hostnames too.
+//
+// We piggyback on the OpenRouter OpenAI-compatible client because it
+// already exposes `embeddings.create`. When OpenRouter isn't configured
+// (or the embeddings call fails), `embed` returns null and the caller
+// falls back to the legacy LLM classifier / heuristic.
+
+export const embed = async (text: string): Promise<number[] | null> => {
+  const trimmed = text.trim().slice(0, 2000)
+  if (!trimmed) return null
+  const c = getOpenRouter()
+  if (!c) return null
+  try {
+    const res = await c.embeddings.create({
+      model: EMBEDDING_MODEL,
+      input: trimmed,
+    })
+    const vec = res.data[0]?.embedding
+    if (!Array.isArray(vec) || vec.length === 0) return null
+    return vec
+  } catch (err) {
+    console.warn("[llm] embed failed:", err)
+    return null
+  }
+}
+
+/** Cosine similarity in [-1, 1]. Treats zero-length vectors as similarity 0. */
+export const cosineSimilarity = (
+  a: ReadonlyArray<number>,
+  b: ReadonlyArray<number>,
+): number => {
+  const n = Math.min(a.length, b.length)
+  if (n === 0) return 0
+  let dot = 0
+  let na = 0
+  let nb = 0
+  for (let i = 0; i < n; i++) {
+    const ai = a[i] ?? 0
+    const bi = b[i] ?? 0
+    dot += ai * bi
+    na += ai * ai
+    nb += bi * bi
+  }
+  if (na === 0 || nb === 0) return 0
+  return dot / (Math.sqrt(na) * Math.sqrt(nb))
+}
+
+/**
+ * Convert a similarity in [-1, 1] to a 0-100 distraction score where 0 is
+ * perfectly on-anchor and 100 is the opposite end. Clamps similarity to
+ * the [0, 1] half-plane first, since negatives are rare and noisy with
+ * short-text embeddings.
+ */
+export const similarityToDistraction = (sim: number): number => {
+  const clipped = Math.max(0, Math.min(1, sim))
+  return Math.round((1 - clipped) * 100)
+}
 
 // ---------------- Toolbar AI ----------------
 
