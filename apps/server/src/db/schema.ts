@@ -194,6 +194,53 @@ export const sessionActions = sqliteTable(
   }),
 )
 
+export const mediaBucketFiles = sqliteTable(
+  "media_bucket_files",
+  {
+    id: text("id").primaryKey(),
+    mimeType: text("mime_type").notNull(),
+    dataBase64: text("data_base64").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    createdIdx: index("media_bucket_files_created_idx").on(t.createdAt),
+  }),
+)
+
+export const userMediaRefs = sqliteTable(
+  "user_media_refs",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    fileId: text("file_id")
+      .notNull()
+      .references(() => mediaBucketFiles.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    sessionId: text("session_id").references(() => focusSessions.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    userKindCreatedIdx: index("user_media_refs_user_kind_created_idx").on(
+      t.userId,
+      t.kind,
+      t.createdAt,
+    ),
+    sessionCreatedIdx: index("user_media_refs_session_created_idx").on(
+      t.sessionId,
+      t.createdAt,
+    ),
+  }),
+)
+
 // Hostname → category cache so repeat visits skip the LLM call.
 export const urlClassifications = sqliteTable("url_classifications", {
   hostname: text("hostname").primaryKey(),

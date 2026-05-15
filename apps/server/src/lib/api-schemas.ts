@@ -86,6 +86,24 @@ export const ListSessionActionsQuery = z.object({
 })
 export type ListSessionActionsQuery = z.infer<typeof ListSessionActionsQuery>
 
+export const MediaKindInput = z.enum(["profile_photo", "screenshot"])
+
+export const UploadMediaInput = z.object({
+  kind: MediaKindInput,
+  mimeType: z.string().min(1).max(120),
+  dataBase64: z.string().min(1),
+  byteSize: z.number().int().min(1).max(10 * 1024 * 1024),
+  sessionId: z.string().min(1).nullable().optional(),
+})
+export type UploadMediaInput = z.infer<typeof UploadMediaInput>
+
+export const ListMediaQuery = z.object({
+  kind: MediaKindInput.optional(),
+  sessionId: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+})
+export type ListMediaQuery = z.infer<typeof ListMediaQuery>
+
 export const SyncJobInput = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("upsertQuote"),
