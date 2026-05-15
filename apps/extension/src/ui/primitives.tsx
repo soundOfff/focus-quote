@@ -165,6 +165,112 @@ export function EmptyState({
   )
 }
 
+interface TabItem<T extends string = string> {
+  value: T
+  label: string
+  icon?: ComponentChildren
+}
+
+export function Tabs<T extends string>({
+  items,
+  value,
+  onChange,
+  class: className,
+}: {
+  items: ReadonlyArray<TabItem<T>>
+  value: T
+  onChange: (next: T) => void
+  class?: string
+}) {
+  return (
+    <div
+      role="tablist"
+      class={cx(
+        "flex flex-wrap items-center gap-1 rounded-md border border-hairline bg-surface p-1",
+        className,
+      )}
+    >
+      {items.map((item) => {
+        const active = item.value === value
+        return (
+          <button
+            key={item.value}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(item.value)}
+            class={cx(
+              "inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70",
+              active
+                ? "bg-surface-soft text-ink"
+                : "text-mute hover:bg-surface-soft/60 hover:text-body",
+            )}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+export function TabPanel({
+  active,
+  children,
+  class: className,
+}: {
+  active: boolean
+  children: ComponentChildren
+  class?: string
+}) {
+  if (!active) return null
+  return <div class={cx("flex flex-col gap-4", className)}>{children}</div>
+}
+
+export function Skeleton({
+  class: className,
+}: {
+  class?: string
+}) {
+  return (
+    <div
+      class={cx(
+        "animate-pulse rounded-md bg-surface-soft",
+        className,
+      )}
+    />
+  )
+}
+
+export function SkeletonCard({
+  lines = 3,
+  class: className,
+}: {
+  lines?: number
+  class?: string
+}) {
+  return (
+    <div
+      class={cx(
+        "flex flex-col gap-2 rounded-md border border-hairline bg-surface p-4",
+        className,
+      )}
+    >
+      <Skeleton class="h-4 w-1/3" />
+      {Array.from({ length: lines }).map((_, i) => (
+        <Skeleton
+          key={i}
+          class={cx(
+            "h-3",
+            i === lines - 1 ? "w-2/3" : "w-full",
+          )}
+        />
+      ))}
+    </div>
+  )
+}
+
 export function Toggle({
   enabled,
   onToggle,
