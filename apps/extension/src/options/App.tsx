@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from "preact/hooks"
 import { Effect } from "effect"
 import {
+  BookOpen,
+  Database,
   Download,
   ImageUp,
   Key,
   LogOut,
   Minus,
-  Moon,
   Plus,
-  Sun,
+  Shield,
+  Timer as TimerIcon,
   User as UserIcon,
 } from "lucide-preact"
 import { QuotesService } from "../services/quotes"
@@ -48,7 +50,19 @@ import { TRANSLATE_LANGUAGES } from "../shared/translation"
 import type { Theme, User } from "@focus-quote/shared"
 import { runP } from "./runtime"
 import { PrivacySection } from "./components/PrivacySection"
-import { Button, NativeSelect, SectionHeader, Surface } from "../ui/primitives"
+import {
+  Button,
+  NativeSelect,
+  SectionHeader,
+  SkeletonCard,
+  Surface,
+  TabPanel,
+  Tabs,
+  Toggle,
+} from "../ui/primitives"
+import { AppShell } from "../ui/AppShell"
+import { ToastProvider, useToast } from "../ui/Toast"
+import type { RecallDepth, RecallQuestionCount } from "../shared/prefs"
 
 const loadInitial = Effect.gen(function* () {
   const storage = yield* StorageService
@@ -144,7 +158,26 @@ const exportAll = Effect.gen(function* () {
   }
 })
 
+type OptionsTab = "account" | "session" | "ai" | "privacy" | "data"
+const ACTIVE_TAB_KEY = "focusquote.options.activeTab"
+
+const isOptionsTab = (v: unknown): v is OptionsTab =>
+  v === "account" ||
+  v === "session" ||
+  v === "ai" ||
+  v === "privacy" ||
+  v === "data"
+
 export function App() {
+  return (
+    <ToastProvider>
+      <AppInner />
+    </ToastProvider>
+  )
+}
+
+function AppInner() {
+  const toast = useToast()
   const [prefs, setPrefs] = useState<Prefs>(defaultPrefs)
   const [profile, setProfile] = useState<ProfilePrefs>(defaultProfilePrefs)
   const [openrouterKey, setOpenrouterKey] = useState("")
@@ -160,6 +193,8 @@ export function App() {
   const [photoBusy, setPhotoBusy] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   const [secretsSupported, setSecretsSupported] = useState(true)
+  const [loaded, setLoaded] = useState(false)
+  const [activeTab, setActiveTab] = useState<OptionsTab>("account")
   const accountImageSrc = resolveAccountImageSrc(profile.photoDataUrl, user?.image)
   const accountEmail = user?.email?.trim() || "No account email available"
   const accountInitial = accountEmail.slice(0, 1).toUpperCase() || "?"
@@ -176,7 +211,22 @@ export function App() {
         applyTheme(s.prefs.theme)
       })
       .catch(console.error)
+      .finally(() => setLoaded(true))
+
+    // Restore the active tab the user last had open.
+    chrome.storage?.local
+      ?.get(ACTIVE_TAB_KEY)
+      .then((res) => {
+        const stored = res?.[ACTIVE_TAB_KEY]
+        if (isOptionsTab(stored)) setActiveTab(stored)
+      })
+      .catch(() => {})
   }, [])
+
+  const handleTabChange = (next: OptionsTab) => {
+    setActiveTab(next)
+    chrome.storage?.local?.set({ [ACTIVE_TAB_KEY]: next }).catch(() => {})
+  }
 
   useEffect(
     () => () => {
@@ -291,6 +341,30 @@ export function App() {
     debouncedPrefsPersist(next)
   }
 
+  const setRecallEnabled = (enabled: boolean) => {
+    const next: Prefs = { ...prefs, recallEnabled: enabled }
+    setPrefs(next)
+    debouncedPrefsPersist(next)
+  }
+
+  const setRecallAutoGenerate = (enabled: boolean) => {
+    const next: Prefs = { ...prefs, recallAutoGenerate: enabled }
+    setPrefs(next)
+    debouncedPrefsPersist(next)
+  }
+
+  const setRecallQuestionCount = (count: RecallQuestionCount) => {
+    const next: Prefs = { ...prefs, recallQuestionCount: count }
+    setPrefs(next)
+    debouncedPrefsPersist(next)
+  }
+
+  const setRecallDepth = (depth: RecallDepth) => {
+    const next: Prefs = { ...prefs, recallDepth: depth }
+    setPrefs(next)
+    debouncedPrefsPersist(next)
+  }
+
   const handleProfileChange = (
     key: "displayName" | "headline",
     value: string,
@@ -344,204 +418,322 @@ export function App() {
         a.click()
         a.remove()
         URL.revokeObjectURL(url)
+        toast.success("Export downloaded.")
       })
-      .catch((e) => console.error("[FocusQuote] export:", e))
+      .catch((e) => {
+        console.error("[FocusQuote] export:", e)
+        toast.error("Export failed.")
+      })
   }
 
   return (
-    <div class="min-h-screen bg-canvas text-body">
-      <div class="mx-auto flex max-w-xl flex-col gap-6 px-6 py-12">
-        <header class="flex items-center justify-between">
-          <h1 class="text-2xl font-bold text-ink">FocusQuote</h1>
-          <Button
-            onClick={handleToggleTheme}
-            aria-label="Toggle theme"
-            variant="ghost"
-            size="sm"
-          >
-            {prefs.theme === "dark" ? <Moon size={14} /> : <Sun size={14} />}
-          </Button>
-        </header>
+    <AppShell
+      page="options"
+      theme={prefs.theme}
+      onToggleTheme={handleToggleTheme}
+    >
+      <div class="mx-auto flex w-full max-w-2xl flex-1 flex-col overflow-hidden px-6 pt-6">
+        <Tabs<OptionsTab>
+          value={activeTab}
+          onChange={handleTabChange}
+          class="self-start"
+          items={[
+            { value: "account", label: "Account", icon: <UserIcon size={12} /> },
+            { value: "session", label: "Session", icon: <TimerIcon size={12} /> },
+            { value: "ai", label: "AI", icon: <BookOpen size={12} /> },
+            { value: "privacy", label: "Privacy", icon: <Shield size={12} /> },
+            { value: "data", label: "Data", icon: <Database size={12} /> },
+          ]}
+        />
 
-        <Surface>
-          <SectionHeader
-            title="Account"
-            icon={<UserIcon size={14} class="text-mute" />}
-          />
-          {user ? (
+        <div class="mt-5 flex min-h-0 flex-1 flex-col overflow-y-auto pb-8 pr-1">
+          {!loaded ? (
+            <div class="flex flex-col gap-4">
+              <SkeletonCard lines={3} />
+              <SkeletonCard lines={3} />
+            </div>
+          ) : (
             <>
-              <div class="flex items-center justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="truncate text-sm font-semibold text-ink">
-                    {accountEmail}
-                  </div>
-                  {user.name && user.name !== accountEmail && (
-                    <div class="truncate text-xs text-mute">{user.name}</div>
-                  )}
-                </div>
-                <Button
-                  onClick={handleSignOut}
-                  variant="outline"
-                  size="sm"
-                >
-                  <LogOut size={12} />
-                  Sign out
-                </Button>
-              </div>
-              <div class="mt-4 grid gap-3 rounded-lg border border-hairline-soft bg-surface-doc p-3">
-                <div class="flex items-center gap-3">
-                  {accountImageSrc ? (
-                    <img
-                      src={accountImageSrc}
-                      alt=""
-                      class="h-10 w-10 rounded-full border border-hairline object-cover"
-                    />
+              <TabPanel active={activeTab === "account"}>
+                <Surface>
+                  <SectionHeader
+                    title="Account"
+                    icon={<UserIcon size={14} class="text-mute" />}
+                  />
+                  {user ? (
+                    <>
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="min-w-0">
+                          <div class="truncate text-sm font-semibold text-ink">
+                            {accountEmail}
+                          </div>
+                          {user.name && user.name !== accountEmail && (
+                            <div class="truncate text-xs text-mute">
+                              {user.name}
+                            </div>
+                          )}
+                        </div>
+                        <Button
+                          onClick={handleSignOut}
+                          variant="outline"
+                          size="sm"
+                        >
+                          <LogOut size={12} />
+                          Sign out
+                        </Button>
+                      </div>
+                      <div class="mt-4 grid gap-3 rounded-lg border border-hairline-soft bg-surface-doc p-3">
+                        <div class="flex items-center gap-3">
+                          {accountImageSrc ? (
+                            <img
+                              src={accountImageSrc}
+                              alt=""
+                              class="h-10 w-10 rounded-full border border-hairline object-cover"
+                            />
+                          ) : (
+                            <div class="flex h-10 w-10 items-center justify-center rounded-full border border-hairline bg-surface-soft text-xs text-mute">
+                              {accountInitial}
+                            </div>
+                          )}
+                          <div class="text-xs text-mute">
+                            Editable local profile shown in extension UI.
+                          </div>
+                        </div>
+                        <InputField label="Email" value={accountEmail} readOnly />
+                        <InputField
+                          label="Display name"
+                          value={profile.displayName}
+                          onInput={(value) =>
+                            handleProfileChange("displayName", value)
+                          }
+                          onBlur={() => flushProfileSave()}
+                          onEnter={() => flushProfileSave()}
+                        />
+                        <ImageField
+                          label="Profile image (stored in Turso bucket)"
+                          busy={photoBusy}
+                          onPick={handleProfileImagePicked}
+                        />
+                        <InputField
+                          label="Headline"
+                          value={profile.headline}
+                          onInput={(value) =>
+                            handleProfileChange("headline", value)
+                          }
+                          onBlur={() => flushProfileSave()}
+                          onEnter={() => flushProfileSave()}
+                          placeholder="Student, writer, builder…"
+                        />
+                        <div class="flex items-center justify-between">
+                          <p
+                            class={`text-[11px] ${profileError ? "text-red-500" : "text-mute"}`}
+                          >
+                            {profileError
+                              ? profileError
+                              : profileStatus === "saving"
+                                ? "Saving…"
+                                : profileStatus === "saved"
+                                  ? "Saved"
+                                  : "Stored on this device + linked to your account"}
+                          </p>
+                        </div>
+                      </div>
+                    </>
                   ) : (
-                    <div class="flex h-10 w-10 items-center justify-center rounded-full border border-hairline bg-surface-soft text-xs text-mute">
-                      {accountInitial}
+                    <p class="text-xs text-mute">
+                      Open the FocusQuote popup from your toolbar to sign in.
+                    </p>
+                  )}
+                </Surface>
+              </TabPanel>
+
+              <TabPanel active={activeTab === "session"}>
+                <Surface>
+                  <SectionHeader title="Session defaults" />
+                  <div class="grid grid-cols-2 gap-2">
+                    <TimeControl
+                      label="Focus (min)"
+                      min={1}
+                      max={180}
+                      value={prefs.defaultDurationMinutes}
+                      onChange={setDuration}
+                    />
+                    <TimeControl
+                      label="Break (min)"
+                      min={0}
+                      max={60}
+                      value={prefs.defaultBreakMinutes}
+                      onChange={setBreak}
+                    />
+                  </div>
+                  <div class="mt-2 grid grid-cols-2 gap-2">
+                    <SelectField
+                      label="Translate from"
+                      value={prefs.translateFromLang}
+                      onChange={setTranslateFrom}
+                      includeAuto
+                    />
+                    <SelectField
+                      label="Translate to"
+                      value={prefs.translateToLang}
+                      onChange={setTranslateTo}
+                    />
+                  </div>
+                </Surface>
+              </TabPanel>
+
+              <TabPanel active={activeTab === "ai"}>
+                <Surface>
+                  <SectionHeader
+                    title="OpenRouter API key"
+                    icon={<Key size={14} class="text-mute" />}
+                  />
+                  <p class="mb-3 text-xs text-mute">
+                    Used for AI features (explain quote, smart search). Stored
+                    encrypted on the FocusQuote server and synced across your
+                    devices.
+                  </p>
+                  {!secretsSupported ? (
+                    <div class="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800 dark:border-yellow-900/30 dark:bg-yellow-900/20 dark:text-yellow-200">
+                      Server not configured for secret storage. Admin: set{" "}
+                      <code class="font-mono">SECRETS_ENCRYPTION_KEY</code>{" "}
+                      environment variable.
+                    </div>
+                  ) : (
+                    <div class="flex items-center gap-2">
+                      <input
+                        type="password"
+                        placeholder="sk-or-…"
+                        value={openrouterKey}
+                        onInput={(e) => {
+                          const nextValue = (e.currentTarget as HTMLInputElement)
+                            .value
+                          setOpenrouterKey(nextValue)
+                          scheduleKeySave(nextValue)
+                        }}
+                        onBlur={() => flushKeySave()}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            flushKeySave()
+                          }
+                        }}
+                        class="flex-1 rounded-md border border-hairline bg-surface px-3 py-2 text-sm outline-none ring-0 focus:ring-1 focus:ring-focus-ring"
+                      />
                     </div>
                   )}
-                  <div class="text-xs text-mute">
-                    Editable local profile shown in extension UI.
-                  </div>
-                </div>
-                <InputField label="Email" value={accountEmail} readOnly />
-                <InputField
-                  label="Display name"
-                  value={profile.displayName}
-                  onInput={(value) => handleProfileChange("displayName", value)}
-                  onBlur={() => flushProfileSave()}
-                  onEnter={() => flushProfileSave()}
-                />
-                <ImageField
-                  label="Profile image (stored in Turso bucket)"
-                  busy={photoBusy}
-                  onPick={handleProfileImagePicked}
-                />
-                <InputField
-                  label="Headline"
-                  value={profile.headline}
-                  onInput={(value) => handleProfileChange("headline", value)}
-                  onBlur={() => flushProfileSave()}
-                  onEnter={() => flushProfileSave()}
-                  placeholder="Student, writer, builder…"
-                />
-                <div class="flex items-center justify-between">
                   <p
-                    class={`text-[11px] ${profileError ? "text-red-500" : "text-mute"}`}
+                    class={`mt-2 text-[11px] ${keyError ? "text-red-500" : "text-mute"}`}
                   >
-                    {profileError
-                      ? profileError
-                      : profileStatus === "saving"
-                        ? "Saving…"
-                        : profileStatus === "saved"
-                          ? "Saved"
-                          : "Stored on this device + linked to your account"}
+                    {keyError
+                      ? keyError
+                      : keyStatus === "saved"
+                        ? "Saved"
+                        : secretsSupported
+                          ? "Autosaves on blur/enter."
+                          : ""}
                   </p>
-                </div>
-              </div>
+                </Surface>
+
+                <Surface>
+                  <SectionHeader
+                    title="Active recall"
+                    subtitle="After each session, FocusQuote can generate short questions so you actively recall what you read."
+                  />
+
+                  <div class="mb-3 flex items-center justify-between">
+                    <span class="text-sm text-ink">
+                      {prefs.recallEnabled
+                        ? "Active recall enabled"
+                        : "Active recall disabled"}
+                    </span>
+                    <Toggle
+                      enabled={prefs.recallEnabled}
+                      onToggle={() => setRecallEnabled(!prefs.recallEnabled)}
+                      ariaLabel="Toggle active recall"
+                    />
+                  </div>
+
+                  <div class="mb-3 flex items-center justify-between rounded-lg border border-hairline-soft bg-surface-doc px-3 py-2.5">
+                    <div class="min-w-0 pr-3">
+                      <div class="text-xs font-medium text-ink">
+                        Auto-generate when a session ends
+                      </div>
+                      <div class="text-[11px] text-mute">
+                        Off: only generate when you open the session-detail page.
+                      </div>
+                    </div>
+                    <Toggle
+                      enabled={prefs.recallAutoGenerate}
+                      onToggle={() =>
+                        setRecallAutoGenerate(!prefs.recallAutoGenerate)
+                      }
+                      ariaLabel="Toggle auto-generate"
+                    />
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-2">
+                    <label class="flex flex-col gap-1.5 rounded-lg border border-hairline bg-surface px-3 py-2.5">
+                      <span class="text-[10px] uppercase tracking-wider text-mute">
+                        Question count
+                      </span>
+                      <NativeSelect
+                        value={String(prefs.recallQuestionCount)}
+                        onInput={(e) =>
+                          setRecallQuestionCount(
+                            Number(
+                              (e.currentTarget as HTMLSelectElement).value,
+                            ) as RecallQuestionCount,
+                          )
+                        }
+                      >
+                        <option value="3">3</option>
+                        <option value="5">5</option>
+                        <option value="7">7</option>
+                      </NativeSelect>
+                    </label>
+                    <label class="flex flex-col gap-1.5 rounded-lg border border-hairline bg-surface px-3 py-2.5">
+                      <span class="text-[10px] uppercase tracking-wider text-mute">
+                        Difficulty
+                      </span>
+                      <NativeSelect
+                        value={prefs.recallDepth}
+                        onInput={(e) =>
+                          setRecallDepth(
+                            (e.currentTarget as HTMLSelectElement)
+                              .value as RecallDepth,
+                          )
+                        }
+                      >
+                        <option value="easy">Easy</option>
+                        <option value="standard">Standard</option>
+                        <option value="challenging">Challenging</option>
+                      </NativeSelect>
+                    </label>
+                  </div>
+                </Surface>
+              </TabPanel>
+
+              <TabPanel active={activeTab === "privacy"}>
+                <PrivacySection />
+              </TabPanel>
+
+              <TabPanel active={activeTab === "data"}>
+                <Surface>
+                  <SectionHeader title="Data" />
+                  <p class="mb-3 text-xs text-mute">
+                    Download all locally cached quotes and sessions as JSON.
+                  </p>
+                  <Button onClick={handleExport} variant="outline">
+                    <Download size={14} /> Export JSON
+                  </Button>
+                </Surface>
+              </TabPanel>
             </>
-          ) : (
-            <p class="text-xs text-mute">
-              Open the FocusQuote popup from your toolbar to sign in.
-            </p>
           )}
-        </Surface>
-
-        <Surface>
-          <SectionHeader title="Session defaults" />
-          <div class="grid grid-cols-2 gap-2">
-            <TimeControl
-              label="Focus (min)"
-              min={1}
-              max={180}
-              value={prefs.defaultDurationMinutes}
-              onChange={setDuration}
-            />
-            <TimeControl
-              label="Break (min)"
-              min={0}
-              max={60}
-              value={prefs.defaultBreakMinutes}
-              onChange={setBreak}
-            />
-          </div>
-          <div class="mt-2 grid grid-cols-2 gap-2">
-            <SelectField
-              label="Translate from"
-              value={prefs.translateFromLang}
-              onChange={setTranslateFrom}
-              includeAuto
-            />
-            <SelectField
-              label="Translate to"
-              value={prefs.translateToLang}
-              onChange={setTranslateTo}
-            />
-          </div>
-        </Surface>
-
-        <Surface>
-          <SectionHeader
-            title="OpenRouter API key"
-            icon={<Key size={14} class="text-mute" />}
-          />
-          <p class="mb-3 text-xs text-mute">
-            Used for AI features (explain quote, smart search). Stored
-            encrypted on the FocusQuote server and synced across your devices.
-          </p>
-          {!secretsSupported ? (
-            <div class="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800 dark:border-yellow-900/30 dark:bg-yellow-900/20 dark:text-yellow-200">
-              Server not configured for secret storage. Admin: set{" "}
-              <code class="font-mono">SECRETS_ENCRYPTION_KEY</code> environment
-              variable.
-            </div>
-          ) : (
-            <div class="flex items-center gap-2">
-              <input
-                type="password"
-                placeholder="sk-or-…"
-                value={openrouterKey}
-                onInput={(e) => {
-                  const nextValue = (e.currentTarget as HTMLInputElement).value
-                  setOpenrouterKey(nextValue)
-                  scheduleKeySave(nextValue)
-                }}
-                onBlur={() => flushKeySave()}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault()
-                    flushKeySave()
-                  }
-                }}
-                class="flex-1 rounded-md border border-hairline bg-surface px-3 py-2 text-sm outline-none ring-0 focus:ring-1 focus:ring-focus-ring"
-              />
-            </div>
-          )}
-          <p class={`mt-2 text-[11px] ${keyError ? "text-red-500" : "text-mute"}`}>
-            {keyError
-              ? keyError
-              : keyStatus === "saved"
-                ? "Saved"
-                : secretsSupported
-                  ? "Autosaves on blur/enter."
-                  : ""}
-          </p>
-        </Surface>
-
-        <PrivacySection />
-
-        <Surface>
-          <SectionHeader title="Data" />
-          <p class="mb-3 text-xs text-mute">
-            Download all locally cached quotes and sessions as JSON.
-          </p>
-          <Button onClick={handleExport} variant="outline">
-            <Download size={14} /> Export JSON
-          </Button>
-        </Surface>
+        </div>
       </div>
-    </div>
+    </AppShell>
   )
 }
 

@@ -16,6 +16,7 @@ import { DEBUG_OVERLAY_KEY } from "../../shared/debug"
 import { loadPrefs, pushPrefsToRemote } from "../../shared/prefs"
 import { runP } from "../runtime"
 import { Button, SectionHeader, Surface, Toggle } from "../../ui/primitives"
+import { validateDomainEntry } from "../../shared/url"
 
 const load = Effect.gen(function* () {
   const storage = yield* StorageService
@@ -49,6 +50,7 @@ const persistDebugOverlay = (enabled: boolean) =>
 export function PrivacySection() {
   const [privacy, setPrivacy] = useState<Privacy>(defaultPrivacy)
   const [newRule, setNewRule] = useState("")
+  const [ruleError, setRuleError] = useState<string | null>(null)
   const [debugOverlay, setDebugOverlay] = useState(false)
 
   useEffect(() => {
@@ -74,10 +76,17 @@ export function PrivacySection() {
   const handleToggle = () => update({ ...privacy, trackUrls: !privacy.trackUrls })
 
   const handleAdd = () => {
-    const v = newRule.trim().toLowerCase().replace(/^https?:\/\//, "")
-    if (!v) return
-    if (privacy.blocklist.includes(v)) return
-    update({ ...privacy, blocklist: [...privacy.blocklist, v] })
+    const result = validateDomainEntry(newRule)
+    if (!result.ok) {
+      setRuleError(result.error ?? "Invalid domain.")
+      return
+    }
+    if (privacy.blocklist.includes(result.value)) {
+      setRuleError("Already in the blocklist.")
+      return
+    }
+    setRuleError(null)
+    update({ ...privacy, blocklist: [...privacy.blocklist, result.value] })
     setNewRule("")
   }
 
@@ -122,16 +131,24 @@ export function PrivacySection() {
           type="text"
           placeholder="example.com"
           value={newRule}
-          onInput={(e) => setNewRule((e.currentTarget as HTMLInputElement).value)}
+          onInput={(e) => {
+            setNewRule((e.currentTarget as HTMLInputElement).value)
+            if (ruleError) setRuleError(null)
+          }}
           onKeyDown={(e) => {
             if ((e as KeyboardEvent).key === "Enter") handleAdd()
           }}
-          class="flex-1 rounded-md border border-hairline bg-surface px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-focus-ring"
+          class={`flex-1 rounded-md border bg-surface px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-focus-ring ${
+            ruleError ? "border-accent-red" : "border-hairline"
+          }`}
         />
         <Button onClick={handleAdd} variant="outline" size="sm">
           <Plus size={12} /> Add
         </Button>
       </div>
+      {ruleError && (
+        <p class="mb-2 text-[11px] text-accent-red">{ruleError}</p>
+      )}
       {privacy.blocklist.length === 0 ? (
         <p class="text-xs text-mute">No domains blocked.</p>
       ) : (
