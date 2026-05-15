@@ -77,7 +77,14 @@ const loadInitial = Effect.gen(function* () {
   }
   const openrouterKey = yield* getOpenrouterKeyState
   const user = yield* auth.currentUser
-  return { prefs, profile, openrouterKey, user }
+
+  // Check if server supports secrets storage (SECRETS_ENCRYPTION_KEY configured).
+  // Best-effort: if the check fails, assume it's enabled (let error happen on save).
+  const secretsSupported = yield* Effect.either(api.getSecret("openrouter")).pipe(
+    Effect.map((r) => r._tag === "Right" || !String(r?.left?.message ?? "").includes("SECRETS_DISABLED")),
+  )
+
+  return { prefs, profile, openrouterKey, user, secretsSupported }
 })
 
 const signOut = Effect.gen(function* () {
@@ -152,6 +159,7 @@ export function App() {
   const [profileError, setProfileError] = useState<string | null>(null)
   const [photoBusy, setPhotoBusy] = useState(false)
   const [user, setUser] = useState<User | null>(null)
+  const [secretsSupported, setSecretsSupported] = useState(true)
   const accountImageSrc = resolveAccountImageSrc(profile.photoDataUrl, user?.image)
   const accountEmail = user?.email?.trim() || "No account email available"
   const accountInitial = accountEmail.slice(0, 1).toUpperCase() || "?"
@@ -164,6 +172,7 @@ export function App() {
         setOpenrouterState(s.openrouterKey)
         setOpenrouterKey(s.openrouterKey.hint ?? "")
         setUser(s.user)
+        setSecretsSupported(s.secretsSupported)
         applyTheme(s.prefs.theme)
       })
       .catch(console.error)
@@ -481,32 +490,42 @@ export function App() {
             Used for AI features (explain quote, smart search). Stored
             encrypted on the FocusQuote server and synced across your devices.
           </p>
-          <div class="flex items-center gap-2">
-            <input
-              type="password"
-              placeholder="sk-or-…"
-              value={openrouterKey}
-              onInput={(e) => {
-                const nextValue = (e.currentTarget as HTMLInputElement).value
-                setOpenrouterKey(nextValue)
-                scheduleKeySave(nextValue)
-              }}
-              onBlur={() => flushKeySave()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault()
-                  flushKeySave()
-                }
-              }}
-              class="flex-1 rounded-md border border-hairline bg-surface px-3 py-2 text-sm outline-none ring-0 focus:ring-1 focus:ring-focus-ring"
-            />
-          </div>
+          {!secretsSupported ? (
+            <div class="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800 dark:border-yellow-900/30 dark:bg-yellow-900/20 dark:text-yellow-200">
+              Server not configured for secret storage. Admin: set{" "}
+              <code class="font-mono">SECRETS_ENCRYPTION_KEY</code> environment
+              variable.
+            </div>
+          ) : (
+            <div class="flex items-center gap-2">
+              <input
+                type="password"
+                placeholder="sk-or-…"
+                value={openrouterKey}
+                onInput={(e) => {
+                  const nextValue = (e.currentTarget as HTMLInputElement).value
+                  setOpenrouterKey(nextValue)
+                  scheduleKeySave(nextValue)
+                }}
+                onBlur={() => flushKeySave()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    flushKeySave()
+                  }
+                }}
+                class="flex-1 rounded-md border border-hairline bg-surface px-3 py-2 text-sm outline-none ring-0 focus:ring-1 focus:ring-focus-ring"
+              />
+            </div>
+          )}
           <p class={`mt-2 text-[11px] ${keyError ? "text-red-500" : "text-mute"}`}>
             {keyError
               ? keyError
               : keyStatus === "saved"
                 ? "Saved"
-                : "Autosaves on blur/enter."}
+                : secretsSupported
+                  ? "Autosaves on blur/enter."
+                  : ""}
           </p>
         </Surface>
 
