@@ -54,11 +54,19 @@ describe("SyncService", () => {
     const program = Effect.gen(function* () {
       const sync = yield* SyncService
       yield* sync.enqueue(sampleJob("q1"))
+      yield* sync.enqueue({
+        kind: "upsertSessionAction",
+        id: "a1" as never,
+        sessionId: "s1" as never,
+        actionKind: "click",
+        payload: "{\"selector\":\"#btn\"}",
+        at: "2026-05-04T00:00:00Z",
+      })
       yield* sync.enqueue({ kind: "deleteQuote", id: "q1" as QuoteId })
       return yield* sync.queueSize
     }).pipe(Effect.provide(TestLayer))
 
-    expect(await Effect.runPromise(program)).toBe(2)
+    expect(await Effect.runPromise(program)).toBe(3)
   })
 
   it("drains the queue when API succeeds", async () => {
