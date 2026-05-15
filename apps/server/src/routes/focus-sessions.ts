@@ -3,7 +3,7 @@ import { zValidator } from "@hono/zod-validator"
 import { and, desc, eq } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { db } from "../db/client"
-import { focusSessions } from "../db/schema"
+import { focusSessions, sessionActions, sessionUrls } from "../db/schema"
 import { requireUser, type RequireUserVariables } from "../middleware/require-user"
 import { z } from "zod"
 import { UpsertFocusSessionInput } from "../lib/api-schemas"
@@ -102,7 +102,31 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
     if (row.completed && !row.summary) {
       void maybeGenerateSummary(userId, id)
     }
-    return c.json({ summary: row.summary })
+    const pagesVisited = await db
+      .select({
+        url: sessionUrls.url,
+        title: sessionUrls.title,
+        visitedAt: sessionUrls.visitedAt,
+      })
+      .from(sessionUrls)
+      .where(and(eq(sessionUrls.sessionId, id), eq(sessionUrls.userId, userId)))
+      .orderBy(desc(sessionUrls.visitedAt))
+      .limit(60)
+
+    const actions = await db
+      .select({
+        kind: sessionActions.kind,
+        at: sessionActions.at,
+        payload: sessionActions.payload,
+      })
+      .from(sessionActions)
+      .where(
+        and(eq(sessionActions.sessionId, id), eq(sessionActions.userId, userId)),
+      )
+      .orderBy(desc(sessionActions.at))
+      .limit(200)
+
+    return c.json({ summary: row.summary, pagesVisited, actions })
   })
   .get("/:id/study-tips", async (c) => {
     const userId = c.get("user").id

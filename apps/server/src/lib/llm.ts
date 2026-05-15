@@ -16,7 +16,8 @@ For each URL the user visits during a focus session, you respond with strict JSO
 Reply with ONLY the JSON object, no prose, no markdown fences.`
 
 const SYSTEM_SUMMARY = `You are a focus coach summarizing a completed session.
-You receive the session goal and the list of URLs visited (with categories).
+You receive the session goal and a list of visited pages with category and optional text snippets from those pages.
+Ground your claims in the provided page text whenever possible. Do not invent facts not supported by the snippets.
 Reply with strict JSON: {"summary": string} containing 2-3 short sentences in the user's language reviewing what they did, on-goal vs off-goal patterns, and one actionable tip.
 No prose outside JSON, no markdown fences.`
 
@@ -43,6 +44,20 @@ Reply with strict JSON: {"verdict": "correct" | "partial" | "incorrect", "feedba
 - "incorrect": wrong, off-topic, or empty.
 - "feedback": one or two sentences in the student's language. Be encouraging but honest. If partial/incorrect, point at the specific gap.
 No prose outside JSON, no markdown fences.`
+
+const SYSTEM_QUOTE_ASSISTANT = `You are a helpful reading assistant. The user has highlighted a passage on a web page and wants help with it.
+- If they haven't asked a specific question yet, give a concise, high-signal summary of the passage and offer 2-3 short suggested follow-up questions at the end.
+- If they ask a question, answer based on the passage. If the passage isn't enough, say so plainly.
+- Keep replies short (under 180 words) and well-structured. No markdown headings — short paragraphs only.
+- Respond in the user's language.`
+
+const SYSTEM_GUIDE_STEPS = `You are a UI navigation assistant. Given a user's goal, return a JSON array of steps.
+Each step has: { "instruction": string, "x": number (0-1 normalized viewport fraction), "y": number (0-1 normalized viewport fraction), "description": string }
+- "instruction" is what the user should do at this waypoint (e.g. "Click the profile icon").
+- "x" and "y" are estimates of where on a typical web app this control sits. Use sensible defaults: top-right user menus (0.95, 0.06), left sidebars (0.1, 0.3..0.7), main content centers (0.5, 0.5), bottom bars (0.5, 0.95). Clamp to (0.02..0.98).
+- "description" is one short sentence shown to the user as a tooltip.
+- Return between 3 and 7 steps. Keep them ordered.
+Reply with strict JSON: {"steps": [...]}. No markdown fences, no prose outside the JSON.`
 
 const SYSTEM_RESOURCES = `You are a study coach recommending additional resources after a focus session.
 You receive the session goal and the URLs the user visited.
@@ -429,13 +444,25 @@ const checkUrl = async (url: string): Promise<boolean> => {
 
 export const summarizeSession = async (input: {
   goal: string | null
-  urls: Array<{ url: string; category: string | null; title: string | null }>
+  urls: Array<{
+    url: string
+    category: string | null
+    title: string | null
+    content: string | null
+  }>
 }): Promise<string | null> => {
   if (input.urls.length === 0) return null
 
+  const pages = input.urls.slice(0, 60).map((u) => ({
+    url: u.url,
+    title: u.title,
+    category: u.category,
+    contentSnippet: u.content ? u.content.slice(0, 600) : null,
+  }))
+
   const userMessage = JSON.stringify({
     goal: input.goal ?? "(no explicit goal)",
-    urls: input.urls.slice(0, 60),
+    urls: pages.slice(0, 12),
   })
 
   try {
@@ -457,6 +484,172 @@ export const summarizeSession = async (input: {
 
 const stripFences = (s: string): string =>
   s.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim()
+
+// ---------------- Toolbar AI ----------------
+
+export interface QuoteAssistantTurn {
+  role: "user" | "assistant"
+  content: string
+}
+
+/**
+ * Conversational helper for the Quote+AI toolbar button. We always include
+ * the highlighted passage as the system "context" and forward the full
+ * conversation so follow-ups are coherent.
+ */
+export const generateQuoteAssistantReply = async (input: {
+  passage: string
+  sourceUrl?: string | null
+  history: ReadonlyArray<QuoteAssistantTurn>
+  userMessage: string
+}): Promise<string | null> => {
+  const provider = pickProvider()
+  if (provider === "none") return null
+
+  // Build a "user message" that pins the passage, then the running chat.
+  const contextHeader = [
+    `Highlighted passage:`,
+    `"""${input.passage.slice(0, 4000)}"""`,
+    input.sourceUrl ? `Source URL: ${input.sourceUrl}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n")
+
+  const userMessage = input.userMessage.trim()
+
+  try {
+    if (provider === "anthropic") {
+      const c = getAnthropic()
+      if (!c) return null
+      const messages: Anthropic.MessageParam[] = []
+      // Seed the conversation with the highlighted passage as the first user turn.
+      messages.push({ role: "user", content: contextHeader })
+      messages.push({
+        role: "assistant",
+        content:
+          "Got it — I have the passage. What would you like me to do with it?",
+      })
+      for (const turn of input.history) {
+        messages.push({
+          role: turn.role,
+          content: turn.content.slice(0, 4000),
+        })
+      }
+      messages.push({
+        role: "user",
+        content:
+          userMessage.length > 0
+            ? userMessage
+            : "Summarize this passage and suggest 2-3 follow-up questions I could ask.",
+      })
+      const res = await c.messages.create({
+        model: ANTHROPIC_SONNET,
+        max_tokens: 800,
+        system: SYSTEM_QUOTE_ASSISTANT,
+        messages,
+      })
+      const text = res.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("")
+      return text.trim() || null
+    }
+
+    // OpenRouter / OpenAI-compatible.
+    const c = getOpenRouter()
+    if (!c) return null
+    const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> =
+      [
+        { role: "system", content: SYSTEM_QUOTE_ASSISTANT },
+        { role: "user", content: contextHeader },
+        {
+          role: "assistant",
+          content:
+            "Got it — I have the passage. What would you like me to do with it?",
+        },
+      ]
+    for (const turn of input.history) {
+      messages.push({ role: turn.role, content: turn.content.slice(0, 4000) })
+    }
+    messages.push({
+      role: "user",
+      content:
+        userMessage.length > 0
+          ? userMessage
+          : "Summarize this passage and suggest 2-3 follow-up questions I could ask.",
+    })
+    const res = await c.chat.completions.create({
+      model: env.OPENROUTER_MODEL,
+      max_tokens: 800,
+      messages,
+    })
+    return res.choices[0]?.message?.content?.trim() || null
+  } catch (err) {
+    console.warn("[llm] generateQuoteAssistantReply failed:", err)
+    return null
+  }
+}
+
+export interface GuideStep {
+  instruction: string
+  x: number
+  y: number
+  description: string
+}
+
+const clamp01 = (n: number): number => Math.max(0.02, Math.min(0.98, n))
+
+/**
+ * Convert a free-text goal into an ordered list of normalized viewport
+ * coordinates. The model output is validated before being returned.
+ */
+export const generateGuideSteps = async (input: {
+  goal: string
+  sourceUrl?: string | null
+}): Promise<GuideStep[] | null> => {
+  const userMessage = JSON.stringify({
+    goal: input.goal.slice(0, 1000),
+    sourceUrl: input.sourceUrl ?? null,
+  })
+  try {
+    const text = await generate({
+      system: SYSTEM_GUIDE_STEPS,
+      user: userMessage,
+      maxTokens: 900,
+      tier: "smart",
+      expectJson: true,
+    })
+    if (!text) return null
+    const parsed = JSON.parse(stripFences(text)) as { steps?: unknown }
+    if (!Array.isArray(parsed.steps)) return null
+    const out: GuideStep[] = []
+    for (const raw of parsed.steps) {
+      if (typeof raw !== "object" || raw === null) continue
+      const r = raw as Record<string, unknown>
+      if (
+        typeof r.instruction !== "string" ||
+        typeof r.description !== "string" ||
+        typeof r.x !== "number" ||
+        typeof r.y !== "number" ||
+        Number.isNaN(r.x) ||
+        Number.isNaN(r.y)
+      ) {
+        continue
+      }
+      out.push({
+        instruction: r.instruction.slice(0, 240),
+        description: r.description.slice(0, 240),
+        x: clamp01(r.x),
+        y: clamp01(r.y),
+      })
+    }
+    if (out.length === 0) return null
+    return out.slice(0, 10)
+  } catch (err) {
+    console.warn("[llm] generateGuideSteps failed:", err)
+    return null
+  }
+}
 
 /**
  * OpenRouter wraps upstream provider errors and the OpenAI SDK strips most

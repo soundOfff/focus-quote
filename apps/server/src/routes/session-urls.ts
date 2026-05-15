@@ -67,6 +67,7 @@ export const sessionUrlsRoutes = new Hono<{
           url: u.url,
           hostname: u.hostname,
           title: u.title,
+          content: u.content ? u.content.slice(0, 4000) : null,
           visitedAt: u.visitedAt,
         })
         .onConflictDoNothing({ target: sessionUrls.id })
@@ -91,6 +92,7 @@ const toDTO = (row: typeof sessionUrls.$inferSelect) => ({
   url: row.url,
   hostname: row.hostname,
   title: row.title,
+  content: row.content,
   visitedAt: row.visitedAt,
   category: row.category,
   distractionScore: row.distractionScore,

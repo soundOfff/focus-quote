@@ -39,6 +39,7 @@ export const maybeGenerateSummary = async (
         url: sessionUrls.url,
         title: sessionUrls.title,
         category: sessionUrls.category,
+        content: sessionUrls.content,
       })
       .from(sessionUrls)
       .where(
@@ -58,6 +59,7 @@ export const maybeGenerateSummary = async (
         url: u.url,
         title: u.title,
         category: u.category,
+        content: u.content,
       })),
     })
 
