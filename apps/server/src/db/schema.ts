@@ -153,6 +153,7 @@ export const sessionUrls = sqliteTable(
     url: text("url").notNull(),
     hostname: text("hostname").notNull(),
     title: text("title"),
+    content: text("content"),
     visitedAt: text("visited_at")
       .notNull()
       .default(sql`(datetime('now'))`),
@@ -169,6 +170,27 @@ export const sessionUrls = sqliteTable(
       t.userId,
       t.visitedAt,
     ),
+  }),
+)
+
+export const sessionActions = sqliteTable(
+  "session_actions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => focusSessions.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    payload: text("payload").notNull(),
+    at: text("at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    sessionAtIdx: index("session_actions_session_at_idx").on(t.sessionId, t.at),
   }),
 )
 
