@@ -16,6 +16,9 @@ import type { ToolbarShell } from "./shell"
 
 const STORAGE_KEY = "focusquote.toolbar.notificationsBlocked"
 const PAGE_MARKER = "data-focusquote-notif-override"
+const PAGE_SCRIPT_ID = "focusquote-notifications-page-world"
+const PAGE_SCRIPT_PATH = "src/content/notificationsPageWorld.js"
+const PAGE_MESSAGE_TYPE = "focusquote.notifications.override"
 
 const readBlocked = (): boolean => {
   try {
@@ -32,65 +35,31 @@ const writeBlocked = (b: boolean): void => {
   }
 }
 
-/**
- * The script we inject into the page world. Stringified so it survives the
- * isolated-world boundary. Stores originals on a hidden global so we can
- * restore them later when the user re-enables notifications.
- */
-const PAGE_WORLD_SCRIPT = `
-;(() => {
-  const FQ_KEY = '__focusquote_notif__';
-  const w = window;
-  if (w[FQ_KEY] && w[FQ_KEY].applied) return;
-  if (typeof w.Notification === 'undefined') return;
-  const origRequest = w.Notification.requestPermission;
-  const origCtor = w.Notification;
-  w[FQ_KEY] = { applied: true, origRequest, origCtor };
-  try {
-    w.Notification.requestPermission = function () {
-      const result = 'denied';
-      if (arguments.length > 0 && typeof arguments[0] === 'function') {
-        try { arguments[0](result); } catch (_) {}
-      }
-      return Promise.resolve(result);
-    };
-  } catch (_) {}
-  try {
-    Object.defineProperty(w.Notification, 'permission', {
-      configurable: true,
-      get() { return 'denied'; },
-    });
-  } catch (_) {}
-})();
-`
-
-const PAGE_WORLD_RESTORE = `
-;(() => {
-  const FQ_KEY = '__focusquote_notif__';
-  const w = window;
-  const state = w[FQ_KEY];
-  if (!state || !state.applied) return;
-  try { w.Notification.requestPermission = state.origRequest; } catch (_) {}
-  try { delete w.Notification.permission; } catch (_) {}
-  state.applied = false;
-})();
-`
-
-const injectIntoPageWorld = (source: string): void => {
-  // CSP on locked-down sites (e.g. GitHub gist raw views) may block inline
-  // <script> injection. We catch silently — the isolated-world override
-  // below still protects extension-context callers, and most pages allow it.
+const injectPageBridge = (): void => {
+  if (document.getElementById(PAGE_SCRIPT_ID)) return
   try {
     const el = document.createElement("script")
+    el.id = PAGE_SCRIPT_ID
     el.setAttribute(PAGE_MARKER, "")
-    el.textContent = source
+    el.src = chrome.runtime.getURL(PAGE_SCRIPT_PATH)
+    el.async = false
     ;(document.documentElement || document.head || document.body).appendChild(
       el,
     )
-    el.remove()
   } catch (err) {
-    console.warn("[FocusQuote] could not inject page-world script:", err)
+    console.warn("[FocusQuote] could not inject page-world bridge:", err)
   }
+}
+
+const notifyPageWorld = (blocked: boolean): void => {
+  window.postMessage(
+    {
+      source: "focusquote",
+      type: PAGE_MESSAGE_TYPE,
+      blocked,
+    },
+    "*",
+  )
 }
 
 /**
@@ -143,14 +112,16 @@ export const installNotificationsButton = (shell: ToolbarShell): (() => void) =>
     writeBlocked(state)
     if (state) {
       applyIsolatedPatch()
-      injectIntoPageWorld(PAGE_WORLD_SCRIPT)
+      injectPageBridge()
+      notifyPageWorld(true)
       btn.setIcon(icons.bellOff(tokens.icon.md))
       btn.setBadge(true)
       btn.setActive(true)
       btn.setLabel("Notifications blocked — click to allow")
     } else {
       removeIsolatedPatch()
-      injectIntoPageWorld(PAGE_WORLD_RESTORE)
+      injectPageBridge()
+      notifyPageWorld(false)
       btn.setIcon(icons.bell(tokens.icon.md))
       btn.setBadge(false)
       btn.setActive(false)
@@ -172,6 +143,7 @@ export const installNotificationsButton = (shell: ToolbarShell): (() => void) =>
     // touch the stored preference — if the user re-starts a session, we
     // want their previous choice to come back.
     removeIsolatedPatch()
-    injectIntoPageWorld(PAGE_WORLD_RESTORE)
+    injectPageBridge()
+    notifyPageWorld(false)
   }
 }

@@ -1,15 +1,15 @@
 ;(() => {
   const FLAG = "__focusquote_spa_nav_installed__"
-  if ((window as unknown as Record<string, unknown>)[FLAG]) return
-  ;(window as unknown as Record<string, unknown>)[FLAG] = true
+  if (window[FLAG]) return
+  window[FLAG] = true
 
-  const fire = (url: string) => {
+  const fire = (url) => {
     window.postMessage({ source: "focusquote", type: "spa-nav", url }, "*")
   }
 
-  const wrap = (key: "pushState" | "replaceState") => {
+  const wrap = (key) => {
     const original = history[key]
-    history[key] = function (...args: Parameters<History["pushState"]>) {
+    history[key] = function (...args) {
       const result = original.apply(this, args)
       fire(location.href)
       return result

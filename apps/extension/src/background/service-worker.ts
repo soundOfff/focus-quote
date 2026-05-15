@@ -256,6 +256,13 @@ const flushActions = Effect.gen(function* () {
   yield* logger.flush.pipe(Effect.catchAll(() => Effect.void))
 })
 
+const handleSyncNow = Effect.gen(function* () {
+  // Force-persist live URL/action buffers first, then drain offline queue.
+  yield* flushUrls
+  yield* flushActions
+  yield* tickSync
+})
+
 const handleActionEvent = (msg: ActionEventMessage) =>
   Effect.gen(function* () {
     const logger = yield* ActionLoggerService
@@ -552,7 +559,7 @@ chrome.runtime.onMessage.addListener(
           ? handleSessionCancel
           : msg.type === "focusquote.saveQuote"
             ? handleSaveQuoteMessage(msg, sender)
-            : tickSync
+            : handleSyncNow
     runWithServices(program)
       .then(() => respond({ ok: true }))
       .catch((err) =>

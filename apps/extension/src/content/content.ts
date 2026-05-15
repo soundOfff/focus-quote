@@ -7,6 +7,12 @@ import {
 import { initFocusToolbar } from "./toolbar"
 import { mountActionCapture } from "./actionCapture"
 import { extractPageContent } from "./pageContent"
+import { PREFS_KEY, defaultPrefs } from "../shared/prefs"
+import {
+  TRANSLATE_LANGUAGES,
+  isValidTranslateFrom,
+  isValidTranslateTo,
+} from "../shared/translation"
 
 // Floating focus-mode toolbar (only renders while a session is active).
 initFocusToolbar()
@@ -16,9 +22,26 @@ const PRIVACY_KEY = "focusquote.privacy"
 
 type ActiveSession = { sessionId: string } | null
 type Privacy = { trackUrls: boolean; blocklist: string[] }
+type Prefs = {
+  translateFromLang: string
+  translateToLang: string
+}
+interface SaveRow {
+  root: HTMLDivElement
+  saveBtn: HTMLButtonElement
+  resultCard: HTMLDivElement
+  fromSelect: HTMLSelectElement
+  toSelect: HTMLSelectElement
+  translateBtn: HTMLButtonElement
+}
 
 let activeSession: ActiveSession = null
 let privacy: Privacy = { trackUrls: false, blocklist: [] }
+let prefs: Prefs = {
+  translateFromLang: defaultPrefs.translateFromLang,
+  translateToLang: defaultPrefs.translateToLang,
+}
+let saveRow: SaveRow | null = null
 
 const isBlockedHost = (hostname: string): boolean => {
   const h = hostname.toLowerCase()
@@ -33,9 +56,10 @@ const shouldTrackUrl = (url: URL): boolean =>
   privacy.trackUrls && !isBlockedHost(url.hostname)
 
 const refreshSessionAndPrivacy = async () => {
-  const out = await chrome.storage.local.get([SESSION_KEY, PRIVACY_KEY])
+  const out = await chrome.storage.local.get([SESSION_KEY, PRIVACY_KEY, PREFS_KEY])
   activeSession = (out[SESSION_KEY] as ActiveSession) ?? null
   const nextPrivacy = out[PRIVACY_KEY]
+  const nextPrefs = out[PREFS_KEY]
   if (
     nextPrivacy &&
     typeof nextPrivacy === "object" &&
@@ -44,50 +68,46 @@ const refreshSessionAndPrivacy = async () => {
   ) {
     privacy = nextPrivacy as Privacy
   }
+  if (nextPrefs && typeof nextPrefs === "object") {
+    const p = nextPrefs as Record<string, unknown>
+    const from =
+      typeof p.translateFromLang === "string" && p.translateFromLang.length > 0
+        ? p.translateFromLang
+        : defaultPrefs.translateFromLang
+    const to =
+      typeof p.translateToLang === "string" && p.translateToLang.length > 0
+        ? p.translateToLang
+        : defaultPrefs.translateToLang
+    prefs = {
+      translateFromLang: isValidTranslateFrom(from)
+        ? from
+        : defaultPrefs.translateFromLang,
+      translateToLang: isValidTranslateTo(to) ? to : defaultPrefs.translateToLang,
+    }
+  }
+  if (saveRow) {
+    saveRow.fromSelect.value = prefs.translateFromLang
+    saveRow.toSelect.value = prefs.translateToLang
+  }
 }
 
-const getSpaNavInjectorCandidates = (): string[] => {
-  const fromManifest =
-    chrome.runtime
-      .getManifest()
-      .web_accessible_resources?.flatMap((entry) =>
-        typeof entry === "string" ? [] : (entry.resources ?? []),
-      )
-      .filter(
-        (resource) =>
-          !resource.includes("*") &&
-          resource.includes("spaNavInjector") &&
-          /\.(?:ts|js|mjs)$/.test(resource),
-      ) ?? []
-  return Array.from(
-    new Set(["src/content/spaNavInjector.js", "src/content/spaNavInjector.ts", ...fromManifest]),
-  )
-}
+const SPA_NAV_INJECTOR_PATH = "src/content/spaNavInjector.js"
 
 const injectSpaNavScript = () => {
   const id = "focusquote-spa-nav-injector"
   if (document.getElementById(id)) return
   const parent = document.documentElement || document.head || document.body
   if (!parent) return
-  const candidates = getSpaNavInjectorCandidates()
-  let index = 0
-
-  const injectNext = () => {
-    if (index >= candidates.length) return
-    const script = document.createElement("script")
-    script.id = id
-    script.src = chrome.runtime.getURL(candidates[index]!)
-    script.async = false
-    script.onload = () => script.remove()
-    script.onerror = () => {
-      script.remove()
-      index += 1
-      injectNext()
-    }
-    parent.appendChild(script)
+  const script = document.createElement("script")
+  script.id = id
+  script.src = chrome.runtime.getURL(SPA_NAV_INJECTOR_PATH)
+  script.async = false
+  script.onload = () => script.remove()
+  script.onerror = () => {
+    script.remove()
+    console.warn("[FocusQuote] failed to inject SPA nav bridge")
   }
-
-  injectNext()
+  parent.appendChild(script)
 }
 
 const sendSpaNav = (url: string) => {
@@ -131,7 +151,7 @@ void refreshSessionAndPrivacy().then(() => {
 })
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return
-  if (SESSION_KEY in changes || PRIVACY_KEY in changes) {
+  if (SESSION_KEY in changes || PRIVACY_KEY in changes || PREFS_KEY in changes) {
     void refreshSessionAndPrivacy()
   }
 })
@@ -198,62 +218,38 @@ const ROW_ATTR = "data-focusquote-save"
 const SAVE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`
 const TRANSLATE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>`
 
-const LANG_FROM_KEY = "focusquote.translate.from"
-const LANG_TO_KEY = "focusquote.translate.to"
 const MYMEMORY_LIMIT = 500
 
-interface LanguageOption {
-  code: string
-  label: string
-}
-
-// Order matters — these mirror the language list in the plan and are shown
-// in this order in the dropdowns. `auto` is only valid for the "from" side.
-const LANGUAGES: LanguageOption[] = [
-  { code: "en", label: "English" },
-  { code: "es", label: "Spanish" },
-  { code: "fr", label: "French" },
-  { code: "de", label: "German" },
-  { code: "it", label: "Italian" },
-  { code: "pt", label: "Portuguese" },
-  { code: "nl", label: "Dutch" },
-  { code: "ru", label: "Russian" },
-  { code: "zh", label: "Chinese" },
-  { code: "ja", label: "Japanese" },
-  { code: "ko", label: "Korean" },
-  { code: "ar", label: "Arabic" },
-  { code: "hi", label: "Hindi" },
-  { code: "tr", label: "Turkish" },
-  { code: "pl", label: "Polish" },
-]
-
-interface SaveRow {
-  root: HTMLDivElement
-  saveBtn: HTMLButtonElement
-  resultCard: HTMLDivElement
-  fromSelect: HTMLSelectElement
-  toSelect: HTMLSelectElement
-  translateBtn: HTMLButtonElement
-}
-
-let saveRow: SaveRow | null = null
 let pendingText = ""
 let isVisible = false
 let currentTranslateAbort: AbortController | null = null
 
-const readPref = (key: string, fallback: string): string => {
+const readLegacyTranslatePref = (key: string, fallback: string): string => {
   try {
     return localStorage.getItem(key) ?? fallback
   } catch {
     return fallback
   }
 }
-const writePref = (key: string, value: string): void => {
-  try {
-    localStorage.setItem(key, value)
-  } catch {
-    /* private mode etc. */
-  }
+
+const persistTranslatePrefs = (nextFrom: string, nextTo: string): void => {
+  prefs = { translateFromLang: nextFrom, translateToLang: nextTo }
+  void chrome.storage.local
+    .get(PREFS_KEY)
+    .then((out) => {
+      const current =
+        out[PREFS_KEY] && typeof out[PREFS_KEY] === "object"
+          ? (out[PREFS_KEY] as Record<string, unknown>)
+          : {}
+      return chrome.storage.local.set({
+        [PREFS_KEY]: {
+          ...current,
+          translateFromLang: nextFrom,
+          translateToLang: nextTo,
+        },
+      })
+    })
+    .catch(() => {})
 }
 
 const styleSelect = (sel: HTMLSelectElement): void => {
@@ -365,19 +361,21 @@ const createSaveRow = (): SaveRow => {
     autoOpt.value = "auto"
     autoOpt.textContent = "Auto"
     fromSelect.appendChild(autoOpt)
-    for (const lang of LANGUAGES) {
+    for (const lang of TRANSLATE_LANGUAGES) {
       const opt = document.createElement("option")
       opt.value = lang.code
       opt.textContent = lang.label
       fromSelect.appendChild(opt)
     }
   }
-  const initialFrom = readPref(LANG_FROM_KEY, "auto")
-  fromSelect.value = LANGUAGES.some((l) => l.code === initialFrom) || initialFrom === "auto"
+  const initialFrom =
+    prefs.translateFromLang ||
+    readLegacyTranslatePref("focusquote.translate.from", defaultPrefs.translateFromLang)
+  fromSelect.value = isValidTranslateFrom(initialFrom)
     ? initialFrom
     : "auto"
   fromSelect.addEventListener("change", () => {
-    writePref(LANG_FROM_KEY, fromSelect.value)
+    persistTranslatePrefs(fromSelect.value, toSelect.value || defaultPrefs.translateToLang)
   })
   row.appendChild(fromSelect)
 
@@ -390,16 +388,18 @@ const createSaveRow = (): SaveRow => {
   toSelect.setAttribute("aria-label", "Translate to")
   toSelect.title = "Translate to"
   styleSelect(toSelect)
-  for (const lang of LANGUAGES) {
+  for (const lang of TRANSLATE_LANGUAGES) {
     const opt = document.createElement("option")
     opt.value = lang.code
     opt.textContent = lang.label
     toSelect.appendChild(opt)
   }
-  const initialTo = readPref(LANG_TO_KEY, "en")
-  toSelect.value = LANGUAGES.some((l) => l.code === initialTo) ? initialTo : "en"
+  const initialTo =
+    prefs.translateToLang ||
+    readLegacyTranslatePref("focusquote.translate.to", defaultPrefs.translateToLang)
+  toSelect.value = isValidTranslateTo(initialTo) ? initialTo : "en"
   toSelect.addEventListener("change", () => {
-    writePref(LANG_TO_KEY, toSelect.value)
+    persistTranslatePrefs(fromSelect.value || defaultPrefs.translateFromLang, toSelect.value)
   })
   row.appendChild(toSelect)
 
