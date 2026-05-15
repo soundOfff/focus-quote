@@ -46,15 +46,48 @@ const refreshSessionAndPrivacy = async () => {
   }
 }
 
+const getSpaNavInjectorCandidates = (): string[] => {
+  const fromManifest =
+    chrome.runtime
+      .getManifest()
+      .web_accessible_resources?.flatMap((entry) =>
+        typeof entry === "string" ? [] : (entry.resources ?? []),
+      )
+      .filter(
+        (resource) =>
+          !resource.includes("*") &&
+          resource.includes("spaNavInjector") &&
+          /\.(?:ts|js|mjs)$/.test(resource),
+      ) ?? []
+  return Array.from(
+    new Set(["src/content/spaNavInjector.js", "src/content/spaNavInjector.ts", ...fromManifest]),
+  )
+}
+
 const injectSpaNavScript = () => {
   const id = "focusquote-spa-nav-injector"
   if (document.getElementById(id)) return
-  const script = document.createElement("script")
-  script.id = id
-  script.src = chrome.runtime.getURL("src/content/spaNavInjector.ts")
-  script.async = false
-  script.onload = () => script.remove()
-  ;(document.documentElement || document.head || document.body)?.appendChild(script)
+  const parent = document.documentElement || document.head || document.body
+  if (!parent) return
+  const candidates = getSpaNavInjectorCandidates()
+  let index = 0
+
+  const injectNext = () => {
+    if (index >= candidates.length) return
+    const script = document.createElement("script")
+    script.id = id
+    script.src = chrome.runtime.getURL(candidates[index]!)
+    script.async = false
+    script.onload = () => script.remove()
+    script.onerror = () => {
+      script.remove()
+      index += 1
+      injectNext()
+    }
+    parent.appendChild(script)
+  }
+
+  injectNext()
 }
 
 const sendSpaNav = (url: string) => {

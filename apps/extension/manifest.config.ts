@@ -43,7 +43,10 @@ export default defineManifest({
   host_permissions: ["<all_urls>"],
   web_accessible_resources: [
     {
-      resources: ["src/auth-callback/index.html", "src/content/spaNavInjector.ts"],
+      resources: [
+        "src/auth-callback/index.html",
+        "src/content/spaNavInjector.*",
+      ],
       matches: ["<all_urls>"],
     },
   ],
