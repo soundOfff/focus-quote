@@ -3,6 +3,7 @@ import type { StorageService } from "../services/storage"
 import { Theme } from "@focus-quote/shared"
 
 export const PREFS_KEY = "focusquote.prefs"
+const THEME_POLARITY_MIGRATION_KEY = "focusquote.themePolarityMigrated.v1"
 
 export const Prefs = Schema.Struct({
   theme: Theme,
@@ -23,9 +24,27 @@ export const loadPrefs = (storage: StorageService): Effect.Effect<Prefs> =>
       .get<unknown>(PREFS_KEY)
       .pipe(Effect.catchAll(() => Effect.succeed(null)))
     if (raw === null) return defaultPrefs
-    return yield* Schema.decodeUnknown(Prefs)(raw).pipe(
+    const parsed = yield* Schema.decodeUnknown(Prefs)(raw).pipe(
       Effect.catchAll(() => Effect.succeed(defaultPrefs)),
     )
+
+    const migrated = yield* storage
+      .get<boolean>(THEME_POLARITY_MIGRATION_KEY)
+      .pipe(Effect.catchAll(() => Effect.succeed(null)))
+
+    if (migrated === true) return parsed
+
+    const flipped: Prefs = {
+      ...parsed,
+      theme: parsed.theme === "dark" ? "light" : "dark",
+    }
+
+    yield* storage.set(PREFS_KEY, flipped).pipe(Effect.catchAll(() => Effect.void))
+    yield* storage
+      .set(THEME_POLARITY_MIGRATION_KEY, true)
+      .pipe(Effect.catchAll(() => Effect.void))
+
+    return flipped
   })
 
 export const savePrefs = (
