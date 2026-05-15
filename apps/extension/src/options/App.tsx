@@ -24,6 +24,7 @@ import {
   type OpenrouterKeyState,
 } from "../shared/settings"
 import { applyTheme } from "../shared/theme"
+import { useDebounce } from "../shared/use-debounce"
 import {
   defaultPrefs,
   ensurePrefsMigrated,
@@ -215,6 +216,10 @@ export function App() {
     keySaveTimer.current = window.setTimeout(() => flushKeySave(nextValue), 250)
   }
 
+  const debouncedPrefsPersist = useDebounce((next: Prefs) => {
+    runP(persistPrefs(next)).catch(console.error)
+  }, 250)
+
   const handleSignOut = () => {
     runP(signOut)
       .then(() => setUser(null))
@@ -233,26 +238,26 @@ export function App() {
     const clamped = Math.max(1, Math.min(180, Math.floor(n) || prefs.defaultDurationMinutes))
     const next = { ...prefs, defaultDurationMinutes: clamped }
     setPrefs(next)
-    runP(persistPrefs(next)).catch(console.error)
+    debouncedPrefsPersist(next)
   }
 
   const setBreak = (n: number) => {
     const clamped = Math.max(0, Math.min(60, Math.floor(n) || prefs.defaultBreakMinutes))
     const next = { ...prefs, defaultBreakMinutes: clamped }
     setPrefs(next)
-    runP(persistPrefs(next)).catch(console.error)
+    debouncedPrefsPersist(next)
   }
 
   const setTranslateFrom = (code: string) => {
     const next = { ...prefs, translateFromLang: code }
     setPrefs(next)
-    runP(persistPrefs(next)).catch(console.error)
+    debouncedPrefsPersist(next)
   }
 
   const setTranslateTo = (code: string) => {
     const next = { ...prefs, translateToLang: code }
     setPrefs(next)
-    runP(persistPrefs(next)).catch(console.error)
+    debouncedPrefsPersist(next)
   }
 
   const handleProfileChange = (
