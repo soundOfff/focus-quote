@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import { zValidator } from "@hono/zod-validator"
 import { and, eq } from "drizzle-orm"
 import { db } from "../db/client"
-import { quotes, focusSessions, sessionUrls } from "../db/schema"
+import { quotes, focusSessions, sessionUrls, sessionActions } from "../db/schema"
 import { requireUser, type RequireUserVariables } from "../middleware/require-user"
 import { SyncBatchInput, type SyncJobInput } from "../lib/api-schemas"
 import { maybeGenerateSummary } from "../lib/summary"
@@ -138,9 +138,36 @@ async function applyJob(userId: string, job: SyncJobInput): Promise<void> {
           url: job.url,
           hostname: job.hostname,
           title: job.title,
+            content: job.content ? job.content.slice(0, 4000) : null,
           visitedAt: job.visitedAt,
         })
         .onConflictDoNothing({ target: sessionUrls.id })
+      return
+    }
+    case "upsertSessionAction": {
+      const [owned] = await db
+        .select({ id: focusSessions.id })
+        .from(focusSessions)
+        .where(
+          and(
+            eq(focusSessions.id, job.sessionId),
+            eq(focusSessions.userId, userId),
+          ),
+        )
+        .limit(1)
+      if (!owned) throw new Error("Session not owned by user")
+
+      await db
+        .insert(sessionActions)
+        .values({
+          id: job.id,
+          userId,
+          sessionId: job.sessionId,
+          kind: job.actionKind,
+          payload: job.payload.slice(0, 4000),
+          at: job.at,
+        })
+        .onConflictDoNothing({ target: sessionActions.id })
       return
     }
   }

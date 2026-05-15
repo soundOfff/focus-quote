@@ -9,6 +9,8 @@ import { streamRoutes } from "./routes/stream"
 import { syncRoutes } from "./routes/sync"
 import { authBridgeRoutes } from "./routes/auth-bridge"
 import { topicsRoutes } from "./routes/topics"
+import { aiToolbarRoutes } from "./routes/ai-toolbar"
+import { sessionActionsRoutes } from "./routes/session-actions"
 
 export const app = new Hono()
 
@@ -33,7 +35,9 @@ app.route("/auth/magic-bridge", authBridgeRoutes)
 app.route("/api/quotes", quotesRoutes)
 app.route("/api/focus-sessions", focusSessionsRoutes)
 app.route("/api/session-urls", sessionUrlsRoutes)
+app.route("/api/session-actions", sessionActionsRoutes)
 app.route("/api/topics", topicsRoutes)
+app.route("/api/ai", aiToolbarRoutes)
 app.route("/api/sync", syncRoutes)
 app.route("/api/stream", streamRoutes)
 

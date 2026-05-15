@@ -43,6 +43,7 @@ export const NewSessionUrlInput = z.object({
   url: z.string().min(1).max(2048),
   hostname: z.string().min(1).max(255),
   title: NullableString,
+  content: NullableString,
   visitedAt: z.string().min(1),
 })
 export type NewSessionUrlInput = z.infer<typeof NewSessionUrlInput>
@@ -56,6 +57,34 @@ export const ListSessionUrlsQuery = z.object({
   sessionId: z.string().min(1),
 })
 export type ListSessionUrlsQuery = z.infer<typeof ListSessionUrlsQuery>
+
+export const SessionActionKindInput = z.enum([
+  "click",
+  "focus",
+  "blur",
+  "submit",
+  "scroll",
+  "nav",
+])
+
+export const NewSessionActionInput = z.object({
+  id: z.string().min(1),
+  sessionId: z.string().min(1),
+  kind: SessionActionKindInput,
+  payload: z.string().min(1).max(4000),
+  at: ISO,
+})
+export type NewSessionActionInput = z.infer<typeof NewSessionActionInput>
+
+export const SessionActionBatchInput = z.object({
+  actions: z.array(NewSessionActionInput).min(1).max(200),
+})
+export type SessionActionBatchInput = z.infer<typeof SessionActionBatchInput>
+
+export const ListSessionActionsQuery = z.object({
+  sessionId: z.string().min(1),
+})
+export type ListSessionActionsQuery = z.infer<typeof ListSessionActionsQuery>
 
 export const SyncJobInput = z.discriminatedUnion("kind", [
   z.object({
@@ -89,7 +118,16 @@ export const SyncJobInput = z.discriminatedUnion("kind", [
     url: z.string().min(1).max(2048),
     hostname: z.string().min(1).max(255),
     title: z.string().nullable(),
+    content: z.string().nullable(),
     visitedAt: ISO,
+  }),
+  z.object({
+    kind: z.literal("upsertSessionAction"),
+    id: z.string().min(1),
+    sessionId: z.string().min(1),
+    actionKind: SessionActionKindInput,
+    payload: z.string().min(1).max(4000),
+    at: ISO,
   }),
 ])
 export type SyncJobInput = z.infer<typeof SyncJobInput>
