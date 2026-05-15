@@ -13,6 +13,8 @@ import type {
   SessionUrlBatchRequest,
   SessionUrlBatchResponse,
   ListSessionUrlsResponse,
+  SessionActionBatchRequest,
+  SessionActionBatchResponse,
   SessionSummaryResponse,
   SessionStudyTipsResponse,
   SessionRecallResponse,
@@ -25,6 +27,10 @@ import type {
   SyncBatchRequest,
   SyncBatchResponse,
   MeResponse,
+  QuoteAssistantRequest,
+  QuoteAssistantResponse,
+  GuideStepsRequest,
+  GuideStepsResponse,
 } from "@focus-quote/shared"
 
 interface RequestOptions {
@@ -186,10 +192,29 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
         request<ListSessionUrlsResponse>("/api/session-urls", {
           query: { sessionId },
         }),
+      postSessionActions: (body: SessionActionBatchRequest) =>
+        request<SessionActionBatchResponse>("/api/session-actions", {
+          method: "POST",
+          json: body,
+        }),
 
       // Sync
       syncBatch: (body: SyncBatchRequest) =>
         request<SyncBatchResponse>("/api/sync/batch", {
+          method: "POST",
+          json: body,
+        }),
+
+      // Toolbar AI (Quote+AI + Guide Me). Mirrored here for parity with
+      // the content-script flat-fetch helper; popup/newtab can call these
+      // through the standard Effect-based pipeline.
+      quoteAssistant: (body: QuoteAssistantRequest) =>
+        request<QuoteAssistantResponse>("/api/ai/quote-assistant", {
+          method: "POST",
+          json: body,
+        }),
+      guideSteps: (body: GuideStepsRequest) =>
+        request<GuideStepsResponse>("/api/ai/guide-steps", {
           method: "POST",
           json: body,
         }),

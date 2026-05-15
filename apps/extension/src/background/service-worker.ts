@@ -5,13 +5,24 @@ import { SyncService } from "../services/sync"
 import { QuotesService } from "../services/quotes"
 import { SessionsService } from "../services/sessions"
 import { UrlTrackerService } from "../services/urlTracker"
+import { ActionLoggerService } from "../services/actionLogger"
 import { RealtimeStreamService } from "../services/realtimeStream"
 import {
+  isActionEventMessage,
+  isApiProxyMessage,
+  isCaptureVisibleTabMessage,
   isRuntimeMessage,
+  isSpaNavMessage,
+  type ApiProxyResponse,
+  type ActionEventMessage,
+  type CaptureVisibleTabMessage,
+  type CaptureVisibleTabResponse,
   type RuntimeMessage,
   type RuntimeResponse,
   type SaveQuoteMessage,
+  type SpaNavMessage,
 } from "../shared/messages"
+import { AUTH_TOKEN_KEY } from "../shared/auth-storage"
 import type { SessionId } from "@focus-quote/shared"
 import { emitDebug } from "../shared/debug"
 
@@ -20,6 +31,7 @@ const SYNC_PERIOD_MIN = 2
 const SESSION_END_ALARM = "focusquote.session.end"
 const SESSION_TICK_ALARM = "focusquote.session.tick"
 const URL_FLUSH_ALARM = "focusquote.urls.flush"
+const ACTION_FLUSH_ALARM = "focusquote.actions.flush"
 const URL_FLUSH_PERIOD_MIN = 0.5 // 30s
 const CONTEXT_MENU_ID = "focusquote.saveQuote"
 
@@ -30,6 +42,7 @@ const ServicesLayer = Layer.mergeAll(
   QuotesService.Default,
   SessionsService.Default,
   UrlTrackerService.Default,
+  ActionLoggerService.Default,
   RealtimeStreamService.Default,
 )
 
@@ -40,6 +53,7 @@ type AllServices =
   | QuotesService
   | SessionsService
   | UrlTrackerService
+  | ActionLoggerService
   | RealtimeStreamService
 
 const runWithServices = <A, E>(eff: Effect.Effect<A, E, AllServices>) =>
@@ -101,6 +115,9 @@ const handleSessionStart = (msg: RuntimeMessage) =>
     chrome.alarms.create(URL_FLUSH_ALARM, {
       periodInMinutes: URL_FLUSH_PERIOD_MIN,
     })
+    chrome.alarms.create(ACTION_FLUSH_ALARM, {
+      periodInMinutes: URL_FLUSH_PERIOD_MIN,
+    })
     updateBadge(active.durationMinutes)
 
     void emitDebug({
@@ -134,6 +151,7 @@ const handleSessionCancel = Effect.gen(function* () {
   yield* Effect.promise(() => chrome.alarms.clear(SESSION_END_ALARM))
   yield* Effect.promise(() => chrome.alarms.clear(SESSION_TICK_ALARM))
   yield* Effect.promise(() => chrome.alarms.clear(URL_FLUSH_ALARM))
+  yield* Effect.promise(() => chrome.alarms.clear(ACTION_FLUSH_ALARM))
   updateBadge(0)
 })
 
@@ -155,6 +173,7 @@ const handleSessionEnd = Effect.gen(function* () {
   yield* stream.closeAll
   yield* Effect.promise(() => chrome.alarms.clear(SESSION_TICK_ALARM))
   yield* Effect.promise(() => chrome.alarms.clear(URL_FLUSH_ALARM))
+  yield* Effect.promise(() => chrome.alarms.clear(ACTION_FLUSH_ALARM))
   updateBadge(0)
   chrome.notifications.create({
     type: "basic",
@@ -168,9 +187,13 @@ const handleSessionEnd = Effect.gen(function* () {
 })
 
 // ---- URL tracking ----
-const handleNavigation = (
-  details: chrome.webNavigation.WebNavigationFramedCallbackDetails,
-) =>
+const handleNavigation = (details: {
+  frameId: number
+  tabId: number
+  url: string
+  title?: string | null
+  content?: string | null
+}) =>
   Effect.gen(function* () {
     if (details.frameId !== 0) {
       void emitDebug({
@@ -203,13 +226,15 @@ const handleNavigation = (
       return
     }
 
-    const title = yield* Effect.tryPromise({
-      try: () => chrome.tabs.get(details.tabId),
-      catch: () => null,
-    }).pipe(
-      Effect.map((tab) => tab?.title ?? null),
-      Effect.catchAll(() => Effect.succeed<string | null>(null)),
-    )
+    const title =
+      details.title ??
+      (yield* Effect.tryPromise({
+        try: () => chrome.tabs.get(details.tabId),
+        catch: () => null,
+      }).pipe(
+        Effect.map((tab) => tab?.title ?? null),
+        Effect.catchAll(() => Effect.succeed<string | null>(null)),
+      ))
 
     const tracker = yield* UrlTrackerService
     yield* tracker.record({
@@ -217,6 +242,7 @@ const handleNavigation = (
       url: details.url,
       hostname,
       title,
+      content: details.content ?? null,
     })
   })
 
@@ -224,6 +250,47 @@ const flushUrls = Effect.gen(function* () {
   const tracker = yield* UrlTrackerService
   yield* tracker.flush.pipe(Effect.catchAll(() => Effect.void))
 })
+
+const flushActions = Effect.gen(function* () {
+  const logger = yield* ActionLoggerService
+  yield* logger.flush.pipe(Effect.catchAll(() => Effect.void))
+})
+
+const handleActionEvent = (msg: ActionEventMessage) =>
+  Effect.gen(function* () {
+    const logger = yield* ActionLoggerService
+    yield* logger.record({
+      sessionId: msg.sessionId,
+      actionKind: msg.actionKind,
+      payload: msg.payload,
+      at: msg.at,
+    })
+  })
+
+const handleSpaNav = (msg: SpaNavMessage, sender: chrome.runtime.MessageSender) =>
+  Effect.gen(function* () {
+    const details = {
+      frameId: 0,
+      tabId: sender.tab?.id ?? -1,
+      url: msg.url,
+      title: msg.title,
+      content: msg.content,
+    }
+    yield* handleNavigation(details)
+    const sessions = yield* SessionsService
+    const active = yield* sessions.getActive.pipe(Effect.orElseSucceed(() => null))
+    if (!active) return
+    const logger = yield* ActionLoggerService
+    yield* logger.record({
+      sessionId: active.sessionId,
+      actionKind: "nav",
+      payload: JSON.stringify({
+        url: msg.url,
+        title: msg.title,
+      }).slice(0, 4000),
+      at: new Date().toISOString(),
+    })
+  })
 
 // ---- context menu ----
 const sendToast = (
@@ -330,6 +397,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     )
     return
   }
+  if (alarm.name === ACTION_FLUSH_ALARM) {
+    runWithServices(flushActions).catch((err) =>
+      console.warn("[FocusQuote] action flush failed:", err),
+    )
+    return
+  }
 })
 
 // webNavigation must be registered at the top level so it fires after the
@@ -337,6 +410,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.webNavigation.onCompleted.addListener((details) => {
   runWithServices(handleNavigation(details)).catch((err) =>
     console.warn("[FocusQuote] nav handle failed:", err),
+  )
+})
+chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+  runWithServices(handleNavigation(details)).catch((err) =>
+    console.warn("[FocusQuote] history nav handle failed:", err),
   )
 })
 
@@ -347,8 +425,125 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   )
 })
 
+/**
+ * Toolbar AI proxy. Content scripts can't reach our server directly because
+ * their `fetch` runs in the page origin, which the server's CORS doesn't
+ * trust. The SW has the extension origin, so we forward the request here.
+ */
+const API_BASE = __API_BASE_URL__.replace(/\/+$/, "")
+
+const handleApiProxy = async (
+  msg: { path: string; method: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown },
+): Promise<ApiProxyResponse> => {
+  try {
+    const stored = await chrome.storage.local.get(AUTH_TOKEN_KEY)
+    const token = stored?.[AUTH_TOKEN_KEY]
+    if (typeof token !== "string" || token.length === 0) {
+      return {
+        ok: false,
+        status: 401,
+        error:
+          "Sign in to FocusQuote (open the extension popup) to use AI features.",
+      }
+    }
+    const res = await fetch(`${API_BASE}${msg.path}`, {
+      method: msg.method,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: msg.body !== undefined ? JSON.stringify(msg.body) : undefined,
+    })
+    const contentType = res.headers.get("content-type") ?? ""
+    let data: unknown = null
+    if (contentType.includes("application/json")) {
+      data = await res.json().catch(() => null)
+    }
+    if (!res.ok) {
+      const text =
+        typeof data === "object" && data !== null && "error" in data
+          ? String((data as { error?: unknown }).error)
+          : await res.text().catch(() => "")
+      return {
+        ok: false,
+        status: res.status,
+        error: text || `HTTP ${res.status}`,
+      }
+    }
+    return { ok: true, status: res.status, data }
+  } catch (err) {
+    return {
+      ok: false,
+      status: null,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
+
+chrome.runtime.onMessage.addListener(
+  (msg: unknown, _sender, respond: (r: ApiProxyResponse) => void) => {
+    if (!isApiProxyMessage(msg)) return false
+    handleApiProxy(msg).then(respond)
+    return true
+  },
+)
+
+/**
+ * Viewport-only screenshot. Forwards to `chrome.tabs.captureVisibleTab` —
+ * we use the sender tab's window so multi-window setups capture the right
+ * surface (falls back to the current window when sender info is missing).
+ */
+const handleCaptureVisibleTab = async (
+  msg: CaptureVisibleTabMessage,
+  sender: chrome.runtime.MessageSender,
+): Promise<CaptureVisibleTabResponse> => {
+  try {
+    const windowId = sender.tab?.windowId ?? chrome.windows.WINDOW_ID_CURRENT
+    const dataUrl = await chrome.tabs.captureVisibleTab(windowId, {
+      format: msg.format ?? "png",
+      ...(msg.quality !== undefined ? { quality: msg.quality } : {}),
+    })
+    return { ok: true, dataUrl }
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
+
+chrome.runtime.onMessage.addListener(
+  (msg: unknown, sender, respond: (r: CaptureVisibleTabResponse) => void) => {
+    if (!isCaptureVisibleTabMessage(msg)) return false
+    handleCaptureVisibleTab(msg, sender).then(respond)
+    return true
+  },
+)
+
 chrome.runtime.onMessage.addListener(
   (msg: unknown, sender, respond: (r: RuntimeResponse) => void) => {
+    if (isSpaNavMessage(msg)) {
+      runWithServices(handleSpaNav(msg, sender))
+        .then(() => respond({ ok: true }))
+        .catch((err) =>
+          respond({
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        )
+      return true
+    }
+    if (isActionEventMessage(msg)) {
+      runWithServices(handleActionEvent(msg))
+        .then(() => respond({ ok: true }))
+        .catch((err) =>
+          respond({
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        )
+      return true
+    }
     if (!isRuntimeMessage(msg)) return false
     const program =
       msg.type === "focusquote.session.start"

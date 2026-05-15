@@ -55,6 +55,7 @@ export class UrlTrackerService extends Effect.Service<UrlTrackerService>()(
         url: string
         hostname: string
         title: string | null
+        content: string | null
       }) =>
         Effect.gen(function* () {
           const privacy = yield* loadPrivacy(storage).pipe(
@@ -81,6 +82,7 @@ export class UrlTrackerService extends Effect.Service<UrlTrackerService>()(
             url: input.url,
             hostname: input.hostname,
             title: input.title,
+            content: input.content ? input.content.slice(0, 4000) : null,
             visitedAt: new Date().toISOString(),
           }
           const buf = yield* readBuffer(storage)
@@ -90,6 +92,7 @@ export class UrlTrackerService extends Effect.Service<UrlTrackerService>()(
             (e) =>
               e.sessionId === entry.sessionId &&
               e.url === entry.url &&
+              !((entry.content?.length ?? 0) > 0 && !(e.content?.length ?? 0)) &&
               new Date(e.visitedAt).getTime() > cutoff,
           )
           if (isRecentDup) {
@@ -151,6 +154,7 @@ export class UrlTrackerService extends Effect.Service<UrlTrackerService>()(
               url: entry.url,
               hostname: entry.hostname,
               title: entry.title,
+              content: entry.content,
               visitedAt: entry.visitedAt,
             })
             .pipe(Effect.catchAll(() => Effect.void))
