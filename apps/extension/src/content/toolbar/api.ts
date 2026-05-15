@@ -87,3 +87,32 @@ export const apiPost = async <T>(
   }
   return response.data as T
 }
+
+export const apiGet = async <T>(
+  path: string,
+  signal?: AbortSignal,
+): Promise<T> => {
+  const response = await sendViaSW(
+    { type: "focusquote.apiProxy", path, method: "GET" },
+    signal,
+  )
+  if (!response.ok) {
+    throw new ApiCallError(response.error, response.status)
+  }
+  return response.data as T
+}
+
+export const apiPut = async <T>(
+  path: string,
+  body: unknown,
+  signal?: AbortSignal,
+): Promise<T> => {
+  const response = await sendViaSW(
+    { type: "focusquote.apiProxy", path, method: "PUT", body },
+    signal,
+  )
+  if (!response.ok) {
+    throw new ApiCallError(response.error, response.status)
+  }
+  return response.data as T
+}
