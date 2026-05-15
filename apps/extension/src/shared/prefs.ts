@@ -13,12 +13,22 @@ export const PREFS_KEY = "focusquote.prefs"
 const THEME_POLARITY_MIGRATION_KEY = "focusquote.themePolarityMigrated.v1"
 const PREFS_REMOTE_MIGRATED_KEY = REMOTE_MIGRATION_FLAGS.prefs
 
+export const RecallDepth = Schema.Literal("easy", "standard", "challenging")
+export type RecallDepth = Schema.Schema.Type<typeof RecallDepth>
+
+export const RecallQuestionCount = Schema.Literal(3, 5, 7)
+export type RecallQuestionCount = Schema.Schema.Type<typeof RecallQuestionCount>
+
 export const Prefs = Schema.Struct({
   theme: Theme,
   defaultDurationMinutes: Schema.Number.pipe(Schema.between(1, 180)),
   defaultBreakMinutes: Schema.Number.pipe(Schema.between(0, 60)),
   translateFromLang: Schema.String,
   translateToLang: Schema.String,
+  recallEnabled: Schema.Boolean,
+  recallQuestionCount: RecallQuestionCount,
+  recallDepth: RecallDepth,
+  recallAutoGenerate: Schema.Boolean,
 })
 export type Prefs = Schema.Schema.Type<typeof Prefs>
 
@@ -28,6 +38,10 @@ export const defaultPrefs: Prefs = {
   defaultBreakMinutes: 5,
   translateFromLang: "auto",
   translateToLang: "en",
+  recallEnabled: true,
+  recallQuestionCount: 5,
+  recallDepth: "standard",
+  recallAutoGenerate: true,
 }
 
 const clampInt = (value: unknown, min: number, max: number, fallback: number) => {
@@ -52,6 +66,20 @@ const parseTranslateTo = (value: unknown): string =>
     ? value.trim().toLowerCase()
     : defaultPrefs.translateToLang
 
+const parseRecallCount = (value: unknown): RecallQuestionCount => {
+  const n = typeof value === "number" ? value : Number(value)
+  if (n === 3 || n === 5 || n === 7) return n
+  return defaultPrefs.recallQuestionCount
+}
+
+const parseRecallDepth = (value: unknown): RecallDepth =>
+  value === "easy" || value === "standard" || value === "challenging"
+    ? value
+    : defaultPrefs.recallDepth
+
+const parseBool = (value: unknown, fallback: boolean): boolean =>
+  typeof value === "boolean" ? value : fallback
+
 const normalizePrefs = (raw: unknown): Prefs => {
   if (!raw || typeof raw !== "object") return defaultPrefs
   const input = raw as Record<string, unknown>
@@ -71,6 +99,13 @@ const normalizePrefs = (raw: unknown): Prefs => {
     ),
     translateFromLang: parseTranslateFrom(input.translateFromLang),
     translateToLang: parseTranslateTo(input.translateToLang),
+    recallEnabled: parseBool(input.recallEnabled, defaultPrefs.recallEnabled),
+    recallQuestionCount: parseRecallCount(input.recallQuestionCount),
+    recallDepth: parseRecallDepth(input.recallDepth),
+    recallAutoGenerate: parseBool(
+      input.recallAutoGenerate,
+      defaultPrefs.recallAutoGenerate,
+    ),
   }
 }
 
@@ -130,6 +165,10 @@ const settingsPayload = (prefs: Prefs, extras: PrefsRemoteExtras = {}) => ({
   defaultBreakMinutes: prefs.defaultBreakMinutes,
   translateFromLang: prefs.translateFromLang,
   translateToLang: prefs.translateToLang,
+  recallEnabled: prefs.recallEnabled,
+  recallQuestionCount: prefs.recallQuestionCount,
+  recallDepth: prefs.recallDepth,
+  recallAutoGenerate: prefs.recallAutoGenerate,
   ...(extras.todayGoal !== undefined ? { todayGoal: extras.todayGoal } : {}),
   ...(extras.debugOverlayEnabled !== undefined
     ? { debugOverlayEnabled: extras.debugOverlayEnabled }
@@ -158,6 +197,12 @@ export const pullPrefsFromRemote = (
       defaultBreakMinutes: s.defaultBreakMinutes,
       translateFromLang: s.translateFromLang,
       translateToLang: s.translateToLang,
+      recallEnabled: (s as { recallEnabled?: unknown }).recallEnabled,
+      recallQuestionCount: (s as { recallQuestionCount?: unknown })
+        .recallQuestionCount,
+      recallDepth: (s as { recallDepth?: unknown }).recallDepth,
+      recallAutoGenerate: (s as { recallAutoGenerate?: unknown })
+        .recallAutoGenerate,
     })
     yield* savePrefs(storage, next)
     return next
