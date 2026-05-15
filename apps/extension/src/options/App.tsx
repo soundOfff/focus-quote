@@ -445,14 +445,12 @@ function AppInner() {
       headerDate={shortHeaderDate()}
     >
       <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-hidden px-4 pb-8 pt-8 sm:px-6">
-        <header class="mb-6 shrink-0 space-y-1">
-          <p class="text-[10px] font-semibold uppercase tracking-[0.14em] text-mute">
-            Settings
-          </p>
-          <h1 class="text-balance text-3xl font-bold tracking-tight text-ink">
+        <header class="mb-6 shrink-0 space-y-2">
+          <MonoLabel tone="info">Settings</MonoLabel>
+          <h1 class="text-balance font-serif text-[28px] font-semibold tracking-[-0.015em] text-ink">
             Options
           </h1>
-          <p class="max-w-prose text-sm leading-relaxed text-mute">
+          <p class="max-w-prose text-[13px] leading-[1.55] text-muted">
             Tune how FocusQuote behaves across your sessions, AI assistance and
             data handling.
           </p>
@@ -578,15 +576,17 @@ function AppInner() {
                     icon={<TimerIcon size={14} class="text-primary" />}
                   />
                   <div class="grid grid-cols-2 gap-2">
-                    <TimeControl
-                      label="Focus (min)"
+                    <Stepper
+                      label="Focus"
+                      unit="min"
                       min={1}
                       max={180}
                       value={prefs.defaultDurationMinutes}
                       onChange={setDuration}
                     />
-                    <TimeControl
-                      label="Break (min)"
+                    <Stepper
+                      label="Break"
+                      unit="min"
                       min={0}
                       max={60}
                       value={prefs.defaultBreakMinutes}
@@ -782,8 +782,10 @@ function InputField({
   readOnly?: boolean
 }) {
   return (
-    <label class="flex flex-col gap-1">
-      <span class="text-[10px] uppercase tracking-wider text-mute">{label}</span>
+    <label class="flex flex-col gap-1.5">
+      <MonoLabel as="span" class="text-[9.5px]">
+        {label}
+      </MonoLabel>
       <input
         type="text"
         value={value}
@@ -798,7 +800,7 @@ function InputField({
             onEnter?.()
           }
         }}
-        class={`rounded-md border border-hairline bg-surface px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-focus-ring/70 ${
+        class={`rounded-control border border-rule-2 bg-paper-2 px-3 py-2 text-[13px] text-ink placeholder:text-muted-2 outline-none focus:border-amber-deep focus:bg-paper focus:ring-[3px] focus:ring-amber/15 ${
           readOnly ? "cursor-not-allowed opacity-80" : ""
         }`}
       />
