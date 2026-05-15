@@ -58,6 +58,24 @@ export function Surface({ children, class: className }: SurfaceProps) {
   )
 }
 
+interface ListRowProps {
+  children: ComponentChildren
+  class?: string
+}
+
+export function ListRow({ children, class: className }: ListRowProps) {
+  return (
+    <div
+      class={cx(
+        "flex items-start gap-2 rounded-md border border-hairline-soft bg-surface-doc px-2 py-1.5 transition-colors hover:bg-surface-soft/60",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  )
+}
+
 export function SectionHeader({
   title,
   subtitle,
@@ -105,7 +123,7 @@ export function Badge({
   return (
     <span
       class={cx(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums",
         toneClass,
       )}
     >
@@ -124,7 +142,7 @@ export function EmptyState({
   icon?: ComponentChildren
 }) {
   return (
-    <div class="rounded-md border border-hairline bg-surface p-8 text-center">
+    <div class="rounded-md border border-hairline bg-surface p-8 text-center shadow-[0_1px_0_rgb(0_0_0_/_0.03)] dark:shadow-none">
       {icon && <div class="mb-2 flex justify-center text-mute">{icon}</div>}
       <h3 class="text-sm font-semibold text-ink">{title}</h3>
       <p class="mx-auto mt-1 max-w-md text-xs leading-relaxed text-mute">{description}</p>
@@ -148,8 +166,8 @@ export function Toggle({
       aria-pressed={enabled}
       aria-label={ariaLabel}
       class={cx(
-        "relative h-6 w-11 rounded-full border border-hairline bg-surface-soft transition-colors",
-        enabled && "bg-primary",
+        "relative h-6 w-11 rounded-full border border-hairline bg-surface-soft transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70",
+        enabled && "bg-primary border-primary",
       )}
     >
       <span

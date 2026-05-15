@@ -117,33 +117,33 @@ export function SettingsView({
   }
 
   return (
-    <div class="flex flex-col gap-4 p-4">
+    <div class="flex flex-col gap-4 bg-canvas p-4 text-body">
       <header class="flex items-center gap-2">
         <button
           type="button"
           onClick={onBack}
-          class="rounded p-1.5 opacity-70 transition hover:bg-card-light hover:opacity-100 dark:hover:bg-card-dark/60"
+          class="rounded-md p-1.5 text-mute transition-colors hover:bg-surface-soft hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
           aria-label="Back"
         >
           <ArrowLeft size={14} />
         </button>
-        <h2 class="text-base font-semibold">Settings</h2>
+        <h2 class="text-base font-semibold text-ink">Settings</h2>
       </header>
 
       <Section label="Account">
-        <div class="flex items-center justify-between gap-3 rounded bg-card-light px-3 py-2 shadow-sm dark:bg-card-dark dark:shadow-none">
+        <div class="flex items-center justify-between gap-3 rounded-md border border-hairline bg-surface px-3 py-2">
           <div class="min-w-0">
-            <div class="truncate text-sm font-medium">
+            <div class="truncate text-sm font-medium text-ink">
               {user.name ?? user.email}
             </div>
             {user.name && (
-              <div class="truncate text-xs opacity-60">{user.email}</div>
+              <div class="truncate text-xs text-mute">{user.email}</div>
             )}
           </div>
           <button
             type="button"
             onClick={handleSignOut}
-            class="flex shrink-0 items-center gap-1 rounded border border-accent/40 px-2 py-1 text-xs text-accent transition hover:bg-accent/10"
+            class="flex min-h-8 shrink-0 items-center gap-1 rounded-md border border-hairline px-2.5 py-1 text-xs font-medium text-body transition-colors hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
           >
             <LogOut size={12} />
             Sign out
@@ -197,7 +197,7 @@ export function SettingsView({
           type="button"
           onClick={handleSyncNow}
           disabled={busy}
-          class="mt-2 flex w-full items-center justify-center gap-2 rounded border border-accent/40 px-3 py-1.5 text-xs text-accent transition hover:bg-accent/10 disabled:opacity-40"
+          class="mt-2 flex min-h-8 w-full items-center justify-center gap-2 rounded-md border border-hairline px-3 py-1.5 text-xs font-medium text-body transition-colors hover:bg-surface-soft disabled:opacity-40"
         >
           <RefreshCw size={12} class={busy ? "animate-spin" : undefined} />
           Sync now
@@ -207,10 +207,10 @@ export function SettingsView({
       <button
         type="button"
         onClick={openOptions}
-        class="flex items-center justify-between rounded bg-card-light px-3 py-2 text-sm shadow-sm transition hover:bg-card-light/70 dark:bg-card-dark dark:shadow-none dark:hover:bg-card-dark/80"
+        class="flex min-h-10 items-center justify-between rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-body transition-colors hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
       >
         <span>Open full options</span>
-        <ExternalLink size={14} class="opacity-60" />
+        <ExternalLink size={14} class="text-mute" />
       </button>
     </div>
   )
@@ -225,7 +225,7 @@ function Section({
 }) {
   return (
     <section class="flex flex-col gap-2">
-      <h3 class="text-[10px] uppercase tracking-wider opacity-50">{label}</h3>
+      <h3 class="text-[10px] uppercase tracking-wider text-mute">{label}</h3>
       {children}
     </section>
   )
@@ -246,10 +246,10 @@ function ThemeOption({
     <button
       type="button"
       onClick={onClick}
-      class={`flex flex-1 items-center justify-center gap-1.5 rounded px-3 py-1.5 text-sm transition ${
+      class={`flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70 ${
         active
-          ? "bg-accent text-white"
-          : "bg-card-light text-text-light hover:bg-card-light/70 dark:bg-card-dark dark:text-text-dark dark:hover:bg-card-dark/80"
+          ? "border-primary bg-primary text-ink"
+          : "border-hairline bg-surface text-body hover:bg-surface-soft"
       }`}
     >
       {icon}
@@ -272,8 +272,8 @@ function NumberField({
   onChange: (n: number) => void
 }) {
   return (
-    <label class="flex flex-col gap-1 rounded bg-card-light px-3 py-2 shadow-sm dark:bg-card-dark dark:shadow-none">
-      <span class="text-[10px] uppercase tracking-wider opacity-60">
+    <label class="flex flex-col gap-1 rounded-md border border-hairline bg-surface px-3 py-2">
+      <span class="text-[10px] uppercase tracking-wider text-mute">
         {label}
       </span>
       <input
@@ -284,7 +284,7 @@ function NumberField({
         onInput={(e) =>
           onChange(Number((e.currentTarget as HTMLInputElement).value))
         }
-        class="w-full bg-transparent text-base tabular-nums focus:outline-none"
+        class="w-full bg-transparent text-base tabular-nums text-ink outline-none focus:ring-0"
       />
     </label>
   )
@@ -292,9 +292,9 @@ function NumberField({
 
 function Stat({ value, label }: { value: number; label: string }) {
   return (
-    <div class="rounded bg-card-light px-2 py-2 shadow-sm dark:bg-card-dark dark:shadow-none">
-      <div class="text-base font-medium tabular-nums">{value}</div>
-      <div class="text-[10px] uppercase tracking-wider opacity-60">{label}</div>
+    <div class="rounded-md border border-hairline bg-surface px-2 py-2">
+      <div class="text-base font-medium tabular-nums text-ink">{value}</div>
+      <div class="text-[10px] uppercase tracking-wider text-mute">{label}</div>
     </div>
   )
 }

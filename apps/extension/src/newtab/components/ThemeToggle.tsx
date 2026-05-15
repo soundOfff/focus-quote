@@ -12,7 +12,7 @@ export function ThemeToggle({ theme, onToggle }: Props) {
       type="button"
       onClick={onToggle}
       aria-label="Toggle theme"
-      class="rounded p-2 opacity-60 transition hover:bg-card-light hover:opacity-100 dark:hover:bg-card-dark/40"
+      class="rounded-md p-2 text-mute transition-colors hover:bg-surface-soft hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
     >
       {theme === "dark" ? <Moon size={16} /> : <Sun size={16} />}
     </button>

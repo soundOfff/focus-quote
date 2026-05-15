@@ -32,7 +32,14 @@ import type {
   Session,
   SessionUrl,
 } from "@focus-quote/shared"
-import { Badge, Button, EmptyState, SectionHeader, Surface } from "../../ui/primitives"
+import {
+  Badge,
+  Button,
+  EmptyState,
+  ListRow,
+  SectionHeader,
+  Surface,
+} from "../../ui/primitives"
 
 interface UrlRow {
   id: string
@@ -66,18 +73,23 @@ const loadAll = (sessionId: string) =>
 
     // The four AI artifacts — independent fetches so a slow one doesn't
     // block the rest. Each falls back to null on error.
-    const summaryRes = yield* api
-      .getSessionSummary(sessionId)
-      .pipe(Effect.catchAll(() => Effect.succeed({ summary: null })))
-    const tipsRes = yield* api
-      .getStudyTips(sessionId)
-      .pipe(Effect.catchAll(() => Effect.succeed({ tips: null })))
-    const recallRes = yield* api
-      .getRecallQuestions(sessionId)
-      .pipe(Effect.catchAll(() => Effect.succeed({ questions: null })))
-    const resourcesRes = yield* api
-      .getResourceRecommendations(sessionId)
-      .pipe(Effect.catchAll(() => Effect.succeed({ resources: null })))
+    const [summaryRes, tipsRes, recallRes, resourcesRes] = yield* Effect.all(
+      [
+        api
+          .getSessionSummary(sessionId)
+          .pipe(Effect.catchAll(() => Effect.succeed({ summary: null }))),
+        api
+          .getStudyTips(sessionId)
+          .pipe(Effect.catchAll(() => Effect.succeed({ tips: null }))),
+        api
+          .getRecallQuestions(sessionId)
+          .pipe(Effect.catchAll(() => Effect.succeed({ questions: null }))),
+        api.getResourceRecommendations(sessionId).pipe(
+          Effect.catchAll(() => Effect.succeed({ resources: null })),
+        ),
+      ],
+      { concurrency: "unbounded" },
+    )
 
     return {
       session,
@@ -140,7 +152,7 @@ function SummaryBlock({
 }: { summary: string | null } & BlockCommon) {
   return (
     <Section
-      icon={<Sparkles size={14} class="text-accent" />}
+      icon={<Sparkles size={14} class="text-mute" />}
       title="AI summary"
       onRegenerate={onRegenerate}
       regenerating={regenerating}
@@ -161,7 +173,7 @@ function TipsBlock({
 }: { tips: ReadonlyArray<string> | null } & BlockCommon) {
   return (
     <Section
-      icon={<Lightbulb size={14} class="text-accent" />}
+      icon={<Lightbulb size={14} class="text-mute" />}
       title="Study tips"
       onRegenerate={onRegenerate}
       regenerating={regenerating}
@@ -173,7 +185,7 @@ function TipsBlock({
               key={i}
               class="flex gap-2 text-sm leading-relaxed"
             >
-              <span class="shrink-0 text-accent">{i + 1}.</span>
+              <span class="shrink-0 text-link-blue">{i + 1}.</span>
               <span>{t}</span>
             </li>
           ))}
@@ -258,14 +270,14 @@ function RecallBlock({
 
   const verdictClasses = (v: RecallVerdict) => {
     if (v === "correct")
-      return "bg-emerald-500/15 text-emerald-400"
-    if (v === "partial") return "bg-amber-500/15 text-amber-400"
-    return "bg-rose-500/15 text-rose-400"
+      return "bg-accent-green-soft text-accent-green"
+    if (v === "partial") return "bg-primary/20 text-ink"
+    return "bg-accent-red-soft text-accent-red"
   }
 
   return (
     <Section
-      icon={<Brain size={14} class="text-accent" />}
+      icon={<Brain size={14} class="text-mute" />}
       title="Active recall"
       subtitle="Type your answer and submit — the LLM grades it. Or reveal directly."
       onRegenerate={onRegenerate}
@@ -291,7 +303,7 @@ function RecallBlock({
                       (e.currentTarget as HTMLTextAreaElement).value,
                     )
                   }
-                  class="w-full resize-none rounded-sm border border-hairline bg-surface px-2 py-1.5 text-xs text-body outline-none focus:ring-1 focus:ring-focus-ring"
+                  class="w-full resize-none rounded-sm border border-hairline bg-surface px-2 py-1.5 text-xs text-body outline-none focus:ring-1 focus:ring-focus-ring/70"
                 />
                 <div class="mt-2 flex items-center gap-3">
                   <Button
@@ -359,7 +371,7 @@ function ResourcesBlock({
 } & BlockCommon) {
   return (
     <Section
-      icon={<BookOpen size={14} class="text-accent" />}
+      icon={<BookOpen size={14} class="text-mute" />}
       title="Suggested next reads"
       subtitle="Resources that complement what you covered. URLs are verified before saving."
       onRegenerate={onRegenerate}
@@ -457,10 +469,8 @@ function UrlsBlock({ urls }: { urls: UrlRow[] }) {
       {open && (
         <ul class="space-y-1.5 px-5 pb-5">
           {urls.map((u) => (
-            <li
-              key={u.id}
-            class="flex items-start gap-2 rounded-md border border-hairline-soft bg-surface-doc px-2 py-1.5 text-xs"
-            >
+            <li key={u.id}>
+              <ListRow class="text-xs">
               <Globe size={11} class="mt-0.5 shrink-0 text-mute" />
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-2">
@@ -489,6 +499,7 @@ function UrlsBlock({ urls }: { urls: UrlRow[] }) {
                   </div>
                 )}
               </div>
+              </ListRow>
             </li>
           ))}
         </ul>

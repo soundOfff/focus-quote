@@ -16,7 +16,7 @@ import { ApiService } from "../../services/api"
 import type { Session, SessionUrl } from "@focus-quote/shared"
 import { runP } from "../runtime"
 import { navigateTo } from "../router"
-import { Badge, Button, EmptyState, SectionHeader, Surface } from "../../ui/primitives"
+import { Badge, Button, EmptyState, ListRow, SectionHeader } from "../../ui/primitives"
 
 interface UrlRow {
   id: string
@@ -203,11 +203,11 @@ function SessionCard({ session }: CardProps) {
   }
 
   return (
-    <div class="rounded-md border border-hairline bg-surface">
+    <div class="rounded-md border border-hairline bg-surface shadow-[0_1px_0_rgb(0_0_0_/_0.03)] dark:shadow-none">
       <button
         type="button"
         onClick={handleToggle}
-        class="flex w-full items-start gap-3 p-4 text-left transition-colors hover:bg-surface-doc"
+        class="flex w-full items-start gap-3 rounded-md p-4 text-left transition-colors hover:bg-surface-doc focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
         aria-expanded={expanded}
       >
         <span class="mt-1 shrink-0 text-mute">
@@ -319,10 +319,8 @@ function SessionCard({ session }: CardProps) {
 
               <ul class="space-y-1.5">
                 {urls.map((u) => (
-                  <li
-                    key={u.id}
-                    class="flex items-start gap-2 rounded-md border border-hairline-soft bg-surface-doc px-2 py-1.5 text-xs"
-                  >
+                  <li key={u.id}>
+                    <ListRow class="text-xs">
                     <Globe
                       size={12}
                       class="mt-0.5 shrink-0 text-mute"
@@ -349,6 +347,7 @@ function SessionCard({ session }: CardProps) {
                         </div>
                       )}
                     </div>
+                    </ListRow>
                   </li>
                 ))}
               </ul>

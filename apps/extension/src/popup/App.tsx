@@ -19,6 +19,7 @@ import { SessionPanel } from "./components/SessionPanel"
 import { SettingsView } from "./components/SettingsView"
 import { SignIn } from "./components/SignIn"
 import type { Quote, User } from "@focus-quote/shared"
+import { Button } from "../ui/primitives"
 
 const loadQuotes = (query: string) =>
   Effect.gen(function* () {
@@ -143,17 +144,17 @@ export function App() {
   }
 
   return (
-    <div class="flex flex-col gap-3 p-4">
+    <div class="flex flex-col gap-3 bg-canvas p-4 text-body">
       <header class="flex items-center justify-between">
-        <h1 class="text-base font-semibold text-accent">FocusQuote</h1>
-        <button
-          type="button"
+        <h1 class="text-base font-semibold text-ink">FocusQuote</h1>
+        <Button
           onClick={() => setView("settings")}
-          class="rounded p-1.5 opacity-70 transition hover:bg-card-light hover:opacity-100 dark:hover:bg-card-dark/60"
+          variant="ghost"
+          size="sm"
           aria-label="Settings"
         >
           <SettingsIcon size={14} />
-        </button>
+        </Button>
       </header>
 
       <SessionPanel

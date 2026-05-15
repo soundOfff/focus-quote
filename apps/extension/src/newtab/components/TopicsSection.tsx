@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks"
+import { useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
 import { Layers, Timer } from "lucide-preact"
 import { ApiService } from "../../services/api"
@@ -51,6 +51,8 @@ export function TopicsSection() {
       .catch(() => setReady(true))
   }, [])
 
+  const visibleTopics = useMemo(() => topics.slice(0, 9), [topics])
+
   if (!ready) return null
   if (topics.length === 0) return null
 
@@ -61,9 +63,9 @@ export function TopicsSection() {
         icon={<Layers size={14} class="text-mute" />}
       />
       <div class="grid grid-cols-2 gap-2 md:grid-cols-3">
-        {topics.slice(0, 9).map((t) => (
+        {visibleTopics.map((t) => (
           <Surface key={t.name} class="p-3">
-            <div class="mb-1 truncate text-sm font-medium" title={t.name}>
+            <div class="mb-1 truncate text-sm font-medium text-ink" title={t.name}>
               {t.name}
             </div>
             <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-mute">

@@ -3,9 +3,69 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    color-scheme: light;
+    --color-canvas: 238 239 233;
+    --color-surface: 255 255 255;
+    --color-surface-soft: 229 231 224;
+    --color-surface-doc: 252 252 250;
+    --color-hairline: 191 193 183;
+    --color-hairline-soft: 220 223 210;
+    --color-ink: 35 37 29;
+    --color-body: 77 79 70;
+    --color-mute: 108 110 99;
+    --color-primary: 247 165 1;
+    --color-primary-pressed: 221 144 1;
+    --color-link-blue: 29 78 216;
+    --color-accent-blue: 44 132 224;
+    --color-accent-blue-soft: 220 234 246;
+    --color-accent-green: 44 140 102;
+    --color-accent-green-soft: 217 237 223;
+    --color-accent-red: 205 66 57;
+    --color-accent-red-soft: 247 214 211;
+    --color-focus-ring: 59 130 246;
+
+    --legacy-bg-dark: 238 239 233;
+    --legacy-bg-light: 238 239 233;
+    --legacy-card-dark: 255 255 255;
+    --legacy-card-light: 255 255 255;
+    --legacy-text-dark: 35 37 29;
+    --legacy-text-light: 35 37 29;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --color-canvas: 18 20 15;
+    --color-surface: 26 29 23;
+    --color-surface-soft: 35 40 32;
+    --color-surface-doc: 32 36 29;
+    --color-hairline: 59 66 54;
+    --color-hairline-soft: 44 50 40;
+    --color-ink: 243 245 237;
+    --color-body: 208 213 199;
+    --color-mute: 155 163 143;
+    --color-primary: 247 165 1;
+    --color-primary-pressed: 212 141 22;
+    --color-link-blue: 143 180 255;
+    --color-accent-blue: 106 168 243;
+    --color-accent-blue-soft: 34 54 75;
+    --color-accent-green: 102 193 154;
+    --color-accent-green-soft: 32 57 46;
+    --color-accent-red: 242 132 125;
+    --color-accent-red-soft: 74 38 36;
+    --color-focus-ring: 147 197 253;
+
+    --legacy-bg-dark: 24 27 21;
+    --legacy-bg-light: 238 239 233;
+    --legacy-card-dark: 31 35 28;
+    --legacy-card-light: 255 255 255;
+    --legacy-text-dark: 243 245 237;
+    --legacy-text-light: 35 37 29;
+  }
+
   body {
     font-family: theme("fontFamily.sans");
-    background-color: theme("colors.canvas");
-    color: theme("colors.body");
+    background-color: rgb(var(--color-canvas));
+    color: rgb(var(--color-body));
   }
 }
