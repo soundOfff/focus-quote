@@ -35,6 +35,30 @@ import type {
   QuoteAssistantResponse,
   GuideStepsRequest,
   GuideStepsResponse,
+  GetUserSettingsResponse,
+  UpdateUserSettingsRequest,
+  UpdateUserSettingsResponse,
+  GetUserProfileResponse,
+  UpdateUserProfileRequest,
+  UpdateUserProfileResponse,
+  GetUserPrivacyResponse,
+  UpdateUserPrivacyRequest,
+  UpdateUserPrivacyResponse,
+  GetSecretResponse,
+  PutSecretRequest,
+  PutSecretResponse,
+  DeleteSecretResponse,
+  ListAiThreadsResponse,
+  CreateAiThreadRequest,
+  CreateAiThreadResponse,
+  ListAiMessagesResponse,
+  AppendAiMessageRequest,
+  AppendAiMessageResponse,
+  ListRecallAttemptsResponse,
+  GetToolbarStateResponse,
+  PutToolbarStateRequest,
+  PutToolbarStateResponse,
+  AiChatThreadKind,
 } from "@focus-quote/shared"
 
 interface RequestOptions {
@@ -238,6 +262,64 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
       // Cast to MeResponse for consumer ergonomics; server returns
       // { user, session } | null.
       me: () => request<MeResponse | null>("/api/auth/get-session"),
+
+      // Remote-first user state (settings/profile/privacy/secrets/etc.)
+      getSettings: () => request<GetUserSettingsResponse>("/api/settings"),
+      putSettings: (body: UpdateUserSettingsRequest) =>
+        request<UpdateUserSettingsResponse>("/api/settings", {
+          method: "PUT",
+          json: body,
+        }),
+      getProfile: () => request<GetUserProfileResponse>("/api/profile"),
+      putProfile: (body: UpdateUserProfileRequest) =>
+        request<UpdateUserProfileResponse>("/api/profile", {
+          method: "PUT",
+          json: body,
+        }),
+      getPrivacy: () => request<GetUserPrivacyResponse>("/api/privacy"),
+      putPrivacy: (body: UpdateUserPrivacyRequest) =>
+        request<UpdateUserPrivacyResponse>("/api/privacy", {
+          method: "PUT",
+          json: body,
+        }),
+      getSecret: (kind: "openrouter") =>
+        request<GetSecretResponse>(`/api/secrets/${kind}`),
+      putSecret: (kind: "openrouter", body: PutSecretRequest) =>
+        request<PutSecretResponse>(`/api/secrets/${kind}`, {
+          method: "PUT",
+          json: body,
+        }),
+      deleteSecret: (kind: "openrouter") =>
+        request<DeleteSecretResponse>(`/api/secrets/${kind}`, {
+          method: "DELETE",
+        }),
+      listAiThreads: (query?: { kind?: AiChatThreadKind; limit?: number }) =>
+        request<ListAiThreadsResponse>("/api/ai-history/threads", { query }),
+      createAiThread: (body: CreateAiThreadRequest) =>
+        request<CreateAiThreadResponse>("/api/ai-history/threads", {
+          method: "POST",
+          json: body,
+        }),
+      listAiMessages: (threadId: string) =>
+        request<ListAiMessagesResponse>(
+          `/api/ai-history/threads/${threadId}/messages`,
+        ),
+      appendAiMessage: (threadId: string, body: AppendAiMessageRequest) =>
+        request<AppendAiMessageResponse>(
+          `/api/ai-history/threads/${threadId}/messages`,
+          { method: "POST", json: body },
+        ),
+      listRecallAttempts: (sessionId: string) =>
+        request<ListRecallAttemptsResponse>("/api/recall/attempts", {
+          query: { sessionId },
+        }),
+      getToolbarState: (name: string) =>
+        request<GetToolbarStateResponse>(`/api/toolbar-state/${name}`),
+      putToolbarState: (name: string, body: PutToolbarStateRequest) =>
+        request<PutToolbarStateResponse>(`/api/toolbar-state/${name}`, {
+          method: "PUT",
+          json: body,
+        }),
     }
   }),
   dependencies: [StorageService.Default],
