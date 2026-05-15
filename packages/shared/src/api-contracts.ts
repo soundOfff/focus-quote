@@ -7,6 +7,8 @@ import type {
   NewSessionUrl,
   SessionAction,
   NewSessionAction,
+  MediaFile,
+  UserMediaRef,
   SyncJob,
 } from "./schema"
 
@@ -155,6 +157,37 @@ export interface ListSessionActionsQuery {
 
 export interface ListSessionActionsResponse {
   actions: ReadonlyArray<SessionAction>
+}
+
+export interface UploadMediaRequest {
+  kind: "profile_photo" | "screenshot"
+  mimeType: string
+  dataBase64: string
+  byteSize: number
+  sessionId?: string | null
+}
+
+export interface UploadMediaResponse {
+  file: MediaFile
+  ref: UserMediaRef
+}
+
+export interface GetMediaResponse {
+  file: MediaFile
+  ref: UserMediaRef
+}
+
+export interface ListMediaQuery {
+  kind?: "profile_photo" | "screenshot"
+  sessionId?: string
+  limit?: number
+}
+
+export interface ListMediaResponse {
+  items: ReadonlyArray<{
+    file: MediaFile
+    ref: UserMediaRef
+  }>
 }
 
 /** Event payloads streamed back over SSE during a session. */

@@ -12,6 +12,12 @@ export type SessionUrlId = Schema.Schema.Type<typeof SessionUrlId>
 export const SessionActionId = Schema.String.pipe(Schema.brand("SessionActionId"))
 export type SessionActionId = Schema.Schema.Type<typeof SessionActionId>
 
+export const MediaFileId = Schema.String.pipe(Schema.brand("MediaFileId"))
+export type MediaFileId = Schema.Schema.Type<typeof MediaFileId>
+
+export const UserMediaRefId = Schema.String.pipe(Schema.brand("UserMediaRefId"))
+export type UserMediaRefId = Schema.Schema.Type<typeof UserMediaRefId>
+
 const NullableString = Schema.NullOr(Schema.String)
 
 export const Quote = Schema.Struct({
@@ -103,6 +109,44 @@ export const NewSessionAction = Schema.Struct({
   at: Schema.String,
 })
 export type NewSessionAction = Schema.Schema.Type<typeof NewSessionAction>
+
+export const MediaKind = Schema.Literal("profile_photo", "screenshot")
+export type MediaKind = Schema.Schema.Type<typeof MediaKind>
+
+export const MediaFile = Schema.Struct({
+  id: MediaFileId,
+  mimeType: Schema.String,
+  dataBase64: Schema.String,
+  byteSize: Schema.Number,
+  createdAt: Schema.String,
+})
+export type MediaFile = Schema.Schema.Type<typeof MediaFile>
+
+export const NewMediaFile = Schema.Struct({
+  id: MediaFileId,
+  mimeType: Schema.String,
+  dataBase64: Schema.String,
+  byteSize: Schema.Number,
+})
+export type NewMediaFile = Schema.Schema.Type<typeof NewMediaFile>
+
+export const UserMediaRef = Schema.Struct({
+  id: UserMediaRefId,
+  userId: Schema.String,
+  fileId: MediaFileId,
+  kind: MediaKind,
+  sessionId: NullableString,
+  createdAt: Schema.String,
+})
+export type UserMediaRef = Schema.Schema.Type<typeof UserMediaRef>
+
+export const NewUserMediaRef = Schema.Struct({
+  id: UserMediaRefId,
+  fileId: MediaFileId,
+  kind: MediaKind,
+  sessionId: NullableString,
+})
+export type NewUserMediaRef = Schema.Schema.Type<typeof NewUserMediaRef>
 
 export const Theme = Schema.Literal("dark", "light")
 export type Theme = Schema.Schema.Type<typeof Theme>
