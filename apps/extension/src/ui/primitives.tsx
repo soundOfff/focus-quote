@@ -13,6 +13,21 @@ interface ButtonProps extends preact.JSX.HTMLAttributes<HTMLButtonElement> {
   disabled?: boolean
 }
 
+interface NativeSelectProps
+  extends preact.JSX.SelectHTMLAttributes<HTMLSelectElement> {}
+
+export function NativeSelect({ class: className, ...props }: NativeSelectProps) {
+  return (
+    <select
+      class={cx(
+        "h-9 w-full appearance-auto rounded-md border border-hairline-soft bg-canvas px-2 text-sm leading-5 text-ink align-middle outline-none focus:ring-1 focus:ring-focus-ring/70",
+        typeof className === "string" ? className : undefined,
+      )}
+      {...props}
+    />
+  )
+}
+
 export function Button({
   variant = "secondary",
   size = "md",
@@ -167,13 +182,15 @@ export function Toggle({
       aria-label={ariaLabel}
       class={cx(
         "relative h-6 w-11 rounded-full border border-hairline bg-surface-soft transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70",
-        enabled && "bg-primary border-primary",
+        enabled && "border-primary bg-primary shadow-[inset_0_0_0_1px_rgba(255,255,255,0.22)]",
       )}
     >
       <span
         class={cx(
-          "absolute top-0.5 h-5 w-5 rounded-full bg-surface transition-[left] duration-200",
-          enabled ? "left-5" : "left-0.5",
+          "absolute top-0.5 h-5 w-5 rounded-full border transition-[left,background-color,border-color] duration-200",
+          enabled
+            ? "left-5 border-white/80 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.35)]"
+            : "left-0.5 border-hairline bg-surface",
         )}
       />
     </button>

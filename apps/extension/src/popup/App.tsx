@@ -4,12 +4,14 @@ import { Settings as SettingsIcon } from "lucide-preact"
 import { QuotesService } from "../services/quotes"
 import { StorageService } from "../services/storage"
 import { AuthService } from "../services/auth"
+import { ApiService } from "../services/api"
 import {
   defaultPrefs,
   loadPrefs,
   savePrefs,
   type Prefs,
 } from "../shared/prefs"
+import { loadProfilePrefs, saveProfilePrefs } from "../shared/profile"
 import { applyTheme } from "../shared/theme"
 import { runP } from "./runtime"
 import { AnalysisPanel } from "./components/AnalysisPanel"
@@ -46,7 +48,34 @@ const loadCurrentUser = Effect.gen(function* () {
   return yield* auth.currentUser
 })
 
+const loadProfilePhotoDataUrl = Effect.gen(function* () {
+  const storage = yield* StorageService
+  const api = yield* ApiService
+  let profile = yield* loadProfilePrefs(storage)
+  if (profile.photoMediaFileId && !profile.photoDataUrl) {
+    const media = yield* api.getMedia(profile.photoMediaFileId).pipe(
+      Effect.catchAll(() => Effect.succeed(null)),
+    )
+    if (media) {
+      profile = {
+        ...profile,
+        photoDataUrl: `data:${media.file.mimeType};base64,${media.file.dataBase64}`,
+      }
+      yield* saveProfilePrefs(storage, profile)
+    }
+  }
+  return profile.photoDataUrl
+})
+
 type View = "main" | "settings"
+
+const openOptionsPage = () => {
+  if (chrome.runtime.openOptionsPage) {
+    chrome.runtime.openOptionsPage()
+  } else {
+    chrome.tabs.create({ url: chrome.runtime.getURL("src/options/index.html") })
+  }
+}
 
 export function App() {
   const [view, setView] = useState<View>("main")
@@ -54,6 +83,7 @@ export function App() {
   const [quotes, setQuotes] = useState<ReadonlyArray<Quote>>([])
   const [prefs, setPrefs] = useState<Prefs>(defaultPrefs)
   const [user, setUser] = useState<User | null>(null)
+  const [profilePhotoDataUrl, setProfilePhotoDataUrl] = useState("")
   const [authReady, setAuthReady] = useState(false)
 
   const refresh = (q: string) =>
@@ -74,6 +104,9 @@ export function App() {
         applyTheme(p.theme)
       })
       .catch(console.error)
+    runP(loadProfilePhotoDataUrl)
+      .then(setProfilePhotoDataUrl)
+      .catch((e) => console.error("[FocusQuote] load profile photo:", e))
     refreshAuth()
   }, [])
 
@@ -121,51 +154,66 @@ export function App() {
 
   if (!authReady) {
     return (
-      <div class="flex min-h-[200px] items-center justify-center p-6 text-sm opacity-60">
-        Loading…
+      <div class="h-[460px] w-[360px] bg-canvas text-body">
+        <div class="flex h-full items-center justify-center p-6 text-sm opacity-60">
+          Loading…
+        </div>
       </div>
     )
   }
 
   if (!user) {
-    return <SignIn onSignedIn={refreshAuth} />
+    return (
+      <div class="h-[460px] w-[360px] overflow-y-auto bg-canvas text-body">
+        <SignIn onSignedIn={refreshAuth} />
+      </div>
+    )
   }
 
   if (view === "settings") {
     return (
-      <SettingsView
-        prefs={prefs}
-        user={user}
-        onBack={() => setView("main")}
-        onPrefsChange={handlePrefsChange}
-        onSignedOut={() => setUser(null)}
-      />
+      <div class="h-[460px] w-[360px] overflow-y-auto bg-canvas text-body">
+        <SettingsView
+          prefs={prefs}
+          user={user}
+          profilePhotoDataUrl={profilePhotoDataUrl}
+          onBack={() => setView("main")}
+          onPrefsChange={handlePrefsChange}
+          onSignedOut={() => setUser(null)}
+        />
+      </div>
     )
   }
 
   return (
-    <div class="flex flex-col gap-3 bg-canvas p-4 text-body">
-      <header class="flex items-center justify-between">
-        <h1 class="text-base font-semibold text-ink">FocusQuote</h1>
-        <Button
-          onClick={() => setView("settings")}
-          variant="ghost"
-          size="sm"
-          aria-label="Settings"
-        >
-          <SettingsIcon size={14} />
+    <div class="h-[460px] w-[360px] overflow-y-auto bg-canvas text-body">
+      <div class="flex flex-col gap-3 p-4">
+        <header class="flex items-center justify-between">
+          <h1 class="text-base font-semibold text-ink">FocusQuote</h1>
+          <Button
+            onClick={() => setView("settings")}
+            variant="ghost"
+            size="sm"
+            aria-label="Settings"
+          >
+            <SettingsIcon size={14} />
+          </Button>
+        </header>
+
+        <SessionPanel
+          defaultDurationMinutes={prefs.defaultDurationMinutes}
+          defaultBreakMinutes={prefs.defaultBreakMinutes}
+        />
+
+        <AnalysisPanel />
+
+        <SearchBar value={query} onInput={setQuery} />
+        <QuoteList quotes={quotes} onDelete={handleDelete} />
+
+        <Button variant="outline" size="sm" onClick={openOptionsPage}>
+          Open Full Options
         </Button>
-      </header>
-
-      <SessionPanel
-        defaultDurationMinutes={prefs.defaultDurationMinutes}
-        defaultBreakMinutes={prefs.defaultBreakMinutes}
-      />
-
-      <AnalysisPanel />
-
-      <SearchBar value={query} onInput={setQuery} />
-      <QuoteList quotes={quotes} onDelete={handleDelete} />
+      </div>
     </div>
   )
 }
