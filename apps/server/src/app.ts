@@ -12,6 +12,13 @@ import { topicsRoutes } from "./routes/topics"
 import { aiToolbarRoutes } from "./routes/ai-toolbar"
 import { sessionActionsRoutes } from "./routes/session-actions"
 import { mediaRoutes } from "./routes/media"
+import { settingsRoutes } from "./routes/settings"
+import { profileRoutes } from "./routes/profile"
+import { privacyRoutes } from "./routes/privacy"
+import { secretsRoutes } from "./routes/secrets"
+import { aiHistoryRoutes } from "./routes/ai-history"
+import { recallRoutes } from "./routes/recall"
+import { toolbarStateRoutes } from "./routes/toolbar-state"
 
 export const app = new Hono()
 
@@ -40,8 +47,15 @@ app.route("/api/session-actions", sessionActionsRoutes)
 app.route("/api/media", mediaRoutes)
 app.route("/api/topics", topicsRoutes)
 app.route("/api/ai", aiToolbarRoutes)
+app.route("/api/ai-history", aiHistoryRoutes)
 app.route("/api/sync", syncRoutes)
 app.route("/api/stream", streamRoutes)
+app.route("/api/settings", settingsRoutes)
+app.route("/api/profile", profileRoutes)
+app.route("/api/privacy", privacyRoutes)
+app.route("/api/secrets", secretsRoutes)
+app.route("/api/recall", recallRoutes)
+app.route("/api/toolbar-state", toolbarStateRoutes)
 
 app.get("/health", (c) =>
   c.json({ ok: true, service: "focus-quote", ts: new Date().toISOString() }),

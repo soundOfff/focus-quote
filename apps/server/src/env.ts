@@ -43,6 +43,11 @@ const EnvSchema = z.object({
     .string()
     .min(1)
     .default("google/gemini-2.0-flash-001"),
+
+  // Symmetric key (base64) used to encrypt user-provided secrets at rest in
+  // the `user_secrets` table. Must be 32 raw bytes (`openssl rand -base64 32`).
+  // Optional in dev/test — when unset, secrets endpoints reject writes.
+  SECRETS_ENCRYPTION_KEY: z.string().optional(),
 })
 
 export type Env = z.infer<typeof EnvSchema>

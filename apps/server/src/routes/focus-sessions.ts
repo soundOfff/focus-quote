@@ -3,7 +3,12 @@ import { zValidator } from "@hono/zod-validator"
 import { and, desc, eq } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { db } from "../db/client"
-import { focusSessions, sessionActions, sessionUrls } from "../db/schema"
+import {
+  focusSessions,
+  recallAttempts,
+  sessionActions,
+  sessionUrls,
+} from "../db/schema"
 import { requireUser, type RequireUserVariables } from "../middleware/require-user"
 import { z } from "zod"
 import { UpsertFocusSessionInput } from "../lib/api-schemas"
@@ -244,8 +249,8 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
     },
   )
   /**
-   * Grade a user's active-recall answer against the stored expected answer.
-   * Stateless on the server: doesn't persist user answers (yet).
+   * Grade a user's active-recall answer against the stored expected answer
+   * and persist the attempt under `recall_attempts` for cross-device history.
    */
   .post(
     "/:id/recall/grade",
@@ -286,6 +291,15 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
           503,
         )
       }
+      await db.insert(recallAttempts).values({
+        id: randomUUID(),
+        userId,
+        sessionId: id,
+        questionIndex,
+        userAnswer,
+        verdict: grade.verdict,
+        feedback: grade.feedback,
+      })
       return c.json(grade)
     },
   )
