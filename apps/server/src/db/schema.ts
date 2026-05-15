@@ -281,6 +281,14 @@ export const userSettings = sqliteTable("user_settings", {
     .notNull()
     .default(false),
   toolbarSide: text("toolbar_side").notNull().default("right"),
+  recallEnabled: integer("recall_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  recallQuestionCount: integer("recall_question_count").notNull().default(5),
+  recallDepth: text("recall_depth").notNull().default("standard"),
+  recallAutoGenerate: integer("recall_auto_generate", { mode: "boolean" })
+    .notNull()
+    .default(true),
   updatedAt: text("updated_at")
     .notNull()
     .default(sql`(datetime('now'))`),
@@ -414,6 +422,34 @@ export const recallAttempts = sqliteTable(
     userGradedIdx: index("recall_attempts_user_graded_idx").on(
       t.userId,
       t.gradedAt,
+    ),
+  }),
+)
+
+// Screenshots / images attached to a topic label. Used to enrich the LLM
+// prompts for recall + resource recommendations with visual context the
+// user captured during sessions.
+export const topicMedia = sqliteTable(
+  "topic_media",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    topic: text("topic").notNull(),
+    fileId: text("file_id")
+      .notNull()
+      .references(() => mediaBucketFiles.id, { onDelete: "cascade" }),
+    note: text("note"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    userTopicCreatedIdx: index("topic_media_user_topic_created_idx").on(
+      t.userId,
+      t.topic,
+      t.createdAt,
     ),
   }),
 )

@@ -57,6 +57,13 @@
       "when": 1778859665283,
       "tag": "0007_remote_first_user_state",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1778863811694,
+      "tag": "0008_shocking_swarm",
+      "breakpoints": true
     }
   ]
 }
