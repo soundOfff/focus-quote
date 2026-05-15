@@ -22,7 +22,7 @@ import {
   parseResourceRecommendations,
   parseStudyTips,
 } from "../lib/study-artifacts"
-import { maybeGenerateTopic } from "../lib/topic"
+import { maybeAutoDeriveGoal, maybeGenerateTopic } from "../lib/topic"
 import { gradeRecallAnswer } from "../lib/llm"
 
 export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>()
@@ -77,13 +77,21 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
     // generation (fire-and-forget — generation may take a few seconds and
     // we don't want to block the response).
     if (row.completed) {
-      if (!row.summary) void maybeGenerateSummary(userId, row.id)
-      if (!row.studyTips) void maybeGenerateStudyTips(userId, row.id)
-      if (!row.recallQuestions)
-        void maybeGenerateRecallQuestions(userId, row.id)
-      if (!row.resourceRecommendations)
-        void maybeGenerateResourceRecommendations(userId, row.id)
-      if (!row.topic) void maybeGenerateTopic(userId, row.id)
+      // Auto-derive the goal first if the user didn't set one, so downstream
+      // study artifacts (recall / recommendations / topic / summary) can
+      // benefit from a meaningful goal string.
+      const hasGoal = (row.goal ?? "").trim().length > 0
+      const downstream = async () => {
+        if (!hasGoal) await maybeAutoDeriveGoal(userId, row.id)
+        if (!row.summary) void maybeGenerateSummary(userId, row.id)
+        if (!row.studyTips) void maybeGenerateStudyTips(userId, row.id)
+        if (!row.recallQuestions)
+          void maybeGenerateRecallQuestions(userId, row.id)
+        if (!row.resourceRecommendations)
+          void maybeGenerateResourceRecommendations(userId, row.id)
+        if (!row.topic) void maybeGenerateTopic(userId, row.id)
+      }
+      void downstream()
     }
 
     return c.json({ session: toSessionDTO(row) }, 200)

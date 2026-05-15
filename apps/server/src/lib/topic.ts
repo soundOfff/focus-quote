@@ -1,15 +1,67 @@
 import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm"
 import { db } from "../db/client"
 import { focusSessions, sessionUrls } from "../db/schema"
-import { generateTopic } from "./llm"
+import { generateGoalSummary, generateTopic } from "./llm"
 
 /**
- * Topic detection groups sessions by subject across days. We feed the LLM
- * the recent topics the user has used so labels converge (e.g. always
- * "Terraform", never "Terraform basics" / "terraform" / "TF").
+ * If a session was started without a goal, try to infer one from the URLs
+ * visited during the session and persist it. Fail open — if the LLM is
+ * unavailable, the goal stays null and the UI shows "No goal".
  */
+export const maybeAutoDeriveGoal = async (
+  userId: string,
+  sessionId: string,
+): Promise<void> => {
+  try {
+    const [session] = await db
+      .select({
+        id: focusSessions.id,
+        goal: focusSessions.goal,
+      })
+      .from(focusSessions)
+      .where(
+        and(eq(focusSessions.id, sessionId), eq(focusSessions.userId, userId)),
+      )
+      .limit(1)
+    if (!session) return
+    if (session.goal && session.goal.trim().length > 0) return
 
-const RECENT_TOPICS_LIMIT = 25
+    const urls = await db
+      .select({
+        url: sessionUrls.url,
+        title: sessionUrls.title,
+        category: sessionUrls.category,
+      })
+      .from(sessionUrls)
+      .where(
+        and(
+          eq(sessionUrls.sessionId, sessionId),
+          eq(sessionUrls.userId, userId),
+        ),
+      )
+      .orderBy(asc(sessionUrls.visitedAt))
+      .limit(30)
+    if (urls.length === 0) return
+
+    const goal = await generateGoalSummary({ goal: null, urls })
+    if (!goal) return
+
+    await db
+      .update(focusSessions)
+      .set({ goal })
+      .where(
+        and(eq(focusSessions.id, sessionId), eq(focusSessions.userId, userId)),
+      )
+  } catch (err) {
+    console.warn("[topic] auto-derive goal failed for", sessionId, err)
+  }
+}
+
+/**
+ * Topic detection assigns each session one of a fixed set of broad
+ * categories (see TOPIC_CATEGORIES in lib/llm.ts) so the UI groups
+ * sessions without label fragmentation.
+ */
 
 export const maybeGenerateTopic = async (
   userId: string,
@@ -46,26 +98,9 @@ export const maybeGenerateTopic = async (
       .orderBy(asc(sessionUrls.visitedAt))
       .limit(30)
 
-    // Pull the user's recent topic labels so the LLM prefers reusing them.
-    const recent = await db
-      .selectDistinct({ topic: focusSessions.topic })
-      .from(focusSessions)
-      .where(
-        and(
-          eq(focusSessions.userId, userId),
-          isNotNull(focusSessions.topic),
-        ),
-      )
-      .orderBy(desc(focusSessions.startedAt))
-      .limit(RECENT_TOPICS_LIMIT)
-    const existingTopics = recent
-      .map((r) => r.topic)
-      .filter((t): t is string => typeof t === "string" && t.length > 0)
-
     const topic = await generateTopic({
       goal: session.goal,
       urls,
-      existingTopics,
     })
     if (!topic) return
 
