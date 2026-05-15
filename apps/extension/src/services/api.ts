@@ -15,6 +15,10 @@ import type {
   ListSessionUrlsResponse,
   SessionActionBatchRequest,
   SessionActionBatchResponse,
+  UploadMediaRequest,
+  UploadMediaResponse,
+  GetMediaResponse,
+  ListMediaResponse,
   SessionSummaryResponse,
   SessionStudyTipsResponse,
   SessionRecallResponse,
@@ -197,6 +201,17 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
           method: "POST",
           json: body,
         }),
+      uploadMedia: (body: UploadMediaRequest) =>
+        request<UploadMediaResponse>("/api/media", {
+          method: "POST",
+          json: body,
+        }),
+      getMedia: (id: string) => request<GetMediaResponse>(`/api/media/${id}`),
+      listMedia: (query?: {
+        kind?: "profile_photo" | "screenshot"
+        sessionId?: string
+        limit?: number
+      }) => request<ListMediaResponse>("/api/media", { query }),
 
       // Sync
       syncBatch: (body: SyncBatchRequest) =>

@@ -1,10 +1,12 @@
 import { icons } from "./icons"
 import { tokens } from "./tokens"
 import type { ToolbarShell } from "./shell"
+import { apiPost } from "./api"
 import type {
   CaptureVisibleTabMessage,
   CaptureVisibleTabResponse,
 } from "../../shared/messages"
+import type { UploadMediaResponse } from "@focus-quote/shared"
 
 /**
  * Full-viewport annotation overlay. Activates a transparent <canvas> over the
@@ -274,6 +276,34 @@ const downloadDataUrl = (dataUrl: string, filename: string): void => {
   a.remove()
 }
 
+const getActiveSessionId = async (): Promise<string | null> => {
+  try {
+    const out = await chrome.storage.local.get("focusquote.activeSession")
+    const active = out?.["focusquote.activeSession"]
+    if (!active || typeof active !== "object") return null
+    const id = (active as { sessionId?: unknown }).sessionId
+    return typeof id === "string" ? id : null
+  } catch {
+    return null
+  }
+}
+
+const uploadScreenshot = async (dataUrl: string): Promise<void> => {
+  const match = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/i.exec(dataUrl)
+  if (!match) return
+  const mimeType = match[1]!.toLowerCase()
+  const dataBase64 = match[2]!
+  const byteSize = Math.floor((dataBase64.length * 3) / 4)
+  const sessionId = await getActiveSessionId()
+  await apiPost<UploadMediaResponse>("/api/media", {
+    kind: "screenshot",
+    mimeType,
+    dataBase64,
+    byteSize,
+    sessionId,
+  })
+}
+
 const stampedFilename = (): string => {
   const stamp = new Date()
     .toISOString()
@@ -315,13 +345,22 @@ const saveComposite = async (
     // size lets the GPU resample it onto the captured frame.
     octx.drawImage(canvas, 0, 0, out.width, out.height)
 
-    downloadDataUrl(out.toDataURL("image/png"), stampedFilename())
+    const resultDataUrl = out.toDataURL("image/png")
+    downloadDataUrl(resultDataUrl, stampedFilename())
+    // Persist screenshot in Turso bucket (best-effort; download still succeeds).
+    void uploadScreenshot(resultDataUrl).catch((err) =>
+      console.warn("[FocusQuote] screenshot upload failed:", err),
+    )
   } catch (err) {
     console.warn("[FocusQuote] annotation save failed:", err)
     alert(
       "Couldn't capture the viewport. The drawing alone will still be saved.",
     )
-    downloadDataUrl(canvas.toDataURL("image/png"), stampedFilename())
+    const fallbackDataUrl = canvas.toDataURL("image/png")
+    downloadDataUrl(fallbackDataUrl, stampedFilename())
+    void uploadScreenshot(fallbackDataUrl).catch((uploadErr) =>
+      console.warn("[FocusQuote] screenshot upload failed:", uploadErr),
+    )
   } finally {
     overlay.style.visibility = "visible"
     controls.style.visibility = "visible"
