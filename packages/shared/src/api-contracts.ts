@@ -5,6 +5,8 @@ import type {
   NewSession,
   SessionUrl,
   NewSessionUrl,
+  SessionAction,
+  NewSessionAction,
   SyncJob,
 } from "./schema"
 
@@ -47,6 +49,16 @@ export interface UpsertSessionResponse {
 
 export interface SessionSummaryResponse {
   summary: string | null
+  pagesVisited: ReadonlyArray<{
+    url: string
+    title: string | null
+    visitedAt: string
+  }>
+  actions: ReadonlyArray<{
+    kind: string
+    at: string
+    payload: string
+  }>
 }
 
 export interface SessionStudyTipsResponse {
@@ -129,6 +141,22 @@ export interface ListSessionUrlsResponse {
   urls: ReadonlyArray<SessionUrl>
 }
 
+export interface SessionActionBatchRequest {
+  actions: ReadonlyArray<NewSessionAction>
+}
+
+export interface SessionActionBatchResponse {
+  actions: ReadonlyArray<SessionAction>
+}
+
+export interface ListSessionActionsQuery {
+  sessionId: string
+}
+
+export interface ListSessionActionsResponse {
+  actions: ReadonlyArray<SessionAction>
+}
+
 /** Event payloads streamed back over SSE during a session. */
 export type SessionStreamEvent =
   | {
@@ -175,6 +203,50 @@ export interface User {
 
 export interface MeResponse {
   user: User
+}
+
+// ---- Toolbar AI (Quote+AI + Guide Me) ----
+
+export type QuoteAssistantRole = "user" | "assistant"
+
+export interface QuoteAssistantTurn {
+  role: QuoteAssistantRole
+  content: string
+}
+
+export interface QuoteAssistantRequest {
+  /** The passage the user highlighted on the page. Required. */
+  passage: string
+  /** Source page URL (for context only, optional). */
+  sourceUrl?: string | null
+  /** Conversation history excluding the latest user turn. */
+  history?: ReadonlyArray<QuoteAssistantTurn>
+  /** The user's latest message. May be empty on the first call. */
+  userMessage?: string
+}
+
+export interface QuoteAssistantResponse {
+  reply: string
+}
+
+export interface GuideStepsRequest {
+  /** Natural-language description of what the user wants to accomplish. */
+  goal: string
+  /** Current page URL (helps the model anchor its hints, optional). */
+  sourceUrl?: string | null
+}
+
+export interface GuideStep {
+  instruction: string
+  /** Normalized viewport fraction (0..1). */
+  x: number
+  /** Normalized viewport fraction (0..1). */
+  y: number
+  description: string
+}
+
+export interface GuideStepsResponse {
+  steps: ReadonlyArray<GuideStep>
 }
 
 // ---- Errors ----

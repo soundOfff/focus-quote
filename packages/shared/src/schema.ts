@@ -9,6 +9,9 @@ export type SessionId = Schema.Schema.Type<typeof SessionId>
 export const SessionUrlId = Schema.String.pipe(Schema.brand("SessionUrlId"))
 export type SessionUrlId = Schema.Schema.Type<typeof SessionUrlId>
 
+export const SessionActionId = Schema.String.pipe(Schema.brand("SessionActionId"))
+export type SessionActionId = Schema.Schema.Type<typeof SessionActionId>
+
 const NullableString = Schema.NullOr(Schema.String)
 
 export const Quote = Schema.Struct({
@@ -54,6 +57,7 @@ export const SessionUrl = Schema.Struct({
   url: Schema.String,
   hostname: Schema.String,
   title: NullableString,
+  content: NullableString,
   visitedAt: Schema.String,
   category: NullableString,
   distractionScore: Schema.NullOr(Schema.Number),
@@ -67,9 +71,38 @@ export const NewSessionUrl = Schema.Struct({
   url: Schema.String.pipe(Schema.minLength(1)),
   hostname: Schema.String.pipe(Schema.minLength(1)),
   title: NullableString,
+  content: NullableString,
   visitedAt: Schema.String,
 })
 export type NewSessionUrl = Schema.Schema.Type<typeof NewSessionUrl>
+
+export const SessionActionKind = Schema.Literal(
+  "click",
+  "focus",
+  "blur",
+  "submit",
+  "scroll",
+  "nav",
+)
+export type SessionActionKind = Schema.Schema.Type<typeof SessionActionKind>
+
+export const SessionAction = Schema.Struct({
+  id: SessionActionId,
+  sessionId: SessionId,
+  kind: SessionActionKind,
+  payload: Schema.String,
+  at: Schema.String,
+})
+export type SessionAction = Schema.Schema.Type<typeof SessionAction>
+
+export const NewSessionAction = Schema.Struct({
+  id: SessionActionId,
+  sessionId: SessionId,
+  kind: SessionActionKind,
+  payload: Schema.String,
+  at: Schema.String,
+})
+export type NewSessionAction = Schema.Schema.Type<typeof NewSessionAction>
 
 export const Theme = Schema.Literal("dark", "light")
 export type Theme = Schema.Schema.Type<typeof Theme>
@@ -119,7 +152,16 @@ export const SyncJob = Schema.Union(
     url: Schema.String,
     hostname: Schema.String,
     title: NullableString,
+    content: NullableString,
     visitedAt: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("upsertSessionAction"),
+    id: SessionActionId,
+    sessionId: SessionId,
+    actionKind: SessionActionKind,
+    payload: Schema.String,
+    at: Schema.String,
   }),
 )
 export type SyncJob = Schema.Schema.Type<typeof SyncJob>
