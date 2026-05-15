@@ -1,6 +1,8 @@
 /**
  * FocusQuote design tokens used by the in-page toolbar and its popovers.
- * Mirrors the spacing / sizing scale from `apps/DESIGN.MD`:
+ * Mirrors `apps/DESIGN.MD` and `src/styles/tailwind.css` so the in-page
+ * chrome matches the rest of the extension UI: cream/white surfaces, ink
+ * text, yellow primary accent, warm hairlines.
  *
  *   - 8px base spacing with finer 2/4/6px steps for tight inline gaps
  *   - {spacing.xxs..xxl} = 2 / 4 / 8 / 12 / 16 / 24 / 32 px
@@ -9,21 +11,28 @@
  *   - touch targets meet WCAG AA at >= 40x40 (`size.tap`)
  *   - product icon scale = 20–24px (`icon.md` = 20)
  *
- * Colors stay in the toolbar's own dark navy palette (DESIGN.MD doesn't
- * cover dark in-page chrome), but everything *measurable* — spacing,
- * radius, icon size, target size, hairline — comes from the scale below.
+ * Names kept for historical reasons; values now come from the cream/ink
+ * palette in the global Tailwind layer.
  */
 
 export const tokens = {
-  navy: "#16213e",
-  navyDeep: "#0f1a30",
-  teal: "#2dd4bf",
-  tealDim: "rgba(45, 212, 191, 0.5)",
-  accent: "#e94560",
-  accentDim: "rgba(233, 69, 96, 0.55)",
-  ink: "#eaeaea",
-  inkMute: "#bcbcbc",
-  hairline: "rgba(255, 255, 255, 0.08)",
+  // Surfaces (was the navy backdrop). Now matches the app's surface-doc
+  // and surface cards so the toolbar feels like part of the same product.
+  navy: "rgb(255 255 255)", // surface
+  navyDeep: "rgb(238 239 233)", // canvas
+  // "teal" historically marked active/positive states. Now maps to the
+  // success-green pair so the toolbar can still flash a "good" highlight.
+  teal: "rgb(44 140 102)",
+  tealDim: "rgba(44, 140, 102, 0.45)",
+  // "accent" is the product's primary call-to-action — yellow-orange.
+  accent: "rgb(247 165 1)",
+  accentDim: "rgba(247, 165, 1, 0.45)",
+  // Text. Was a near-white off-dark; now the warm ink + mute used by the
+  // rest of the app.
+  ink: "rgb(35 37 29)",
+  inkMute: "rgb(110 113 99)",
+  // Hairline border — same warm tone as the global `--color-hairline`.
+  hairline: "rgb(191 193 183)",
   // Spacing scale (DESIGN.MD `{spacing.*}`).
   space: {
     xxs: "2px",

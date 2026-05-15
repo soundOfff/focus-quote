@@ -7,6 +7,7 @@ import {
 import { initFocusToolbar } from "./toolbar"
 import { mountActionCapture } from "./actionCapture"
 import { extractPageContent } from "./pageContent"
+import { isAnyToolActive, subscribeToolState } from "./toolbar/tool-state"
 import { PREFS_KEY, defaultPrefs } from "../shared/prefs"
 import {
   TRANSLATE_LANGUAGES,
@@ -175,7 +176,10 @@ const isToastMessage = (msg: unknown): msg is ToastMessage => {
 
 const showToast = (text: string, variant: "info" | "error" = "info") => {
   if (typeof document === "undefined" || !document.body) return
-  const bg = variant === "error" ? "#7a1f30" : "#16213e"
+  const bg =
+    variant === "error" ? "rgb(255 233 230)" : "rgb(255 255 255)"
+  const border =
+    variant === "error" ? "rgb(205 66 57)" : "rgb(191 193 183)"
   const el = document.createElement("div")
   el.textContent = text
   el.setAttribute("data-focusquote-toast", "")
@@ -185,11 +189,12 @@ const showToast = (text: string, variant: "info" | "error" = "info") => {
     "right:24px",
     "z-index:2147483647",
     `background:${bg}`,
-    "color:#eaeaea",
+    `border:1px solid ${border}`,
+    "color:rgb(35 37 29)",
     "padding:10px 16px",
-    "border-radius:10px",
+    "border-radius:8px",
     "font:14px system-ui,-apple-system,sans-serif",
-    "box-shadow:0 8px 24px rgba(0,0,0,.3)",
+    "box-shadow:0 8px 24px rgba(0,0,0,.10)",
     "opacity:1",
     "transition:opacity 200ms ease",
     "pointer-events:none",
@@ -319,11 +324,12 @@ const createSaveRow = (): SaveRow => {
     "display:inline-flex",
     "align-items:center",
     "gap:6px",
-    "background:#e94560",
-    "color:#ffffff",
+    "background:rgb(247 165 1)", // primary
+    "color:rgb(35 37 29)",        // ink
+    "border:1px solid rgb(191 193 183)",
     "border-radius:8px",
     "padding:6px 8px",
-    "box-shadow:0 4px 14px rgba(0,0,0,.25)",
+    "box-shadow:0 4px 14px rgba(0,0,0,.15)",
     "white-space:nowrap",
   ].join(";")
   root.appendChild(row)
@@ -340,7 +346,7 @@ const createSaveRow = (): SaveRow => {
     "padding:2px 4px",
     "border-radius:4px",
     "cursor:pointer",
-    "color:#ffffff",
+    "color:rgb(35 37 29)",
   ].join(";")
   saveBtn.innerHTML = `${SAVE_ICON}<span>Save quote</span>`
   saveBtn.addEventListener("click", handleSaveClick)
@@ -349,7 +355,7 @@ const createSaveRow = (): SaveRow => {
   // Visual divider between Save and the inline Translate group.
   const sep = document.createElement("span")
   sep.style.cssText =
-    "width:1px;height:18px;background:rgba(255,255,255,0.30);margin:0 2px"
+    "width:1px;height:18px;background:rgba(35,37,29,0.18);margin:0 2px"
   row.appendChild(sep)
 
   const fromSelect = document.createElement("select")
@@ -416,9 +422,9 @@ const createSaveRow = (): SaveRow => {
   resultCard.style.cssText = [
     "display:none",
     "max-width:360px",
-    "background:#16213e",
-    "color:#eaeaea",
-    "border:1px solid rgba(45,212,191,0.5)",
+    "background:rgb(255 255 255)",
+    "color:rgb(35 37 29)",
+    "border:1px solid rgb(191 193 183)",
     "border-radius:6px",
     "padding:8px 10px",
     "font:13px/1.5 system-ui,-apple-system,sans-serif",
@@ -426,6 +432,7 @@ const createSaveRow = (): SaveRow => {
     "word-break:break-word",
     "max-height:200px",
     "overflow:auto",
+    "box-shadow:0 4px 14px rgba(0,0,0,.10)",
   ].join(";")
   root.appendChild(resultCard)
 
@@ -493,6 +500,12 @@ const isInsideOurUI = (node: Node | null): boolean => {
 }
 
 const checkSelection = () => {
+  // If any other toolbar tool (Quote+AI, Guide Me, Annotate) is active,
+  // the save-quote bar would compete for attention. Hide ourselves.
+  if (isAnyToolActive()) {
+    hideRow()
+    return
+  }
   const sel = window.getSelection()
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
     hideRow()
@@ -534,7 +547,28 @@ function handleSaveClick() {
 
 interface MyMemoryResponse {
   responseData?: { translatedText?: string }
+  responseStatus?: number | string
+  responseDetails?: string
   matches?: ReadonlyArray<{ translation?: string }>
+}
+
+class TranslateQuotaError extends Error {
+  constructor() {
+    super("translate_quota_exhausted")
+    this.name = "TranslateQuotaError"
+  }
+}
+
+const isQuotaResponse = (data: MyMemoryResponse): boolean => {
+  const status = data?.responseStatus
+  const details = (data?.responseDetails ?? "").toUpperCase()
+  if (status === 429 || status === "429") return true
+  // MyMemory free tier returns the limit message in `responseDetails` as a
+  // success-status (200) payload — recognize the wording.
+  return (
+    details.includes("MYMEMORY WARNING") &&
+    (details.includes("FREE TRANSLATIONS") || details.includes("DAILY"))
+  )
 }
 
 const fetchTranslation = async (
@@ -547,10 +581,18 @@ const fetchTranslation = async (
   url.searchParams.set("q", text)
   url.searchParams.set("langpair", `${from}|${to}`)
   const res = await fetch(url.toString(), { signal })
+  if (res.status === 429) throw new TranslateQuotaError()
   if (!res.ok) throw new Error(`MyMemory ${res.status}`)
   const data = (await res.json()) as MyMemoryResponse
+  if (isQuotaResponse(data)) throw new TranslateQuotaError()
   const translated = data?.responseData?.translatedText
-  if (typeof translated === "string" && translated.length > 0) return translated
+  if (typeof translated === "string" && translated.length > 0) {
+    // MyMemory sometimes returns the quota message in `translatedText` too.
+    if (translated.toUpperCase().includes("MYMEMORY WARNING")) {
+      throw new TranslateQuotaError()
+    }
+    return translated
+  }
   const fallback = data?.matches?.[0]?.translation
   if (typeof fallback === "string" && fallback.length > 0) return fallback
   throw new Error("Empty translation")
@@ -566,7 +608,7 @@ function handleTranslateClick() {
   const to = row.toSelect.value || "en"
   if (from !== "auto" && from === to) {
     row.resultCard.style.display = "block"
-    row.resultCard.style.color = "#bcbcbc"
+    row.resultCard.style.color = "rgb(110 113 99)"
     row.resultCard.textContent = "Source and target languages match."
     return
   }
@@ -586,7 +628,7 @@ function handleTranslateClick() {
   currentTranslateAbort = new AbortController()
   fetchTranslation(text, from, to, currentTranslateAbort.signal)
     .then((out) => {
-      row.resultCard.style.color = "#eaeaea"
+      row.resultCard.style.color = "rgb(35 37 29)"
       row.resultCard.textContent = out
       if (sel && sel.rangeCount > 0) {
         requestAnimationFrame(() =>
@@ -596,7 +638,13 @@ function handleTranslateClick() {
     })
     .catch((err) => {
       if ((err as Error).name === "AbortError") return
-      row.resultCard.style.color = "#ff8b9b"
+      if (err instanceof TranslateQuotaError) {
+        row.resultCard.style.color = "rgb(205 66 57)"
+        row.resultCard.textContent =
+          "Daily free translations reached. Resets at midnight UTC — free service from MyMemory."
+        return
+      }
+      row.resultCard.style.color = "rgb(205 66 57)"
       row.resultCard.textContent = `Translation failed: ${
         err instanceof Error ? err.message : "unknown"
       }`
@@ -654,6 +702,13 @@ document.addEventListener("mousedown", onMouseDown, true)
 window.addEventListener("scroll", hideRow, { passive: true, capture: true })
 window.addEventListener("resize", hideRow, { passive: true })
 window.addEventListener("blur", hideRow)
+
+// Hide the save-quote bar whenever another toolbar tool becomes active;
+// re-evaluate selection when no tool is active so the bar can return.
+subscribeToolState((active) => {
+  if (active) hideRow()
+  else setTimeout(checkSelection, 0)
+})
 
 // ---------------- Debug overlay (tracker pipeline feed) ----------------
 //

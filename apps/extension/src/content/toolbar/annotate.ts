@@ -2,6 +2,7 @@ import { icons } from "./icons"
 import { tokens } from "./tokens"
 import type { ToolbarShell } from "./shell"
 import { apiPost } from "./api"
+import { setAnnotateActive } from "./tool-state"
 import type {
   CaptureVisibleTabMessage,
   CaptureVisibleTabResponse,
@@ -19,7 +20,9 @@ import type { UploadMediaResponse } from "@focus-quote/shared"
  * we no longer do a full-page scroll-and-stitch.
  */
 
-const INK = "#e94560"
+// Drawing color — accent-red so the annotation is visible on typical page
+// backgrounds. Matches the global `text-accent-red` token.
+const INK = "rgb(205 66 57)"
 const ATTR_OVERLAY = "data-focusquote-annotate-overlay"
 const ATTR_CONTROLS = "data-focusquote-annotate-controls"
 
@@ -379,6 +382,7 @@ export const installAnnotateButton = (
     state = null
     btn.setActive(false)
     document.removeEventListener("keydown", onKeydown, true)
+    setAnnotateActive(false)
   }
 
   const onKeydown = (e: KeyboardEvent) => {
@@ -390,6 +394,7 @@ export const installAnnotateButton = (
     state = createOverlay(exit)
     btn.setActive(true)
     document.addEventListener("keydown", onKeydown, true)
+    setAnnotateActive(true)
   }
 
   const btn = shell.addButton({

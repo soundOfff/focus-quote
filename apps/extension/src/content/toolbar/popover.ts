@@ -36,6 +36,19 @@ const POPOVER_ATTR = "data-focusquote-popover"
 
 let openHandle: { el: HTMLDivElement; close: () => void } | null = null
 
+type StateListener = (open: boolean) => void
+const stateListeners = new Set<StateListener>()
+const notifyState = () => {
+  for (const cb of stateListeners) cb(openHandle !== null)
+}
+
+export const isPopoverOpen = (): boolean => openHandle !== null
+
+export const subscribePopoverState = (cb: StateListener): (() => void) => {
+  stateListeners.add(cb)
+  return () => stateListeners.delete(cb)
+}
+
 export const closeOpenPopover = (): void => {
   if (openHandle) openHandle.close()
 }
@@ -172,12 +185,16 @@ export const openPopover = (opts: OpenOptions): PopoverHandle => {
     unsubSide?.()
     unsubSide = null
     panel.remove()
-    if (openHandle?.el === panel) openHandle = null
+    if (openHandle?.el === panel) {
+      openHandle = null
+      notifyState()
+    }
     opts.onClose?.()
   }
   closeBtn.addEventListener("click", close)
 
   openHandle = { el: panel, close }
+  notifyState()
 
   const handle: PopoverHandle = {
     setBody(node) {
