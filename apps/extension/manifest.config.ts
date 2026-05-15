@@ -38,11 +38,12 @@ export default defineManifest({
     "activeTab",
     "identity",
     "webNavigation",
+    "scripting",
   ],
   host_permissions: ["<all_urls>"],
   web_accessible_resources: [
     {
-      resources: ["src/auth-callback/index.html"],
+      resources: ["src/auth-callback/index.html", "src/content/spaNavInjector.ts"],
       matches: ["<all_urls>"],
     },
   ],

@@ -15,7 +15,8 @@
     "@focus-quote/shared": "*",
     "effect": "^3.10.4",
     "lucide-preact": "^0.460.0",
-    "preact": "^10.24.3"
+    "preact": "^10.24.3",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.4.0",
