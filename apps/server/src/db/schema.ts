@@ -1,5 +1,11 @@
 import { sql } from "drizzle-orm"
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core"
+import {
+  sqliteTable,
+  text,
+  integer,
+  index,
+  primaryKey,
+} from "drizzle-orm/sqlite-core"
 
 // ---------------- Better Auth tables ----------------
 // Mirrors the official Better Auth schema for SQLite.
@@ -249,3 +255,184 @@ export const urlClassifications = sqliteTable("url_classifications", {
     .notNull()
     .default(sql`(datetime('now'))`),
 })
+
+// ---------------- Remote-first user state ----------------
+// All previously-local-only state in the extension is now mirrored here so
+// that prefs, profile, privacy, secrets, AI chat history, recall attempts,
+// and ephemeral toolbar state survive sign-in across devices.
+
+// Per-user settings (1:1 with users). Mirrors `Prefs` + extras.
+export const userSettings = sqliteTable("user_settings", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  theme: text("theme").notNull().default("dark"),
+  defaultDurationMinutes: integer("default_duration_minutes")
+    .notNull()
+    .default(25),
+  defaultBreakMinutes: integer("default_break_minutes").notNull().default(5),
+  translateFromLang: text("translate_from_lang").notNull().default("auto"),
+  translateToLang: text("translate_to_lang").notNull().default("en"),
+  todayGoal: text("today_goal"),
+  debugOverlayEnabled: integer("debug_overlay_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  notificationsBlocked: integer("notifications_blocked", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  toolbarSide: text("toolbar_side").notNull().default("right"),
+  updatedAt: text("updated_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+})
+
+// User-editable profile text (1:1 with users). Photo lives in user_media_refs.
+export const userProfile = sqliteTable("user_profile", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  displayName: text("display_name").notNull().default(""),
+  headline: text("headline").notNull().default(""),
+  photoMediaFileId: text("photo_media_file_id"),
+  updatedAt: text("updated_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+})
+
+// URL tracking privacy preferences (1:1 with users). `blocklist` is a JSON
+// array of hostnames stored as text.
+export const userPrivacy = sqliteTable("user_privacy", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  trackUrls: integer("track_urls", { mode: "boolean" }).notNull().default(false),
+  blocklist: text("blocklist").notNull().default("[]"),
+  updatedAt: text("updated_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+})
+
+// Encrypted client-provided secrets (e.g. OpenRouter key). Stored as
+// base64(iv) || ":" || base64(ciphertext+tag) using AES-256-GCM at rest.
+// The encryption key comes from the server's SECRETS_ENCRYPTION_KEY env.
+export const userSecrets = sqliteTable(
+  "user_secrets",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    encryptedValue: text("encrypted_value").notNull(),
+    hint: text("hint"),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    userKindIdx: index("user_secrets_user_kind_idx").on(t.userId, t.kind),
+  }),
+)
+
+// AI toolbar chat history (Quote+AI and Guide Me). One thread per opened
+// quote/guide session; messages are append-only.
+export const aiChatThreads = sqliteTable(
+  "ai_chat_threads",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    passage: text("passage"),
+    sourceUrl: text("source_url"),
+    goal: text("goal"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    userKindUpdatedIdx: index("ai_chat_threads_user_kind_updated_idx").on(
+      t.userId,
+      t.kind,
+      t.updatedAt,
+    ),
+  }),
+)
+
+export const aiChatMessages = sqliteTable(
+  "ai_chat_messages",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => aiChatThreads.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    content: text("content").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    threadCreatedIdx: index("ai_chat_messages_thread_created_idx").on(
+      t.threadId,
+      t.createdAt,
+    ),
+  }),
+)
+
+// User answers to recall questions. Persisted so we can show a study history.
+export const recallAttempts = sqliteTable(
+  "recall_attempts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => focusSessions.id, { onDelete: "cascade" }),
+    questionIndex: integer("question_index").notNull(),
+    userAnswer: text("user_answer").notNull(),
+    verdict: text("verdict").notNull(),
+    feedback: text("feedback").notNull(),
+    gradedAt: text("graded_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    sessionGradedIdx: index("recall_attempts_session_graded_idx").on(
+      t.sessionId,
+      t.gradedAt,
+    ),
+    userGradedIdx: index("recall_attempts_user_graded_idx").on(
+      t.userId,
+      t.gradedAt,
+    ),
+  }),
+)
+
+// Cross-device toolbar runtime state (zustand persist replacement). One row
+// per (user, name) where `payload` is the serialized state blob.
+export const toolbarRuntimeState = sqliteTable(
+  "toolbar_runtime_state",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    payload: text("payload").notNull(),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.name] }),
+  }),
+)
