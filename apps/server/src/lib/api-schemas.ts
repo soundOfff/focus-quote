@@ -159,6 +159,13 @@ export type SyncBatchInput = z.infer<typeof SyncBatchInput>
 
 const ThemeInput = z.enum(["dark", "light"])
 
+export const RecallDepthInput = z.enum(["easy", "standard", "challenging"])
+export type RecallDepthInput = z.infer<typeof RecallDepthInput>
+
+export const RecallQuestionCountInput = z
+  .union([z.literal(3), z.literal(5), z.literal(7)])
+  .or(z.coerce.number().int().min(3).max(7))
+
 export const UserSettingsInput = z.object({
   theme: ThemeInput,
   defaultDurationMinutes: z.number().int().min(1).max(180),
@@ -169,6 +176,10 @@ export const UserSettingsInput = z.object({
   debugOverlayEnabled: z.boolean().optional(),
   notificationsBlocked: z.boolean().optional(),
   toolbarSide: z.enum(["left", "right"]).optional(),
+  recallEnabled: z.boolean().optional(),
+  recallQuestionCount: RecallQuestionCountInput.optional(),
+  recallDepth: RecallDepthInput.optional(),
+  recallAutoGenerate: z.boolean().optional(),
 })
 export type UserSettingsInput = z.infer<typeof UserSettingsInput>
 

@@ -26,15 +26,43 @@ You receive the session goal and the URLs they visited (with titles).
 Generate 3 to 5 concrete, actionable study tips to deepen their understanding of THIS topic. Each tip is one or two sentences in the user's language. Where useful, reference specifics from the visited content (e.g. "since you looked at X, also explore Y"). Avoid generic advice like "take breaks".
 Reply with strict JSON: {"tips": string[]}. No prose outside JSON, no markdown fences.`
 
-const SYSTEM_RECALL = `You are a study coach designing active-recall prompts for a learner.
+const buildRecallSystem = (count: number, depth: string) => {
+  const depthHint =
+    depth === "easy"
+      ? "Keep the questions easy — single concept, short answers, foundational recall."
+      : depth === "challenging"
+        ? "Make the questions challenging — multi-step reasoning, edge cases, comparisons across the visited content."
+        : "Use standard difficulty — concrete questions on the core ideas."
+  return `You are a study coach designing active-recall prompts for a learner.
 You receive the session goal and the URLs they visited (with titles).
-Generate 3 to 5 short questions that test the core ideas the user just engaged with. Each question must be answerable from the visited content. For each, also include the correct answer (one to three sentences).
+Generate EXACTLY ${count} short questions that test the core ideas the user just engaged with. Each question must be answerable from the visited content. For each, also include the correct answer (one to three sentences).
+${depthHint}
 Reply with strict JSON: {"questions": [{"q": string, "a": string}]} in the user's language. No prose outside JSON, no markdown fences.`
+}
 
-const SYSTEM_TOPIC = `You are a librarian assigning a topic label to a focus session for grouping.
-You receive: the session goal, the URLs visited (with titles), AND an optional list of existing topic labels used recently.
-Produce ONE concise label, 1-4 words, in the user's language. Prefer reusing an existing label if the session fits — exact same casing/spelling — to avoid fragmentation (so "AWS" stays as "AWS", not "Aws Marketplace"). Only invent a new label if no existing one fits.
-Reply with strict JSON: {"topic": string}. No prose outside JSON, no markdown fences.`
+export const TOPIC_CATEGORIES = [
+  "Programming",
+  "Research",
+  "Learning",
+  "Writing",
+  "Reading",
+  "Health",
+  "Finance",
+  "Productivity",
+  "Entertainment",
+  "Social",
+  "Shopping",
+  "Other",
+] as const
+export type TopicCategory = (typeof TOPIC_CATEGORIES)[number]
+
+const SYSTEM_TOPIC = `You are a librarian assigning a broad category to a focus session.
+You receive: the session goal and the URLs visited (with titles).
+Pick ONE label from this exact list (return the exact spelling/casing):
+${TOPIC_CATEGORIES.join(" | ")}
+
+Guidance: pick the single best fit. If a session covers multiple themes, pick the dominant one. Use "Other" only when no category fits at all.
+Reply with strict JSON: {"topic": string} where "topic" is one of the labels above. No prose outside JSON, no markdown fences.`
 
 const SYSTEM_GRADE = `You are grading a student's active-recall answer.
 You receive: the question, the expected answer, and the student's answer.
@@ -59,9 +87,15 @@ Each step has: { "instruction": string, "x": number (0-1 normalized viewport fra
 - Return between 3 and 7 steps. Keep them ordered.
 Reply with strict JSON: {"steps": [...]}. No markdown fences, no prose outside the JSON.`
 
+const SYSTEM_GOAL_SUMMARY = `You are summarizing what a user was working on during a completed focus session, in the user's language.
+You receive the URLs they visited (with titles).
+Produce ONE short phrase (4-8 words, no period, no markdown) describing the most likely goal of the session — e.g. "Learning Rust borrow checker", "Researching travel insurance", "Job applications for senior PM roles".
+Avoid generic phrases like "Browsing the web" unless the URLs are truly mixed/unfocused.
+Reply with strict JSON: {"goal": string}. No prose outside JSON, no markdown fences.`
+
 const SYSTEM_RESOURCES = `You are a study coach recommending additional resources after a focus session.
 You receive the session goal and the URLs the user visited.
-Recommend 2 to 4 ADDITIONAL resources (not already in their visited list) that fill gaps or deepen the topic.
+Recommend 3 to 5 ADDITIONAL resources (not already in their visited list) that fill gaps or deepen the topic. Aim for at least 3 — if you can only find 3 high-confidence resources, that is fine.
 CRITICAL: only return real, well-known, stable URLs you are highly confident exist (official docs, well-known blogs, established YouTube channels, canonical references). Do NOT fabricate URLs. If you are not confident a URL exists, do not include it — fewer high-quality items is better than fabricated ones.
 For each resource provide: url, title, and one sentence on why it's valuable for THIS user given their goal.
 Reply with strict JSON: {"resources": [{"url": string, "title": string, "why": string}]} in the user's language. No prose outside JSON, no markdown fences.`
@@ -252,13 +286,21 @@ export const generateStudyTips = async (
   }
 }
 
+export interface RecallOptions {
+  count?: 3 | 5 | 7
+  depth?: "easy" | "standard" | "challenging"
+}
+
 export const generateRecallQuestions = async (
   input: StudyInput,
+  opts: RecallOptions = {},
 ): Promise<RecallQuestion[] | null> => {
   if (input.urls.length === 0) return null
+  const count = opts.count ?? 5
+  const depth = opts.depth ?? "standard"
   try {
     const text = await generate({
-      system: SYSTEM_RECALL,
+      system: buildRecallSystem(count, depth),
       user: buildStudyUserMessage(input),
       maxTokens: 800,
       tier: "smart",
@@ -286,9 +328,33 @@ export const generateRecallQuestions = async (
   }
 }
 
-export const generateTopic = async (
-  input: StudyInput & { existingTopics: string[] },
+export const generateGoalSummary = async (
+  input: StudyInput,
 ): Promise<string | null> => {
+  if (input.urls.length === 0) return null
+  try {
+    const text = await generate({
+      system: SYSTEM_GOAL_SUMMARY,
+      user: JSON.stringify({ urls: input.urls.slice(0, 30) }),
+      maxTokens: 60,
+      tier: "fast",
+      expectJson: true,
+    })
+    if (!text) return null
+    const parsed = JSON.parse(stripFences(text)) as { goal?: unknown }
+    if (typeof parsed.goal !== "string") return null
+    const trimmed = parsed.goal.trim().replace(/\.$/, "")
+    if (!trimmed) return null
+    return trimmed.slice(0, 80)
+  } catch (err) {
+    console.warn("[llm] generateGoalSummary failed:", err)
+    return null
+  }
+}
+
+export const generateTopic = async (
+  input: StudyInput,
+): Promise<TopicCategory | null> => {
   if (input.urls.length === 0 && !input.goal) return null
   try {
     const text = await generate({
@@ -296,7 +362,6 @@ export const generateTopic = async (
       user: JSON.stringify({
         goal: input.goal ?? "(no explicit goal)",
         urls: input.urls.slice(0, 30),
-        existingTopics: input.existingTopics,
       }),
       maxTokens: 50,
       tier: "fast",
@@ -305,9 +370,11 @@ export const generateTopic = async (
     if (!text) return null
     const parsed = JSON.parse(stripFences(text)) as { topic?: unknown }
     if (typeof parsed.topic !== "string") return null
-    const trimmed = parsed.topic.trim()
-    if (!trimmed) return null
-    return trimmed.slice(0, 60)
+    const candidate = parsed.topic.trim()
+    const match = TOPIC_CATEGORIES.find(
+      (c) => c.toLowerCase() === candidate.toLowerCase(),
+    )
+    return match ?? "Other"
   } catch (err) {
     console.warn("[llm] generateTopic failed:", err)
     return null
@@ -361,40 +428,55 @@ export const gradeRecallAnswer = async (input: {
   }
 }
 
+const callResourcesOnce = async (
+  input: StudyInput,
+): Promise<ResourceRecommendation[]> => {
+  const text = await generate({
+    system: SYSTEM_RESOURCES,
+    user: buildStudyUserMessage(input),
+    maxTokens: 700,
+    tier: "smart",
+    expectJson: true,
+  })
+  if (!text) return []
+  const parsed = JSON.parse(stripFences(text)) as { resources?: unknown }
+  if (!Array.isArray(parsed.resources)) return []
+  return parsed.resources.flatMap((r): ResourceRecommendation[] => {
+    if (typeof r !== "object" || r === null) return []
+    const obj = r as Record<string, unknown>
+    if (
+      typeof obj.url !== "string" ||
+      typeof obj.title !== "string" ||
+      typeof obj.why !== "string"
+    )
+      return []
+    if (!/^https?:\/\//i.test(obj.url)) return []
+    return [{ url: obj.url, title: obj.title, why: obj.why }]
+  })
+}
+
+const MIN_RECOMMENDATIONS = 3
+const MAX_RECOMMENDATIONS = 5
+
 export const generateResourceRecommendations = async (
   input: StudyInput,
 ): Promise<ResourceRecommendation[] | null> => {
   if (input.urls.length === 0) return null
   try {
-    const text = await generate({
-      system: SYSTEM_RESOURCES,
-      user: buildStudyUserMessage(input),
-      maxTokens: 600,
-      tier: "smart",
-      expectJson: true,
-    })
-    if (!text) return null
-    const parsed = JSON.parse(stripFences(text)) as { resources?: unknown }
-    if (!Array.isArray(parsed.resources)) return null
-    const candidates = parsed.resources.flatMap(
-      (r): ResourceRecommendation[] => {
-        if (typeof r !== "object" || r === null) return []
-        const obj = r as Record<string, unknown>
-        if (
-          typeof obj.url !== "string" ||
-          typeof obj.title !== "string" ||
-          typeof obj.why !== "string"
-        )
-          return []
-        // Sanity filter: must look like a real URL
-        if (!/^https?:\/\//i.test(obj.url)) return []
-        return [{ url: obj.url, title: obj.title, why: obj.why }]
-      },
-    )
-    if (candidates.length === 0) return null
-    // Validate each URL with a short-timeout HEAD/GET to filter hallucinations.
-    const verified = await validateUrls(candidates)
-    return verified.length > 0 ? verified : null
+    let candidates = await callResourcesOnce(input)
+    let verified = await validateUrls(candidates)
+    // If too few survived validation, retry once. The retry's randomness
+    // usually produces a different set, increasing the chance we hit the
+    // floor without bloating cost.
+    if (verified.length < MIN_RECOMMENDATIONS) {
+      const more = await callResourcesOnce(input)
+      const dedup = new Map<string, ResourceRecommendation>()
+      for (const r of [...candidates, ...more]) dedup.set(r.url, r)
+      candidates = Array.from(dedup.values())
+      verified = await validateUrls(candidates)
+    }
+    if (verified.length === 0) return null
+    return verified.slice(0, MAX_RECOMMENDATIONS)
   } catch (err) {
     console.warn("[llm] generateResourceRecommendations failed:", err)
     return null

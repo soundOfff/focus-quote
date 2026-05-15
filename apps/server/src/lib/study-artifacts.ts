@@ -1,13 +1,42 @@
 import { and, asc, eq } from "drizzle-orm"
 import { db } from "../db/client"
-import { focusSessions, sessionUrls } from "../db/schema"
+import { focusSessions, sessionUrls, userSettings } from "../db/schema"
 import {
   generateRecallQuestions,
   generateResourceRecommendations,
   generateStudyTips,
+  type RecallOptions,
   type RecallQuestion,
   type ResourceRecommendation,
 } from "./llm"
+
+const loadRecallOptions = async (userId: string): Promise<RecallOptions & { enabled: boolean; auto: boolean }> => {
+  const [row] = await db
+    .select({
+      recallEnabled: userSettings.recallEnabled,
+      recallQuestionCount: userSettings.recallQuestionCount,
+      recallDepth: userSettings.recallDepth,
+      recallAutoGenerate: userSettings.recallAutoGenerate,
+    })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1)
+  if (!row) return { enabled: true, auto: true, count: 5, depth: "standard" }
+  const count =
+    row.recallQuestionCount === 3 || row.recallQuestionCount === 5 || row.recallQuestionCount === 7
+      ? (row.recallQuestionCount as 3 | 5 | 7)
+      : 5
+  const depth =
+    row.recallDepth === "easy" || row.recallDepth === "challenging"
+      ? row.recallDepth
+      : "standard"
+  return {
+    enabled: row.recallEnabled,
+    auto: row.recallAutoGenerate,
+    count,
+    depth,
+  }
+}
 
 /**
  * Same pattern as `maybeGenerateSummary`: read goal + URLs, call the LLM,
@@ -16,18 +45,6 @@ import {
  */
 
 type Artifact = "studyTips" | "recallQuestions" | "resourceRecommendations"
-
-const generators: Record<
-  Artifact,
-  (input: {
-    goal: string | null
-    urls: Array<{ url: string; category: string | null; title: string | null }>
-  }) => Promise<unknown | null>
-> = {
-  studyTips: generateStudyTips,
-  recallQuestions: generateRecallQuestions,
-  resourceRecommendations: generateResourceRecommendations,
-}
 
 const loadInput = async (userId: string, sessionId: string) => {
   const [session] = await db
@@ -107,10 +124,23 @@ const maybeGenerate = async (
     if (!opts.force && ctx.session[artifact]) return // cached
     if (ctx.urls.length === 0) return
 
-    const result = await generators[artifact]({
-      goal: ctx.session.goal,
-      urls: ctx.urls,
-    })
+    const input = { goal: ctx.session.goal, urls: ctx.urls }
+    let result: unknown | null = null
+    if (artifact === "studyTips") {
+      result = await generateStudyTips(input)
+    } else if (artifact === "recallQuestions") {
+      const recall = await loadRecallOptions(userId)
+      // Skip auto-generation entirely if user disabled recall or auto-gen,
+      // unless this is an explicit force-regenerate.
+      if (!opts.force && (!recall.enabled || !recall.auto)) return
+      if (opts.force && !recall.enabled) return
+      result = await generateRecallQuestions(input, {
+        count: recall.count,
+        depth: recall.depth,
+      })
+    } else {
+      result = await generateResourceRecommendations(input)
+    }
     if (!result) return
     await persistArtifact(userId, sessionId, artifact, result)
   } catch (err) {
