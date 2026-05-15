@@ -8,6 +8,7 @@ import { ApiService } from "../services/api"
 import {
   defaultPrefs,
   ensurePrefsMigrated,
+  loadPrefs,
   pullPrefsFromRemote,
   pushPrefsToRemote,
   savePrefs,
@@ -40,7 +41,12 @@ const loadQuotes = (query: string) =>
     return list as ReadonlyArray<Quote>
   })
 
-const loadInitialPrefs = Effect.gen(function* () {
+const loadCachedPrefs = Effect.gen(function* () {
+  const storage = yield* StorageService
+  return yield* loadPrefs(storage)
+})
+
+const revalidatePrefs = Effect.gen(function* () {
   const storage = yield* StorageService
   // Run idempotent migrations before pulling, so legacy local prefs are
   // pushed up before we overwrite them with remote state.
@@ -62,7 +68,13 @@ const loadCurrentUser = Effect.gen(function* () {
   return yield* auth.currentUser
 })
 
-const loadProfilePhotoDataUrl = Effect.gen(function* () {
+const loadCachedProfilePhotoDataUrl = Effect.gen(function* () {
+  const storage = yield* StorageService
+  const profile = yield* loadProfilePrefs(storage)
+  return profile.photoDataUrl
+})
+
+const revalidateProfilePhotoDataUrl = Effect.gen(function* () {
   const storage = yield* StorageService
   const api = yield* ApiService
   // Refresh profile from server (best-effort) so the photo id is current.
@@ -115,15 +127,35 @@ export function App() {
       .finally(() => setAuthReady(true))
 
   useEffect(() => {
-    runP(loadInitialPrefs)
+    // Paint from local cache immediately so the popup doesn't block on the
+    // network. Then revalidate against the server in the background and
+    // update state if anything changed.
+    runP(loadCachedPrefs)
       .then((p) => {
         setPrefs(p)
         applyTheme(p.theme)
       })
       .catch(console.error)
-    runP(loadProfilePhotoDataUrl)
+      .finally(() => {
+        runP(revalidatePrefs)
+          .then((p) => {
+            setPrefs(p)
+            applyTheme(p.theme)
+          })
+          .catch(console.error)
+      })
+
+    runP(loadCachedProfilePhotoDataUrl)
       .then(setProfilePhotoDataUrl)
-      .catch((e) => console.error("[FocusQuote] load profile photo:", e))
+      .catch(() => {})
+      .finally(() => {
+        runP(revalidateProfilePhotoDataUrl)
+          .then(setProfilePhotoDataUrl)
+          .catch((e) =>
+            console.error("[FocusQuote] revalidate profile photo:", e),
+          )
+      })
+
     refreshAuth()
   }, [])
 
@@ -204,7 +236,7 @@ export function App() {
 
   return (
     <div class="h-[460px] w-[360px] overflow-y-auto bg-canvas text-body">
-      <div class="flex flex-col gap-3 p-4">
+      <div class="flex flex-col gap-5 p-4">
         <header class="flex items-center justify-between">
           <h1 class="text-base font-semibold text-ink">FocusQuote</h1>
           <Button
@@ -217,19 +249,24 @@ export function App() {
           </Button>
         </header>
 
-        <SessionPanel
-          defaultDurationMinutes={prefs.defaultDurationMinutes}
-          defaultBreakMinutes={prefs.defaultBreakMinutes}
-        />
+        <section class="flex flex-col gap-2">
+          <h2 class="text-[10px] font-medium uppercase tracking-wider text-mute">
+            Focus session
+          </h2>
+          <SessionPanel
+            defaultDurationMinutes={prefs.defaultDurationMinutes}
+            defaultBreakMinutes={prefs.defaultBreakMinutes}
+          />
+          <AnalysisPanel />
+        </section>
 
-        <AnalysisPanel />
-
-        <SearchBar value={query} onInput={setQuery} />
-        <QuoteList quotes={quotes} onDelete={handleDelete} />
-
-        <Button variant="outline" size="sm" onClick={openOptionsPage}>
-          Open Full Options
-        </Button>
+        <section class="flex flex-col gap-2">
+          <h2 class="text-[10px] font-medium uppercase tracking-wider text-mute">
+            Saved quotes
+          </h2>
+          <SearchBar value={query} onInput={setQuery} />
+          <QuoteList quotes={quotes} onDelete={handleDelete} />
+        </section>
       </div>
     </div>
   )

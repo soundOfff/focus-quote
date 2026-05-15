@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
-import { LogIn } from "lucide-preact"
+import { LogIn, Settings } from "lucide-preact"
 import { QuotesService } from "../services/quotes"
 import { SessionsService } from "../services/sessions"
 import { StorageService } from "../services/storage"
@@ -167,6 +167,16 @@ export function App() {
     runP(saveGoal(value)).catch(console.error)
   }, [])
 
+  const handleOpenOptions = useCallback(() => {
+    if (chrome.runtime.openOptionsPage) {
+      chrome.runtime.openOptionsPage()
+    } else {
+      chrome.tabs.create({
+        url: chrome.runtime.getURL("src/options/index.html"),
+      })
+    }
+  }, [])
+
   const todayLabel = useMemo(
     () =>
       new Date().toLocaleDateString(undefined, {
@@ -201,7 +211,19 @@ export function App() {
               {greeting()}.
             </h1>
           </div>
-          <ThemeToggle theme={theme} onToggle={handleToggleTheme} />
+          <div class="flex items-center gap-1">
+            <ThemeToggle theme={theme} onToggle={handleToggleTheme} />
+            {user ? (
+              <button
+                type="button"
+                onClick={handleOpenOptions}
+                aria-label="Open full options"
+                class="rounded-md p-2 text-mute transition-colors hover:bg-surface-soft hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
+              >
+                <Settings size={16} />
+              </button>
+            ) : null}
+          </div>
         </header>
 
         {!user ? (
