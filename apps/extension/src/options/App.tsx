@@ -146,8 +146,10 @@ export function App() {
     hint: null,
     updatedAt: null,
   })
-  const [keyStatus, setKeyStatus] = useState<"idle" | "saved">("idle")
-  const [profileStatus, setProfileStatus] = useState<"idle" | "saving" | "saved">("idle")
+  const [keyStatus, setKeyStatus] = useState<"idle" | "saved" | "error">("idle")
+  const [keyError, setKeyError] = useState<string | null>(null)
+  const [profileStatus, setProfileStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
+  const [profileError, setProfileError] = useState<string | null>(null)
   const [photoBusy, setPhotoBusy] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   const accountImageSrc = resolveAccountImageSrc(profile.photoDataUrl, user?.image)
@@ -181,14 +183,21 @@ export function App() {
   const flushProfileSave = (next?: ProfilePrefs) => {
     const value = next ?? profile
     setProfileStatus("saving")
+    setProfileError(null)
     runP(persistProfile(value))
       .then(() => {
         setProfileStatus("saved")
+        setProfileError(null)
         setTimeout(() => setProfileStatus("idle"), 1200)
       })
       .catch((e) => {
         console.error("[FocusQuote] save profile:", e)
-        setProfileStatus("idle")
+        setProfileStatus("error")
+        setProfileError("Failed to save profile")
+        setTimeout(() => {
+          setProfileStatus("idle")
+          setProfileError(null)
+        }, 3000)
       })
   }
 
@@ -206,9 +215,22 @@ export function App() {
         setOpenrouterState(state)
         setOpenrouterKey(state.hint ?? "")
         setKeyStatus("saved")
+        setKeyError(null)
         setTimeout(() => setKeyStatus("idle"), 1200)
       })
-      .catch((e) => console.error("[FocusQuote] save key:", e))
+      .catch((e) => {
+        const msg = String(e?.message ?? e)
+        const isSecretsDisabled =
+          msg.includes("SECRETS_DISABLED") || msg.includes("SECRETS_ENCRYPTION_KEY")
+        setKeyError(
+          isSecretsDisabled
+            ? "Server not configured to store secrets. Admin: set SECRETS_ENCRYPTION_KEY env var."
+            : "Failed to save API key",
+        )
+        setKeyStatus("error")
+        setTimeout(() => setKeyStatus("idle"), 3000)
+        console.error("[FocusQuote] save key:", e)
+      })
   }
 
   const scheduleKeySave = (nextValue: string) => {
@@ -396,12 +418,16 @@ export function App() {
                   placeholder="Student, writer, builder…"
                 />
                 <div class="flex items-center justify-between">
-                  <p class="text-[11px] text-mute">
-                    {profileStatus === "saving"
-                      ? "Saving…"
-                      : profileStatus === "saved"
-                        ? "Saved"
-                        : "Stored on this device + linked to your account"}
+                  <p
+                    class={`text-[11px] ${profileError ? "text-red-500" : "text-mute"}`}
+                  >
+                    {profileError
+                      ? profileError
+                      : profileStatus === "saving"
+                        ? "Saving…"
+                        : profileStatus === "saved"
+                          ? "Saved"
+                          : "Stored on this device + linked to your account"}
                   </p>
                 </div>
               </div>
@@ -475,8 +501,12 @@ export function App() {
               class="flex-1 rounded-md border border-hairline bg-surface px-3 py-2 text-sm outline-none ring-0 focus:ring-1 focus:ring-focus-ring"
             />
           </div>
-          <p class="mt-2 text-[11px] text-mute">
-            {keyStatus === "saved" ? "Saved" : "Autosaves on blur/enter."}
+          <p class={`mt-2 text-[11px] ${keyError ? "text-red-500" : "text-mute"}`}>
+            {keyError
+              ? keyError
+              : keyStatus === "saved"
+                ? "Saved"
+                : "Autosaves on blur/enter."}
           </p>
         </Surface>
 
