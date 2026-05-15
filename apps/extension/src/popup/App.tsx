@@ -30,7 +30,8 @@ import { SessionPanel } from "./components/SessionPanel"
 import { SettingsView } from "./components/SettingsView"
 import { SignIn } from "./components/SignIn"
 import type { Quote, User } from "@focus-quote/shared"
-import { Button } from "../ui/primitives"
+import { Button, SkeletonCard } from "../ui/primitives"
+import { ToastProvider, useToast } from "../ui/Toast"
 
 const loadQuotes = (query: string) =>
   Effect.gen(function* () {
@@ -107,6 +108,15 @@ const openOptionsPage = () => {
 }
 
 export function App() {
+  return (
+    <ToastProvider>
+      <AppInner />
+    </ToastProvider>
+  )
+}
+
+function AppInner() {
+  const toast = useToast()
   const [view, setView] = useState<View>("main")
   const [query, setQuery] = useState("")
   const [quotes, setQuotes] = useState<ReadonlyArray<Quote>>([])
@@ -173,17 +183,15 @@ export function App() {
   // listen for the auth-callback page broadcasting a successful sign-in
   useEffect(() => {
     const onMessage = (msg: unknown) => {
-      if (
-        typeof msg === "object" &&
-        msg !== null &&
-        (msg as { type?: string }).type === "focusquote.auth.signedIn"
-      ) {
-        refreshAuth()
-      }
+      if (typeof msg !== "object" || msg === null) return
+      const type = (msg as { type?: string }).type
+      if (type === "focusquote.auth.signedIn") refreshAuth()
+      if (type === "focusquote.session.finished") toast.success("Focus session complete.")
+      if (type === "focusquote.session.cancelled") toast.info("Session cancelled.")
     }
     chrome.runtime.onMessage.addListener(onMessage)
     return () => chrome.runtime.onMessage.removeListener(onMessage)
-  }, [])
+  }, [toast])
 
   const handleDelete = (id: Quote["id"]) => {
     runP(
@@ -192,8 +200,14 @@ export function App() {
         yield* quotes.remove(id)
       }),
     )
-      .then(() => refresh(query))
-      .catch(console.error)
+      .then(() => {
+        toast.success("Quote deleted.")
+        refresh(query)
+      })
+      .catch((e) => {
+        console.error(e)
+        toast.error("Couldn't delete quote.")
+      })
   }
 
   const handlePrefsChange = (next: Prefs) => {
@@ -204,8 +218,10 @@ export function App() {
   if (!authReady) {
     return (
       <div class="h-[460px] w-[360px] bg-canvas text-body">
-        <div class="flex h-full items-center justify-center p-6 text-sm opacity-60">
-          Loading…
+        <div class="flex h-full flex-col gap-3 p-4">
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={3} />
         </div>
       </div>
     )
@@ -235,8 +251,8 @@ export function App() {
   }
 
   return (
-    <div class="h-[460px] w-[360px] overflow-y-auto bg-canvas text-body">
-      <div class="flex flex-col gap-5 p-4">
+    <div class="flex h-[460px] w-[360px] flex-col overflow-hidden bg-canvas text-body">
+      <div class="flex shrink-0 flex-col gap-3 px-4 pb-2 pt-4">
         <header class="flex items-center justify-between">
           <h1 class="text-base font-semibold text-ink">FocusQuote</h1>
           <Button
@@ -260,13 +276,14 @@ export function App() {
           <AnalysisPanel />
         </section>
 
-        <section class="flex flex-col gap-2">
-          <h2 class="text-[10px] font-medium uppercase tracking-wider text-mute">
-            Saved quotes
-          </h2>
-          <SearchBar value={query} onInput={setQuery} />
-          <QuoteList quotes={quotes} onDelete={handleDelete} />
-        </section>
+        <h2 class="mt-1 text-[10px] font-medium uppercase tracking-wider text-mute">
+          Saved quotes
+        </h2>
+        <SearchBar value={query} onInput={setQuery} />
+      </div>
+
+      <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pb-4">
+        <QuoteList quotes={quotes} onDelete={handleDelete} />
       </div>
     </div>
   )
