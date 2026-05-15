@@ -16,12 +16,29 @@ import { SessionsService } from "../services/sessions"
 import { StorageService } from "../services/storage"
 import { ApiService } from "../services/api"
 import { AuthService } from "../services/auth"
-import { OPENROUTER_KEY_KEY } from "../shared/settings"
+import {
+  clearOpenrouterKey as clearOpenrouterKeyRemote,
+  ensureOpenrouterMigrated,
+  getOpenrouterKeyState,
+  saveOpenrouterKey as saveOpenrouterKeyRemote,
+  type OpenrouterKeyState,
+} from "../shared/settings"
 import { applyTheme } from "../shared/theme"
-import { defaultPrefs, loadPrefs, savePrefs, type Prefs } from "../shared/prefs"
+import {
+  defaultPrefs,
+  ensurePrefsMigrated,
+  loadPrefs,
+  pullPrefsFromRemote,
+  pushPrefsToRemote,
+  savePrefs,
+  type Prefs,
+} from "../shared/prefs"
 import {
   defaultProfilePrefs,
+  ensureProfileMigrated,
   loadProfilePrefs,
+  pullProfileFromRemote,
+  pushProfileToRemote,
   resolveAccountImageSrc,
   saveProfilePrefs,
   type ProfilePrefs,
@@ -36,8 +53,15 @@ const loadInitial = Effect.gen(function* () {
   const storage = yield* StorageService
   const auth = yield* AuthService
   const api = yield* ApiService
-  const prefs = yield* loadPrefs(storage)
-  let profile = yield* loadProfilePrefs(storage)
+
+  // Best-effort one-time migrations: upload pre-existing local state on the
+  // first authenticated load. Idempotent after success.
+  yield* ensurePrefsMigrated(storage)
+  yield* ensureProfileMigrated(storage)
+  yield* ensureOpenrouterMigrated(storage)
+
+  const prefs = yield* pullPrefsFromRemote(storage)
+  let profile = yield* pullProfileFromRemote(storage)
   if (profile.photoMediaFileId && !profile.photoDataUrl) {
     const media = yield* api.getMedia(profile.photoMediaFileId).pipe(
       Effect.catchAll(() => Effect.succeed(null)),
@@ -50,9 +74,9 @@ const loadInitial = Effect.gen(function* () {
       yield* saveProfilePrefs(storage, profile)
     }
   }
-  const key = yield* storage.get<string>(OPENROUTER_KEY_KEY)
+  const openrouterKey = yield* getOpenrouterKeyState
   const user = yield* auth.currentUser
-  return { prefs, profile, openrouterKey: key ?? "", user }
+  return { prefs, profile, openrouterKey, user }
 })
 
 const signOut = Effect.gen(function* () {
@@ -62,24 +86,25 @@ const signOut = Effect.gen(function* () {
 
 const saveOpenrouterKey = (value: string) =>
   Effect.gen(function* () {
-    const storage = yield* StorageService
     if (value.trim()) {
-      yield* storage.set(OPENROUTER_KEY_KEY, value.trim())
-    } else {
-      yield* storage.remove(OPENROUTER_KEY_KEY)
+      return yield* saveOpenrouterKeyRemote(value.trim())
     }
+    yield* clearOpenrouterKeyRemote
+    return { hasValue: false, hint: null, updatedAt: null } as OpenrouterKeyState
   })
 
 const persistPrefs = (prefs: Prefs) =>
   Effect.gen(function* () {
     const storage = yield* StorageService
     yield* savePrefs(storage, prefs)
+    yield* pushPrefsToRemote(prefs)
   })
 
 const persistProfile = (profile: ProfilePrefs) =>
   Effect.gen(function* () {
     const storage = yield* StorageService
     yield* saveProfilePrefs(storage, profile)
+    yield* pushProfileToRemote(profile)
   })
 
 const uploadProfilePhoto = (input: {
@@ -115,6 +140,11 @@ export function App() {
   const [prefs, setPrefs] = useState<Prefs>(defaultPrefs)
   const [profile, setProfile] = useState<ProfilePrefs>(defaultProfilePrefs)
   const [openrouterKey, setOpenrouterKey] = useState("")
+  const [openrouterState, setOpenrouterState] = useState<OpenrouterKeyState>({
+    hasValue: false,
+    hint: null,
+    updatedAt: null,
+  })
   const [keyStatus, setKeyStatus] = useState<"idle" | "saved">("idle")
   const [profileStatus, setProfileStatus] = useState<"idle" | "saving" | "saved">("idle")
   const [photoBusy, setPhotoBusy] = useState(false)
@@ -128,7 +158,8 @@ export function App() {
       .then((s) => {
         setPrefs(s.prefs)
         setProfile(s.profile)
-        setOpenrouterKey(s.openrouterKey)
+        setOpenrouterState(s.openrouterKey)
+        setOpenrouterKey(s.openrouterKey.hint ?? "")
         setUser(s.user)
         applyTheme(s.prefs.theme)
       })
@@ -167,8 +198,12 @@ export function App() {
 
   const flushKeySave = (nextValue?: string) => {
     const value = nextValue ?? openrouterKey
+    // If the input shows the masked hint untouched, skip the save.
+    if (openrouterState.hint && value === openrouterState.hint) return
     runP(saveOpenrouterKey(value))
-      .then(() => {
+      .then((state) => {
+        setOpenrouterState(state)
+        setOpenrouterKey(state.hint ?? "")
         setKeyStatus("saved")
         setTimeout(() => setKeyStatus("idle"), 1200)
       })
@@ -412,8 +447,8 @@ export function App() {
             icon={<Key size={14} class="text-mute" />}
           />
           <p class="mb-3 text-xs text-mute">
-            Used for upcoming AI features (explain quote, smart search). Stored
-            locally in this browser only.
+            Used for AI features (explain quote, smart search). Stored
+            encrypted on the FocusQuote server and synced across your devices.
           </p>
           <div class="flex items-center gap-2">
             <input

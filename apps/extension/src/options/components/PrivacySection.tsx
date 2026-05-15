@@ -2,19 +2,27 @@ import { useEffect, useState } from "preact/hooks"
 import { Effect } from "effect"
 import { Bug, Eye, EyeOff, Plus, Trash2 } from "lucide-preact"
 import { StorageService } from "../../services/storage"
+import { ApiService } from "../../services/api"
 import {
+  ensurePrivacyMigrated,
   loadPrivacy,
+  pullPrivacyFromRemote,
+  pushPrivacyToRemote,
   savePrivacy,
   defaultPrivacy,
   type Privacy,
 } from "../../shared/privacy"
 import { DEBUG_OVERLAY_KEY } from "../../shared/debug"
+import { loadPrefs, pushPrefsToRemote } from "../../shared/prefs"
 import { runP } from "../runtime"
 import { Button, SectionHeader, Surface, Toggle } from "../../ui/primitives"
 
 const load = Effect.gen(function* () {
   const storage = yield* StorageService
-  const privacy = yield* loadPrivacy(storage)
+  yield* ensurePrivacyMigrated(storage)
+  const privacy = yield* pullPrivacyFromRemote(storage).pipe(
+    Effect.catchAll(() => loadPrivacy(storage)),
+  )
   const debugOverlay = yield* storage
     .get<boolean>(DEBUG_OVERLAY_KEY)
     .pipe(Effect.catchAll(() => Effect.succeed(false as boolean | null)))
@@ -25,6 +33,7 @@ const persist = (p: Privacy) =>
   Effect.gen(function* () {
     const storage = yield* StorageService
     yield* savePrivacy(storage, p)
+    yield* pushPrivacyToRemote(p)
   })
 
 const persistDebugOverlay = (enabled: boolean) =>
@@ -33,6 +42,8 @@ const persistDebugOverlay = (enabled: boolean) =>
     yield* storage.set(DEBUG_OVERLAY_KEY, enabled).pipe(
       Effect.catchAll(() => Effect.void),
     )
+    const prefs = yield* loadPrefs(storage)
+    yield* pushPrefsToRemote(prefs, { debugOverlayEnabled: enabled })
   })
 
 export function PrivacySection() {

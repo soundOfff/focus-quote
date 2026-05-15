@@ -4,13 +4,20 @@ import { LogIn } from "lucide-preact"
 import { QuotesService } from "../services/quotes"
 import { SessionsService } from "../services/sessions"
 import { StorageService } from "../services/storage"
+import { ApiService } from "../services/api"
 import { AuthService } from "../services/auth"
 import {
   applyTheme,
   loadTheme,
+  loadTodayGoal,
   saveTheme,
-  TODAY_GOAL_KEY,
+  saveTodayGoal,
 } from "../shared/theme"
+import {
+  ensurePrefsMigrated,
+  pullPrefsFromRemote,
+  pushPrefsToRemote,
+} from "../shared/prefs"
 import { runP } from "./runtime"
 import type { Quote, Theme, User } from "@focus-quote/shared"
 import { DailyQuote } from "./components/DailyQuote"
@@ -38,6 +45,7 @@ const loadAll = Effect.gen(function* () {
   const quotes = yield* QuotesService
   const sessions = yield* SessionsService
   const storage = yield* StorageService
+  const api = yield* ApiService
   const auth = yield* AuthService
 
   const user = yield* auth.currentUser
@@ -57,9 +65,14 @@ const loadAll = Effect.gen(function* () {
     }
   }
 
+  // Pull authoritative settings on each newtab load. Cached locally for
+  // instant subsequent paints; network failures fall back to local state.
+  yield* ensurePrefsMigrated(storage)
+  const remotePrefs = yield* pullPrefsFromRemote(storage)
+
   const allQuotes = (yield* quotes.list()) as ReadonlyArray<Quote>
   const sessionStats = yield* sessions.stats
-  const todayGoal = yield* storage.get<string>(TODAY_GOAL_KEY)
+  const todayGoal = yield* loadTodayGoal(storage)
 
   return {
     user,
@@ -69,25 +82,25 @@ const loadAll = Effect.gen(function* () {
       streak: sessionStats.streakDays,
       totalQuotes: allQuotes.length,
     } satisfies Stats,
-    theme,
-    todayGoal: todayGoal ?? "",
+    theme: remotePrefs.theme,
+    todayGoal,
   }
 })
 
 const saveGoal = (value: string) =>
   Effect.gen(function* () {
     const storage = yield* StorageService
-    if (value.trim()) {
-      yield* storage.set(TODAY_GOAL_KEY, value)
-    } else {
-      yield* storage.remove(TODAY_GOAL_KEY)
-    }
+    yield* saveTodayGoal(storage, value)
   })
 
 const persistTheme = (theme: Theme) =>
   Effect.gen(function* () {
     const storage = yield* StorageService
     yield* saveTheme(storage, theme)
+    const prefs = yield* pullPrefsFromRemote(storage).pipe(
+      Effect.catchAll(() => Effect.succeed(null)),
+    )
+    if (prefs) yield* pushPrefsToRemote({ ...prefs, theme })
   })
 
 const greeting = () => {

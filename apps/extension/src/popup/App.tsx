@@ -7,11 +7,19 @@ import { AuthService } from "../services/auth"
 import { ApiService } from "../services/api"
 import {
   defaultPrefs,
-  loadPrefs,
+  ensurePrefsMigrated,
+  pullPrefsFromRemote,
+  pushPrefsToRemote,
   savePrefs,
   type Prefs,
 } from "../shared/prefs"
-import { loadProfilePrefs, saveProfilePrefs } from "../shared/profile"
+import {
+  ensureProfileMigrated,
+  loadProfilePrefs,
+  pullProfileFromRemote,
+  saveProfilePrefs,
+} from "../shared/profile"
+import { ensureOpenrouterMigrated } from "../shared/settings"
 import { applyTheme } from "../shared/theme"
 import { runP } from "./runtime"
 import { AnalysisPanel } from "./components/AnalysisPanel"
@@ -34,13 +42,19 @@ const loadQuotes = (query: string) =>
 
 const loadInitialPrefs = Effect.gen(function* () {
   const storage = yield* StorageService
-  return yield* loadPrefs(storage)
+  // Run idempotent migrations before pulling, so legacy local prefs are
+  // pushed up before we overwrite them with remote state.
+  yield* ensurePrefsMigrated(storage)
+  yield* ensureProfileMigrated(storage)
+  yield* ensureOpenrouterMigrated(storage)
+  return yield* pullPrefsFromRemote(storage)
 })
 
 const persistPrefs = (next: Prefs) =>
   Effect.gen(function* () {
     const storage = yield* StorageService
     yield* savePrefs(storage, next)
+    yield* pushPrefsToRemote(next)
   })
 
 const loadCurrentUser = Effect.gen(function* () {
@@ -51,7 +65,10 @@ const loadCurrentUser = Effect.gen(function* () {
 const loadProfilePhotoDataUrl = Effect.gen(function* () {
   const storage = yield* StorageService
   const api = yield* ApiService
-  let profile = yield* loadProfilePrefs(storage)
+  // Refresh profile from server (best-effort) so the photo id is current.
+  let profile = yield* pullProfileFromRemote(storage).pipe(
+    Effect.catchAll(() => loadProfilePrefs(storage)),
+  )
   if (profile.photoMediaFileId && !profile.photoDataUrl) {
     const media = yield* api.getMedia(profile.photoMediaFileId).pipe(
       Effect.catchAll(() => Effect.succeed(null)),
