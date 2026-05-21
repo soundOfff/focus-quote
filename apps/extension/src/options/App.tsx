@@ -6,8 +6,6 @@ import {
   ImageUp,
   Key,
   LogOut,
-  Minus,
-  Plus,
   Shield,
   Sparkles,
   Timer as TimerIcon,
@@ -621,7 +619,7 @@ function AppInner() {
                     devices.
                   </p>
                   {!secretsSupported ? (
-                    <div class="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-800 dark:border-yellow-900/30 dark:bg-yellow-900/20 dark:text-yellow-200">
+                    <div class="rounded-card border border-clay-soft bg-clay-soft/60 p-3 text-[11.5px] leading-relaxed text-clay-ink">
                       Server not configured for secret storage. Admin: set{" "}
                       <code class="font-mono">SECRETS_ENCRYPTION_KEY</code>{" "}
                       environment variable.
@@ -645,12 +643,14 @@ function AppInner() {
                             flushKeySave()
                           }
                         }}
-                        class="flex-1 rounded-md border border-hairline bg-surface px-3 py-2 text-sm outline-none ring-0 focus:ring-1 focus:ring-focus-ring"
+                        class="flex-1 rounded-control border border-rule-2 bg-paper-2 px-3 py-2 font-mono text-[12.5px] text-ink placeholder:text-muted-2 outline-none focus:border-amber-deep focus:bg-paper focus:ring-[3px] focus:ring-amber/15"
                       />
                     </div>
                   )}
                   <p
-                    class={`mt-2 text-[11px] ${keyError ? "text-red-500" : "text-mute"}`}
+                    class={`mt-2 text-[11px] ${
+                      keyError ? "text-clay-ink" : "text-muted"
+                    }`}
                   >
                     {keyError
                       ? keyError
@@ -669,7 +669,7 @@ function AppInner() {
                   />
 
                   <div class="mb-3 flex items-center justify-between">
-                    <span class="text-sm text-ink">
+                    <span class="text-[13px] text-ink-2">
                       {prefs.recallEnabled
                         ? "Active recall enabled"
                         : "Active recall disabled"}
@@ -681,13 +681,14 @@ function AppInner() {
                     />
                   </div>
 
-                  <div class="mb-3 flex items-center justify-between rounded-lg border border-hairline-soft bg-surface-doc px-3 py-2.5">
+                  <div class="mb-3 flex items-center justify-between rounded-card border border-rule bg-paper-2 px-3 py-2.5">
                     <div class="min-w-0 pr-3">
-                      <div class="text-xs font-medium text-ink">
+                      <div class="text-[12.5px] font-medium text-ink">
                         Auto-generate when a session ends
                       </div>
-                      <div class="text-[11px] text-mute">
-                        Off: only generate when you open the session-detail page.
+                      <div class="text-[11px] leading-relaxed text-muted">
+                        Off: only generate when you open the session-detail
+                        page.
                       </div>
                     </div>
                     <Toggle
@@ -700,10 +701,10 @@ function AppInner() {
                   </div>
 
                   <div class="grid grid-cols-2 gap-2">
-                    <label class="flex flex-col gap-1.5 rounded-lg border border-hairline bg-surface px-3 py-2.5">
-                      <span class="text-[10px] uppercase tracking-wider text-mute">
+                    <label class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
+                      <MonoLabel as="span" class="text-[9.5px]">
                         Question count
-                      </span>
+                      </MonoLabel>
                       <NativeSelect
                         value={String(prefs.recallQuestionCount)}
                         onInput={(e) =>
@@ -713,16 +714,17 @@ function AppInner() {
                             ) as RecallQuestionCount,
                           )
                         }
+                        class="!h-9 !border-rule-2 !bg-paper !text-[12.5px] !text-ink focus:!border-amber-deep"
                       >
                         <option value="3">3</option>
                         <option value="5">5</option>
                         <option value="7">7</option>
                       </NativeSelect>
                     </label>
-                    <label class="flex flex-col gap-1.5 rounded-lg border border-hairline bg-surface px-3 py-2.5">
-                      <span class="text-[10px] uppercase tracking-wider text-mute">
+                    <label class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
+                      <MonoLabel as="span" class="text-[9.5px]">
                         Difficulty
-                      </span>
+                      </MonoLabel>
                       <NativeSelect
                         value={prefs.recallDepth}
                         onInput={(e) =>
@@ -731,6 +733,7 @@ function AppInner() {
                               .value as RecallDepth,
                           )
                         }
+                        class="!h-9 !border-rule-2 !bg-paper !text-[12.5px] !text-ink focus:!border-amber-deep"
                       >
                         <option value="easy">Easy</option>
                         <option value="standard">Standard</option>
@@ -808,56 +811,6 @@ function InputField({
   )
 }
 
-function TimeControl({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  label: string
-  value: number
-  min: number
-  max: number
-  onChange: (n: number) => void
-}) {
-  const increase = () => onChange(Math.min(max, value + 1))
-  const decrease = () => onChange(Math.max(min, value - 1))
-  return (
-    <div class="flex flex-col gap-1.5 rounded-lg border border-hairline bg-surface px-3 py-2.5">
-      <span class="text-[10px] uppercase tracking-wider text-mute">{label}</span>
-      <div class="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={decrease}
-          class="flex h-8 w-8 items-center justify-center rounded-md border border-hairline bg-surface-soft text-body transition-colors hover:bg-hairline/40"
-          aria-label={`Decrease ${label}`}
-        >
-          <Minus size={14} />
-        </button>
-        <input
-          type="number"
-          min={min}
-          max={max}
-          value={value}
-          onInput={(e) =>
-            onChange(Number((e.currentTarget as HTMLInputElement).value))
-          }
-          class="w-16 rounded-md border border-hairline-soft bg-canvas px-2 py-1 text-center text-base tabular-nums text-ink outline-none focus:ring-1 focus:ring-focus-ring/70"
-        />
-        <button
-          type="button"
-          onClick={increase}
-          class="flex h-8 w-8 items-center justify-center rounded-md border border-hairline bg-surface-soft text-body transition-colors hover:bg-hairline/40"
-          aria-label={`Increase ${label}`}
-        >
-          <Plus size={14} />
-        </button>
-      </div>
-    </div>
-  )
-}
-
 function SelectField({
   label,
   value,
@@ -870,11 +823,14 @@ function SelectField({
   includeAuto?: boolean
 }) {
   return (
-    <label class="flex flex-col gap-1.5 rounded-lg border border-hairline bg-surface px-3 py-2.5">
-      <span class="text-[10px] uppercase tracking-wider text-mute">{label}</span>
+    <label class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
+      <MonoLabel as="span" class="text-[9.5px]">
+        {label}
+      </MonoLabel>
       <NativeSelect
         value={value}
         onInput={(e) => onChange((e.currentTarget as HTMLSelectElement).value)}
+        class="!h-9 !border-rule-2 !bg-paper !text-[12.5px] !text-ink focus:!border-amber-deep"
       >
         {includeAuto && <option value="auto">Auto detect</option>}
         {TRANSLATE_LANGUAGES.map((lang) => (
@@ -897,10 +853,12 @@ function ImageField({
   onPick: (file: File | null) => void | Promise<void>
 }) {
   return (
-    <label class="relative flex flex-col gap-1">
-      <span class="text-[10px] uppercase tracking-wider text-mute">{label}</span>
-      <div class="flex cursor-pointer items-center gap-2 rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-body hover:bg-surface-soft">
-        <ImageUp size={14} />
+    <label class="relative flex flex-col gap-1.5">
+      <MonoLabel as="span" class="text-[9.5px]">
+        {label}
+      </MonoLabel>
+      <div class="flex cursor-pointer items-center gap-2 rounded-control border border-rule-2 bg-paper-2 px-3 py-2 text-[12.5px] text-ink-2 transition-colors hover:bg-paper">
+        <ImageUp size={13} strokeWidth={1.7} />
         <span>{busy ? "Uploading…" : "Choose image"}</span>
         <input
           type="file"

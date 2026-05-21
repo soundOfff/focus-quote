@@ -15,7 +15,13 @@ import {
 import { DEBUG_OVERLAY_KEY } from "../../shared/debug"
 import { loadPrefs, pushPrefsToRemote } from "../../shared/prefs"
 import { runP } from "../runtime"
-import { Button, SectionHeader, Surface, Toggle } from "../../ui/primitives"
+import {
+  Button,
+  MonoLabel,
+  SectionHeader,
+  Surface,
+  Toggle,
+} from "../../ui/primitives"
 import { validateDomainEntry } from "../../shared/url"
 
 const load = Effect.gen(function* () {
@@ -108,14 +114,14 @@ export function PrivacySection() {
           )
         }
       />
-      <p class="mb-3 text-xs text-mute">
+      <p class="mb-3 text-[12.5px] leading-relaxed text-muted">
         When enabled, URLs visited during a focus session are sent to the server
         and classified by AI to surface distractions and recommendations.
         Hostnames in the blocklist below are never sent.
       </p>
 
       <div class="mb-4 flex items-center justify-between">
-        <span class="text-sm text-ink">
+        <span class="text-[13px] text-ink-2">
           {privacy.trackUrls ? "Tracking enabled" : "Tracking disabled"}
         </span>
         <Toggle
@@ -125,7 +131,9 @@ export function PrivacySection() {
         />
       </div>
 
-      <div class="mb-2 text-xs font-medium text-body">Blocklist</div>
+      <div class="mb-2">
+        <MonoLabel as="div">Blocklist</MonoLabel>
+      </div>
       <div class="mb-2 flex items-center gap-2">
         <input
           type="text"
@@ -138,51 +146,53 @@ export function PrivacySection() {
           onKeyDown={(e) => {
             if ((e as KeyboardEvent).key === "Enter") handleAdd()
           }}
-          class={`flex-1 rounded-md border bg-surface px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-focus-ring ${
-            ruleError ? "border-accent-red" : "border-hairline"
+          class={`flex-1 rounded-control border bg-paper-2 px-3 py-2 font-mono text-[12.5px] text-ink placeholder:text-muted-2 outline-none focus:bg-paper focus:ring-[3px] focus:ring-amber/15 ${
+            ruleError
+              ? "border-clay-ink focus:border-clay-ink"
+              : "border-rule-2 focus:border-amber-deep"
           }`}
         />
-        <Button onClick={handleAdd} variant="outline" size="sm">
-          <Plus size={12} /> Add
+        <Button onClick={handleAdd} variant="ghost" size="sm">
+          <Plus size={12} strokeWidth={1.8} /> Add
         </Button>
       </div>
       {ruleError && (
-        <p class="mb-2 text-[11px] text-accent-red">{ruleError}</p>
+        <p class="mb-2 text-[11px] text-clay-ink">{ruleError}</p>
       )}
       {privacy.blocklist.length === 0 ? (
-        <p class="text-xs text-mute">No domains blocked.</p>
+        <p class="text-[12px] text-muted">No domains blocked.</p>
       ) : (
         <ul class="space-y-1">
           {privacy.blocklist.map((rule) => (
             <li
               key={rule}
-              class="flex items-center justify-between rounded-md border border-hairline-soft bg-surface-doc px-2 py-1 text-xs"
+              class="flex items-center justify-between rounded-control border border-rule bg-paper-2 px-3 py-1.5 text-[11.5px]"
             >
-              <span class="font-mono">{rule}</span>
+              <span class="font-mono text-ink-2">{rule}</span>
               <button
                 type="button"
                 onClick={() => handleRemove(rule)}
                 aria-label={`Remove ${rule}`}
-                class="text-mute transition-opacity hover:opacity-100"
+                class="rounded-md p-1 text-muted transition-colors hover:bg-clay-soft hover:text-clay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40"
               >
-                <Trash2 size={12} />
+                <Trash2 size={12} strokeWidth={1.7} />
               </button>
             </li>
           ))}
         </ul>
       )}
 
-      <div class="mt-5 border-t border-hairline-soft pt-4">
-        <h3 class="mb-1 flex items-center gap-2 text-sm font-medium text-ink">
-          <Bug size={14} class="text-mute" /> Debug overlay
+      <div class="mt-5 border-t border-rule pt-4">
+        <h3 class="mb-1 flex items-center gap-2 text-[13px] font-semibold text-ink">
+          <Bug size={13} strokeWidth={1.7} class="text-muted" /> Debug overlay
         </h3>
-        <p class="mb-3 text-xs text-mute">
+        <p class="mb-3 text-[12px] leading-relaxed text-muted">
           Shows a floating panel on every page during a focus session with the
           tracker pipeline in real time (navigation, buffer adds, flush
           results, errors). Useful for debugging — leave off in normal use.
         </p>
         <div class="flex items-center justify-between">
-          <span class="text-sm text-ink">
+          <span class="text-[13px] text-ink-2">
             {debugOverlay ? "Overlay enabled" : "Overlay disabled"}
           </span>
           <Toggle
