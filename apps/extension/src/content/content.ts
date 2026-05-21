@@ -36,9 +36,14 @@ interface SaveRow {
   root: HTMLDivElement
   saveBtn: HTMLButtonElement
   resultCard: HTMLDivElement
-  fromSelect: HTMLSelectElement
-  toSelect: HTMLSelectElement
-  translateBtn: HTMLButtonElement
+  fromPill: HTMLButtonElement
+  toPill: HTMLButtonElement
+  globeBtn: HTMLButtonElement
+  tagBtn: HTMLButtonElement
+  getFromLang: () => string
+  getToLang: () => string
+  setFromLang: (code: string) => void
+  setToLang: (code: string) => void
 }
 
 let activeSession: ActiveSession = null
