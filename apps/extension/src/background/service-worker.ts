@@ -588,10 +588,17 @@ chrome.runtime.onMessage.addListener(
         .catch(() => {
           /* unsupported or no gesture */
         })
+      // We responded synchronously above; no need to keep the channel open.
       respond({ ok: true })
-      return true
+      return false
     }
     if (!isRuntimeMessage(msg)) return false
+    // saveQuote originates in the content script. Reject subframe senders so
+    // an iframe (e.g., an embed running our script via a permission policy)
+    // can't drive saves on behalf of the top page.
+    if (msg.type === "focusquote.saveQuote" && isSubframeSender(sender)) {
+      return false
+    }
     const program =
       msg.type === "focusquote.session.start"
         ? handleSessionStart(msg)
