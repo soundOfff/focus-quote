@@ -177,11 +177,22 @@ const unmountActionCapture = mountActionCapture({
 void refreshSessionAndPrivacy().then(() => {
   if (activeSession) sendSpaNav(location.href)
 })
+// Watch the three local keys this content script cares about. Any other
+// chrome.storage.local key change (e.g. focusquote.openrouter-key) must NOT
+// re-run refreshSessionAndPrivacy — it does session-boundary detection that
+// could surprise the toolbar chat if triggered for unrelated reasons.
+const WATCHED_LOCAL_KEYS = new Set<string>([SESSION_KEY, PRIVACY_KEY, PREFS_KEY])
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return
-  if (SESSION_KEY in changes || PRIVACY_KEY in changes || PREFS_KEY in changes) {
-    void refreshSessionAndPrivacy()
+  let relevant = false
+  for (const key of Object.keys(changes)) {
+    if (WATCHED_LOCAL_KEYS.has(key)) {
+      relevant = true
+      break
+    }
   }
+  if (!relevant) return
+  void refreshSessionAndPrivacy()
 })
 window.addEventListener("beforeunload", () => {
   unmountActionCapture()
@@ -984,11 +995,19 @@ chrome.runtime.onMessage.addListener((msg: unknown) => {
   appendDebugEvent(msg)
 })
 
+// Debug overlay only cares about its own toggle + the active session.
+const DEBUG_WATCHED_KEYS = new Set<string>([DEBUG_OVERLAY_KEY, SESSION_KEY])
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return
-  if (DEBUG_OVERLAY_KEY in changes || "focusquote.activeSession" in changes) {
-    refreshDebugVisibility().catch(() => {})
+  let relevant = false
+  for (const key of Object.keys(changes)) {
+    if (DEBUG_WATCHED_KEYS.has(key)) {
+      relevant = true
+      break
+    }
   }
+  if (!relevant) return
+  refreshDebugVisibility().catch(() => {})
 })
 
 refreshDebugVisibility().catch(() => {})
