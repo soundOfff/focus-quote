@@ -426,12 +426,18 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // webNavigation must be registered at the top level so it fires after the
 // service worker wakes from idle.
+// Subframes (frameId !== 0) would flood the tracker with iframe ad/embed URLs
+// that the user never actually navigated to. handleNavigation re-checks this,
+// but we early-out at the listener boundary too so the runtime never even
+// spins up the Effect runtime for a subframe event.
 chrome.webNavigation.onCompleted.addListener((details) => {
+  if (details.frameId !== 0) return
   runWithServices(handleNavigation(details)).catch((err) =>
     console.warn("[FocusQuote] nav handle failed:", err),
   )
 })
 chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+  if (details.frameId !== 0) return
   runWithServices(handleNavigation(details)).catch((err) =>
     console.warn("[FocusQuote] history nav handle failed:", err),
   )
@@ -539,9 +545,17 @@ chrome.runtime.onMessage.addListener(
   },
 )
 
+// Content-script-originated messages only matter from the top frame. A
+// content script running in a subframe (shouldn't happen — manifest is
+// all_frames:false — but ad iframes can occasionally land here through
+// permission policies) would otherwise spam SPA-nav and action events.
+const isSubframeSender = (sender: chrome.runtime.MessageSender): boolean =>
+  typeof sender.frameId === "number" && sender.frameId !== 0
+
 chrome.runtime.onMessage.addListener(
   (msg: unknown, sender, respond: (r: RuntimeResponse) => void) => {
     if (isSpaNavMessage(msg)) {
+      if (isSubframeSender(sender)) return false
       runWithServices(handleSpaNav(msg, sender))
         .then(() => respond({ ok: true }))
         .catch((err) =>
@@ -553,6 +567,7 @@ chrome.runtime.onMessage.addListener(
       return true
     }
     if (isActionEventMessage(msg)) {
+      if (isSubframeSender(sender)) return false
       runWithServices(handleActionEvent(msg))
         .then(() => respond({ ok: true }))
         .catch((err) =>
