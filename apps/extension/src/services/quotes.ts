@@ -112,8 +112,14 @@ export class QuotesService extends Effect.Service<QuotesService>()(
               new ValidationError({ message: "hash failed", cause }),
           })
           const all = yield* readAll
+          // Guard against any future schema relaxation that could make
+          // contentHash optional: only match when both sides are concrete
+          // 64-char hex strings.
           const existing = Object.values(all).find(
-            (q) => q.contentHash === contentHash,
+            (q) =>
+              typeof q.contentHash === "string" &&
+              q.contentHash.length === 64 &&
+              q.contentHash === contentHash,
           )
           if (existing) {
             return yield* Effect.fail(
