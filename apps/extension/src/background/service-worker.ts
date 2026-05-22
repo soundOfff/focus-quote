@@ -337,7 +337,18 @@ const saveAndNotify = (
   Effect.gen(function* () {
     if (!text.trim()) return
     const quotes = yield* QuotesService
-    yield* quotes.save({ text, sourceUrl, sourceTitle, tag })
+    const result = yield* quotes
+      .save({ text, sourceUrl, sourceTitle, tag })
+      .pipe(Effect.either)
+    if (result._tag === "Left") {
+      if (result.left._tag === "DuplicateQuoteError") {
+        if (tabId !== undefined) {
+          yield* sendToast(tabId, "This quote is already saved")
+        }
+        return
+      }
+      return yield* Effect.fail(result.left)
+    }
     if (tabId !== undefined) {
       yield* sendToast(tabId, "Quote saved")
     }
