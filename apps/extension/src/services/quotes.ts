@@ -32,25 +32,31 @@ export class QuotesService extends Effect.Service<QuotesService>()(
         // so the local dedup check has something to compare against.
         const rawRecord = (raw as Record<string, Record<string, unknown>>) ?? {}
         const updated: Record<string, Quote> = {}
-        let touched = false
+        let added = false
+        let skipped = false
         for (const [id, entry] of Object.entries(rawRecord)) {
           const text = typeof entry?.text === "string" ? entry.text : ""
-          if (!text) continue
+          if (!text) {
+            skipped = true
+            continue
+          }
           const hash = yield* Effect.tryPromise({
             try: () => quoteContentHash(text),
             catch: () => null,
           }).pipe(Effect.catchAll(() => Effect.succeed(null as string | null)))
-          if (!hash) continue
+          if (!hash) {
+            skipped = true
+            continue
+          }
+          const hadValidHash =
+            typeof entry.contentHash === "string" && entry.contentHash.length === 64
           updated[id] = {
             id: id as QuoteId,
             text,
             sourceUrl: (entry.sourceUrl as string | null) ?? null,
             sourceTitle: (entry.sourceTitle as string | null) ?? null,
             tag: (entry.tag as string | null) ?? null,
-            contentHash:
-              typeof entry.contentHash === "string" && entry.contentHash.length === 64
-                ? entry.contentHash
-                : hash,
+            contentHash: hadValidHash ? (entry.contentHash as string) : hash,
             createdAt:
               typeof entry.createdAt === "string"
                 ? entry.createdAt
@@ -60,14 +66,12 @@ export class QuotesService extends Effect.Service<QuotesService>()(
                 ? entry.updatedAt
                 : new Date().toISOString(),
           }
-          if (
-            typeof entry.contentHash !== "string" ||
-            entry.contentHash.length !== 64
-          ) {
-            touched = true
-          }
+          if (!hadValidHash) added = true
         }
-        if (touched) yield* storage.set(QUOTES_KEY, updated)
+        // Only persist if we strictly *added* missing hashes and lost nothing.
+        // Skipped entries (empty text or transient hash failure) are left
+        // untouched in storage so a future read can retry them.
+        if (added && !skipped) yield* storage.set(QUOTES_KEY, updated)
         return updated as QuoteRecord
       })
 
