@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
-import { LogIn } from "lucide-preact"
 import { QuotesService } from "../services/quotes"
 import { SessionsService } from "../services/sessions"
 import { StorageService } from "../services/storage"
@@ -56,29 +55,20 @@ const loadAll = Effect.gen(function* () {
   const user = yield* auth.currentUser
   const theme = yield* loadTheme(storage)
 
-  if (!user) {
-    return {
-      user: null,
-      randomQuote: null,
-      stats: {
-        todaySessions: 0,
-        streak: 0,
-        totalQuotes: 0,
-      } satisfies Stats,
-      theme,
-      todayGoal: "",
-      recentSessions: [] as Session[],
-    }
-  }
-
-  yield* ensurePrefsMigrated(storage)
-  const remotePrefs = yield* pullPrefsFromRemote(storage)
-
+  // Local-first data is always loaded — quotes and stats live in
+  // chrome.storage and work in guest mode. Only the remote pref pull is
+  // skipped when there's no token.
   const allQuotes = (yield* quotes.list()) as ReadonlyArray<Quote>
   const sessionStats = yield* sessions.stats
   const recentSessions = yield* sessions.list(12)
   const todayGoal = yield* loadTodayGoal(storage)
 
+  let resolvedTheme = theme
+  if (user) {
+    yield* ensurePrefsMigrated(storage)
+    const remotePrefs = yield* pullPrefsFromRemote(storage)
+    resolvedTheme = remotePrefs.theme
+  }
   return {
     user,
     randomQuote: pickRandom(allQuotes),
@@ -87,7 +77,7 @@ const loadAll = Effect.gen(function* () {
       streak: sessionStats.streakDays,
       totalQuotes: allQuotes.length,
     } satisfies Stats,
-    theme: remotePrefs.theme,
+    theme: resolvedTheme,
     todayGoal,
     recentSessions,
   }
@@ -293,12 +283,38 @@ function AppInner() {
         aria-hidden={onSessionDetail}
       >
         {!user ? (
-          <div class="flex flex-1 flex-col justify-center py-10">
-            <EmptyState
-              icon={<LogIn size={20} />}
-              title="Sign in to FocusQuote"
-              description="Click the FocusQuote toolbar icon to sign in. Quotes and focus sessions sync across your devices."
-            />
+          <div class="flex flex-1 flex-col gap-6 py-8">
+            <header class="space-y-1">
+              <p class="text-[10px] font-semibold uppercase tracking-[0.14em] text-mute">
+                {overviewDateLabel}
+              </p>
+              <h1 class="font-serif text-balance text-3xl font-bold tracking-tight text-ink">
+                {greeting()}.
+              </h1>
+              <p class="max-w-prose text-sm leading-relaxed text-mute">
+                You can save quotes locally without signing in. Sign in to sync
+                across devices and unlock focus sessions.
+              </p>
+            </header>
+            <div class="rounded-card border border-rule bg-paper-2 p-5">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="text-[11px] font-semibold uppercase tracking-[0.14em] text-mute">
+                    Guest mode
+                  </p>
+                  <p class="mt-1 text-sm leading-relaxed text-ink-2">
+                    {stats.totalQuotes === 0
+                      ? "No quotes saved yet — select text on any page and use the floating save button."
+                      : `${stats.totalQuotes} quote${stats.totalQuotes === 1 ? "" : "s"} saved locally on this device.`}
+                  </p>
+                </div>
+                <p class="shrink-0 text-[11px] text-mute">
+                  Open the toolbar to sign in.
+                </p>
+              </div>
+            </div>
+            <GoalEditor goal={todayGoal} onChange={handleGoalChange} />
+            <DailyQuote quote={randomQuote} />
           </div>
         ) : (
           <>
