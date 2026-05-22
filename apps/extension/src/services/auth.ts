@@ -41,6 +41,18 @@ export class AuthService extends Effect.Service<AuthService>()("AuthService", {
               (cause) => new AuthError({ message: "save user", cause }),
             ),
           )
+        // Migrate any guest-mode writes that piled up in the sync queue while
+        // we were signed out. Fire-and-forget so a SW that isn't listening
+        // (rare) doesn't fail the sign-in.
+        yield* Effect.sync(() => {
+          try {
+            void chrome.runtime
+              .sendMessage({ type: "focusquote.sync.now" } as const)
+              .catch(() => {})
+          } catch {
+            // chrome.runtime may not be available in some test contexts.
+          }
+        })
       })
 
     const clearAuth = Effect.gen(function* () {
