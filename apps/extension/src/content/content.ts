@@ -101,8 +101,8 @@ const refreshSessionAndPrivacy = async () => {
     }
   }
   if (saveRow) {
-    saveRow.fromSelect.value = prefs.translateFromLang
-    saveRow.toSelect.value = prefs.translateToLang
+    saveRow.setFromLang(prefs.translateFromLang)
+    saveRow.setToLang(prefs.translateToLang)
   }
 
   // Each focus session gets a clean Quote+AI chat. Cross a session
@@ -263,8 +263,13 @@ chrome.runtime.onMessage.addListener((msg: unknown) => {
 // the selection collapses, the whole row disappears together.
 
 const ROW_ATTR = "data-focusquote-save"
-const SAVE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`
-const TRANSLATE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>`
+// SVG icons inlined so the row is self-contained — no extra fetches and no
+// host CSP issues with web fonts. All icons use currentColor so we can swap
+// foreground per-pill.
+const SAVE_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`
+const GLOBE_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3.5 12h17"/><path d="M12 3.5a13.5 13.5 0 0 1 0 17"/><path d="M12 3.5a13.5 13.5 0 0 0 0 17"/></svg>`
+const TAG_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.5L13.5 20.5a1.4 1.4 0 0 1-2 0L3 12V3h9l8.5 8.5a1.4 1.4 0 0 1 0 2z"/><circle cx="7.5" cy="7.5" r="1.25" fill="currentColor" stroke="none"/></svg>`
+const CHEVRON_ICON = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`
 
 const MYMEMORY_LIMIT = 500
 
@@ -300,43 +305,116 @@ const persistTranslatePrefs = (nextFrom: string, nextTo: string): void => {
     .catch(() => {})
 }
 
-const styleSelect = (sel: HTMLSelectElement): void => {
-  sel.style.cssText = [
-    "all:unset",
-    "box-sizing:border-box",
-    "appearance:auto",
-    "background:rgba(255,255,255,0.12)",
-    "color:#ffffff",
-    "border:1px solid rgba(255,255,255,0.18)",
-    "border-radius:6px",
-    "padding:3px 4px",
-    "font:500 12px/1 system-ui,-apple-system,sans-serif",
-    "cursor:pointer",
-    "max-width:96px",
-  ].join(";")
+// ---- Save-row visual building blocks --------------------------------------
+//
+// The new visual treatment (Image #3) puts the orange Save button, the
+// FROM/TO language pills, and the globe/tag icon buttons inside one cream
+// "card" frame. Each control is a separate pill so it can highlight on
+// hover without bleeding into its neighbours. Everything is built with
+// cssText so we never depend on Tailwind reaching the host page.
+
+const COLORS = {
+  frame: "rgb(255 251 245)",
+  frameBorder: "rgb(231 224 211)",
+  ink: "rgb(35 37 29)",
+  muted: "rgb(150 145 130)",
+  pill: "rgb(255 255 255)",
+  pillBorder: "rgb(231 224 211)",
+  pillHoverBorder: "rgb(204 195 180)",
+  codeBg: "rgb(246 241 232)",
+  codeBorder: "rgb(225 217 202)",
+  orange: "rgb(247 165 1)",
+  orangeHover: "rgb(232 152 0)",
+  arrow: "rgb(150 145 130)",
 }
 
-const styleIconButton = (btn: HTMLButtonElement): void => {
+const labelByCode = (code: string): string => {
+  if (code === "auto") return "Auto"
+  const found = TRANSLATE_LANGUAGES.find((l) => l.code === code)
+  return found?.label ?? code.toUpperCase()
+}
+
+const stylePill = (btn: HTMLButtonElement, opts: { padX: number; padY: number }): void => {
   btn.style.cssText = [
     "all:unset",
     "box-sizing:border-box",
     "display:inline-flex",
     "align-items:center",
-    "justify-content:center",
-    "width:24px",
-    "height:24px",
-    "border-radius:6px",
-    "color:#ffffff",
-    "background:rgba(255,255,255,0.10)",
+    "gap:8px",
+    `padding:${opts.padY}px ${opts.padX}px`,
+    `background:${COLORS.pill}`,
+    `border:1px solid ${COLORS.pillBorder}`,
+    "border-radius:10px",
+    `color:${COLORS.ink}`,
     "cursor:pointer",
-    "transition:background-color 120ms ease",
+    "transition:border-color 120ms ease, background-color 120ms ease",
   ].join(";")
   btn.addEventListener("mouseenter", () => {
-    btn.style.backgroundColor = "rgba(255,255,255,0.20)"
+    btn.style.borderColor = COLORS.pillHoverBorder
   })
   btn.addEventListener("mouseleave", () => {
-    btn.style.backgroundColor = "rgba(255,255,255,0.10)"
+    btn.style.borderColor = COLORS.pillBorder
   })
+}
+
+const styleIconPill = (btn: HTMLButtonElement): void => {
+  stylePill(btn, { padX: 9, padY: 9 })
+  btn.style.color = COLORS.ink
+}
+
+// Build one of the FROM / TO language pills. Returns the button plus
+// imperative setters so callers can refresh the displayed language without
+// rebuilding the element.
+const createLangPill = (
+  caption: string,
+): { btn: HTMLButtonElement; setLang: (code: string) => void; getLang: () => string } => {
+  const btn = document.createElement("button")
+  btn.type = "button"
+  stylePill(btn, { padX: 12, padY: 8 })
+
+  const labelGroup = document.createElement("span")
+  labelGroup.style.cssText = "display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;line-height:1"
+
+  const caps = document.createElement("span")
+  caps.textContent = caption
+  caps.style.cssText = `font:600 9px/1 system-ui,-apple-system,sans-serif;letter-spacing:.12em;color:${COLORS.muted};text-transform:uppercase`
+  labelGroup.appendChild(caps)
+
+  const name = document.createElement("span")
+  name.style.cssText = `font:600 14px/1.15 system-ui,-apple-system,sans-serif;color:${COLORS.ink}`
+  labelGroup.appendChild(name)
+
+  btn.appendChild(labelGroup)
+
+  const codeBadge = document.createElement("span")
+  codeBadge.style.cssText = [
+    "display:inline-flex",
+    "align-items:center",
+    "justify-content:center",
+    "padding:2px 6px",
+    `background:${COLORS.codeBg}`,
+    `border:1px solid ${COLORS.codeBorder}`,
+    "border-radius:5px",
+    `color:${COLORS.ink}`,
+    "font:700 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace",
+    "letter-spacing:.04em",
+  ].join(";")
+  btn.appendChild(codeBadge)
+
+  const chev = document.createElement("span")
+  chev.innerHTML = CHEVRON_ICON
+  chev.style.cssText = `display:inline-flex;color:${COLORS.muted}`
+  btn.appendChild(chev)
+
+  let currentCode = ""
+  const setLang = (code: string): void => {
+    currentCode = code
+    name.textContent = labelByCode(code)
+    codeBadge.textContent = code.toUpperCase()
+  }
+  const getLang = (): string => currentCode
+
+  return { btn, setLang, getLang }
 }
 
 const createSaveRow = (): SaveRow => {
@@ -362,21 +440,22 @@ const createSaveRow = (): SaveRow => {
     e.stopPropagation()
   })
 
-  const row = document.createElement("div")
-  row.style.cssText = [
+  // Outer cream frame containing Save + language pills + icon actions.
+  const frame = document.createElement("div")
+  frame.style.cssText = [
     "display:inline-flex",
     "align-items:center",
-    "gap:6px",
-    "background:rgb(247 165 1)", // primary
-    "color:rgb(35 37 29)",        // ink
-    "border:1px solid rgb(191 193 183)",
-    "border-radius:8px",
-    "padding:6px 8px",
-    "box-shadow:0 4px 14px rgba(0,0,0,.15)",
+    "gap:8px",
+    `background:${COLORS.frame}`,
+    `border:1px solid ${COLORS.frameBorder}`,
+    "border-radius:14px",
+    "padding:6px",
+    "box-shadow:0 6px 18px rgba(0,0,0,.10)",
     "white-space:nowrap",
   ].join(";")
-  root.appendChild(row)
+  root.appendChild(frame)
 
+  // Orange "Save quote" button.
   const saveBtn = document.createElement("button")
   saveBtn.type = "button"
   saveBtn.setAttribute("aria-label", "Save quote to FocusQuote")
@@ -385,81 +464,86 @@ const createSaveRow = (): SaveRow => {
     "box-sizing:border-box",
     "display:inline-flex",
     "align-items:center",
-    "gap:6px",
-    "padding:2px 4px",
-    "border-radius:4px",
+    "gap:8px",
+    "padding:10px 16px",
+    `background:${COLORS.orange}`,
+    `color:${COLORS.ink}`,
+    "border-radius:10px",
     "cursor:pointer",
-    "color:rgb(35 37 29)",
+    "font:700 14px/1 system-ui,-apple-system,sans-serif",
+    "box-shadow:inset 0 -1px 0 rgba(0,0,0,.08)",
+    "transition:background-color 120ms ease",
   ].join(";")
+  saveBtn.addEventListener("mouseenter", () => {
+    saveBtn.style.backgroundColor = COLORS.orangeHover
+  })
+  saveBtn.addEventListener("mouseleave", () => {
+    saveBtn.style.backgroundColor = COLORS.orange
+  })
   saveBtn.innerHTML = `${SAVE_ICON}<span>Save quote</span>`
   saveBtn.addEventListener("click", handleSaveClick)
-  row.appendChild(saveBtn)
+  frame.appendChild(saveBtn)
 
-  // Visual divider between Save and the inline Translate group.
-  const sep = document.createElement("span")
-  sep.style.cssText =
-    "width:1px;height:18px;background:rgba(35,37,29,0.18);margin:0 2px"
-  row.appendChild(sep)
+  // FROM | → | TO group.
+  const langGroup = document.createElement("div")
+  langGroup.style.cssText = "display:inline-flex;align-items:center;gap:6px"
+  frame.appendChild(langGroup)
 
-  const fromSelect = document.createElement("select")
-  fromSelect.setAttribute("aria-label", "Translate from")
-  fromSelect.title = "Translate from"
-  styleSelect(fromSelect)
-  {
-    const autoOpt = document.createElement("option")
-    autoOpt.value = "auto"
-    autoOpt.textContent = "Auto"
-    fromSelect.appendChild(autoOpt)
-    for (const lang of TRANSLATE_LANGUAGES) {
-      const opt = document.createElement("option")
-      opt.value = lang.code
-      opt.textContent = lang.label
-      fromSelect.appendChild(opt)
-    }
-  }
-  const initialFrom =
-    prefs.translateFromLang ||
-    readLegacyTranslatePref("focusquote.translate.from", defaultPrefs.translateFromLang)
-  fromSelect.value = isValidTranslateFrom(initialFrom)
-    ? initialFrom
-    : "auto"
-  fromSelect.addEventListener("change", () => {
-    persistTranslatePrefs(fromSelect.value, toSelect.value || defaultPrefs.translateToLang)
-  })
-  row.appendChild(fromSelect)
+  const fromPart = createLangPill("FROM")
+  fromPart.btn.setAttribute("aria-label", "Translate from")
+  fromPart.btn.title = "Translate from"
+  langGroup.appendChild(fromPart.btn)
 
   const arrow = document.createElement("span")
   arrow.textContent = "→"
-  arrow.style.cssText = "opacity:0.7;font-size:12px"
-  row.appendChild(arrow)
+  arrow.style.cssText = `font:500 14px/1 system-ui,-apple-system,sans-serif;color:${COLORS.arrow}`
+  langGroup.appendChild(arrow)
 
-  const toSelect = document.createElement("select")
-  toSelect.setAttribute("aria-label", "Translate to")
-  toSelect.title = "Translate to"
-  styleSelect(toSelect)
-  for (const lang of TRANSLATE_LANGUAGES) {
-    const opt = document.createElement("option")
-    opt.value = lang.code
-    opt.textContent = lang.label
-    toSelect.appendChild(opt)
-  }
-  const initialTo =
-    prefs.translateToLang ||
-    readLegacyTranslatePref("focusquote.translate.to", defaultPrefs.translateToLang)
-  toSelect.value = isValidTranslateTo(initialTo) ? initialTo : "en"
-  toSelect.addEventListener("change", () => {
-    persistTranslatePrefs(fromSelect.value || defaultPrefs.translateFromLang, toSelect.value)
-  })
-  row.appendChild(toSelect)
+  const toPart = createLangPill("TO")
+  toPart.btn.setAttribute("aria-label", "Translate to")
+  toPart.btn.title = "Translate to"
+  langGroup.appendChild(toPart.btn)
 
-  const translateBtn = document.createElement("button")
-  translateBtn.type = "button"
-  translateBtn.setAttribute("aria-label", "Translate selection")
-  translateBtn.title = "Translate selection"
-  styleIconButton(translateBtn)
-  translateBtn.innerHTML = TRANSLATE_ICON
-  translateBtn.addEventListener("click", handleTranslateClick)
-  row.appendChild(translateBtn)
+  // Initial language values from saved prefs (with legacy fallback).
+  const initialFrom = isValidTranslateFrom(prefs.translateFromLang)
+    ? prefs.translateFromLang
+    : isValidTranslateFrom(
+          readLegacyTranslatePref("focusquote.translate.from", defaultPrefs.translateFromLang),
+        )
+      ? readLegacyTranslatePref("focusquote.translate.from", defaultPrefs.translateFromLang)
+      : "auto"
+  const initialTo = isValidTranslateTo(prefs.translateToLang)
+    ? prefs.translateToLang
+    : isValidTranslateTo(
+          readLegacyTranslatePref("focusquote.translate.to", defaultPrefs.translateToLang),
+        )
+      ? readLegacyTranslatePref("focusquote.translate.to", defaultPrefs.translateToLang)
+      : "en"
+  fromPart.setLang(initialFrom)
+  toPart.setLang(initialTo)
+
+  // Globe icon: opens the language picker / triggers translation. Until the
+  // filterable picker lands (next commit), clicking it runs translation with
+  // the currently-selected languages.
+  const globeBtn = document.createElement("button")
+  globeBtn.type = "button"
+  globeBtn.setAttribute("aria-label", "Translate selection")
+  globeBtn.title = "Translate selection"
+  styleIconPill(globeBtn)
+  globeBtn.innerHTML = GLOBE_ICON
+  globeBtn.addEventListener("click", handleTranslateClick)
+  frame.appendChild(globeBtn)
+
+  // Tag icon: opens a tag input prompt. Real popover UI is a future task,
+  // but a simple prompt() keeps the affordance functional today.
+  const tagBtn = document.createElement("button")
+  tagBtn.type = "button"
+  tagBtn.setAttribute("aria-label", "Add tag to quote")
+  tagBtn.title = "Add tag to quote"
+  styleIconPill(tagBtn)
+  tagBtn.innerHTML = TAG_ICON
+  tagBtn.addEventListener("click", handleTagClick)
+  frame.appendChild(tagBtn)
 
   const resultCard = document.createElement("div")
   resultCard.style.cssText = [
@@ -468,8 +552,8 @@ const createSaveRow = (): SaveRow => {
     "background:rgb(255 255 255)",
     "color:rgb(35 37 29)",
     "border:1px solid rgb(191 193 183)",
-    "border-radius:6px",
-    "padding:8px 10px",
+    "border-radius:10px",
+    "padding:10px 12px",
     "font:13px/1.5 system-ui,-apple-system,sans-serif",
     "white-space:pre-wrap",
     "word-break:break-word",
@@ -480,7 +564,25 @@ const createSaveRow = (): SaveRow => {
   resultCard.setAttribute("data-fq-scrollbar", "")
   root.appendChild(resultCard)
 
-  return { root, saveBtn, resultCard, fromSelect, toSelect, translateBtn }
+  return {
+    root,
+    saveBtn,
+    resultCard,
+    fromPill: fromPart.btn,
+    toPill: toPart.btn,
+    globeBtn,
+    tagBtn,
+    getFromLang: fromPart.getLang,
+    getToLang: toPart.getLang,
+    setFromLang: (code) => {
+      fromPart.setLang(code)
+      persistTranslatePrefs(code, toPart.getLang())
+    },
+    setToLang: (code) => {
+      toPart.setLang(code)
+      persistTranslatePrefs(fromPart.getLang(), code)
+    },
+  }
 }
 
 const ensureRow = (): SaveRow => {
@@ -642,14 +744,35 @@ const fetchTranslation = async (
   throw new Error("Empty translation")
 }
 
+function handleTagClick() {
+  if (!pendingText) return
+  // Lightweight first pass: native prompt. A proper popover with tag
+  // chips lands with the trusted-sources UI work later in the sprint.
+  const raw = window.prompt("Add a tag for this quote:")?.trim() ?? ""
+  const tag = raw.length > 0 ? raw.slice(0, 60) : null
+  const payload = {
+    type: "focusquote.saveQuote" as const,
+    text: pendingText,
+    sourceUrl: location.href,
+    sourceTitle: document.title || null,
+    tag,
+  }
+  chrome.runtime.sendMessage(payload).catch(() => {
+    showToast("Couldn't save — extension reloaded?", "error")
+  })
+  pendingText = ""
+  hideRow()
+  window.getSelection()?.removeAllRanges()
+}
+
 function handleTranslateClick() {
   if (!saveRow) return
   const row = saveRow
   const text = pendingText.slice(0, MYMEMORY_LIMIT)
   if (!text) return
 
-  const from = row.fromSelect.value || "auto"
-  const to = row.toSelect.value || "en"
+  const from = row.getFromLang() || "auto"
+  const to = row.getToLang() || "en"
   if (from !== "auto" && from === to) {
     row.resultCard.style.display = "block"
     row.resultCard.style.color = "rgb(110 113 99)"
