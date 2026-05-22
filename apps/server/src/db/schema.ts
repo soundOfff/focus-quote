@@ -4,6 +4,7 @@ import {
   text,
   integer,
   index,
+  uniqueIndex,
   primaryKey,
 } from "drizzle-orm/sqlite-core"
 
@@ -97,6 +98,7 @@ export const quotes = sqliteTable(
     sourceUrl: text("source_url"),
     sourceTitle: text("source_title"),
     tag: text("tag"),
+    contentHash: text("content_hash"),
     createdAt: text("created_at")
       .notNull()
       .default(sql`(datetime('now'))`),
@@ -110,6 +112,9 @@ export const quotes = sqliteTable(
       t.createdAt,
     ),
     userTagIdx: index("quotes_user_tag_idx").on(t.userId, t.tag),
+    userHashUq: uniqueIndex("quotes_user_content_hash_uq")
+      .on(t.userId, t.contentHash)
+      .where(sql`${t.contentHash} IS NOT NULL`),
   }),
 )
 

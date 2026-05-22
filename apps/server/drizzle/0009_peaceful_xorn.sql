@@ -1,0 +1,2 @@
+ALTER TABLE `quotes` ADD `content_hash` text;--> statement-breakpoint
+CREATE UNIQUE INDEX `quotes_user_content_hash_uq` ON `quotes` (`user_id`,`content_hash`) WHERE "quotes"."content_hash" IS NOT NULL;
