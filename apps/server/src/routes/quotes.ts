@@ -10,6 +10,19 @@ import { ListQuotesQuery, NewQuoteInput } from "../lib/api-schemas"
 const hashQuoteText = (text: string): string =>
   createHash("sha256").update(text.trim()).digest("hex")
 
+const isUniqueConstraintViolation = (err: unknown): boolean => {
+  if (!err || typeof err !== "object") return false
+  const e = err as { code?: unknown; message?: unknown }
+  const msg =
+    typeof e.message === "string" ? e.message : String((err as Error).message ?? "")
+  return (
+    e.code === "SQLITE_CONSTRAINT_UNIQUE" ||
+    e.code === "SQLITE_CONSTRAINT" ||
+    msg.includes("UNIQUE constraint failed") ||
+    msg.includes("quotes_user_content_hash_uq")
+  )
+}
+
 export const quotesRoutes = new Hono<{ Variables: RequireUserVariables }>()
   .use("*", requireUser)
   .get("/", zValidator("query", ListQuotesQuery), async (c) => {
@@ -34,17 +47,29 @@ export const quotesRoutes = new Hono<{ Variables: RequireUserVariables }>()
     const body = c.req.valid("json")
     const id = randomUUID()
     const now = new Date().toISOString()
-    await db.insert(quotes).values({
-      id,
-      userId,
-      text: body.text,
-      sourceUrl: body.sourceUrl,
-      sourceTitle: body.sourceTitle,
-      tag: body.tag,
-      contentHash: hashQuoteText(body.text),
-      createdAt: now,
-      updatedAt: now,
-    })
+    const contentHash = hashQuoteText(body.text)
+    try {
+      await db.insert(quotes).values({
+        id,
+        userId,
+        text: body.text,
+        sourceUrl: body.sourceUrl,
+        sourceTitle: body.sourceTitle,
+        tag: body.tag,
+        contentHash,
+        createdAt: now,
+        updatedAt: now,
+      })
+    } catch (err) {
+      if (!isUniqueConstraintViolation(err)) throw err
+      const [existing] = await db
+        .select()
+        .from(quotes)
+        .where(and(eq(quotes.userId, userId), eq(quotes.contentHash, contentHash)))
+        .limit(1)
+      if (!existing) return c.json({ error: "Duplicate detected but row missing" }, 500)
+      return c.json({ quote: toQuoteDTO(existing), deduped: true as const })
+    }
     const [row] = await db.select().from(quotes).where(eq(quotes.id, id)).limit(1)
     if (!row) return c.json({ error: "Insert failed" }, 500)
     return c.json({ quote: toQuoteDTO(row) }, 201)
