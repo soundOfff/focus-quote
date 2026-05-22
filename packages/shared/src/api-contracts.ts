@@ -227,7 +227,7 @@ export interface SyncBatchRequest {
 }
 
 export type SyncBatchItemResult =
-  | { ok: true }
+  | { ok: true; deduped?: true }
   | { ok: false; error: string }
 
 export interface SyncBatchResponse {
