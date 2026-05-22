@@ -5,6 +5,9 @@ import { SyncJob } from "@focus-quote/shared"
 import { SyncError } from "../shared/errors"
 
 const QUEUE_KEY = "focusquote.syncQueue"
+// Kept in sync with quotes.ts; SyncService can't import QuotesService
+// without creating a dependency cycle.
+const QUOTES_KEY = "focusquote.quotes"
 
 const QueuedJob = Schema.Struct({
   id: Schema.String,
@@ -35,6 +38,19 @@ export class SyncService extends Effect.Service<SyncService>()(
 
       const writeQueue = (q: ReadonlyArray<QueuedJob>) =>
         storage.set(QUEUE_KEY, q)
+
+      const removeLocalQuotes = (ids: ReadonlyArray<string>) =>
+        Effect.gen(function* () {
+          if (ids.length === 0) return
+          const raw = yield* storage.get<Record<string, unknown>>(QUOTES_KEY)
+          if (raw === null || typeof raw !== "object") return
+          const drop = new Set(ids)
+          const next: Record<string, unknown> = {}
+          for (const [k, v] of Object.entries(raw)) {
+            if (!drop.has(k)) next[k] = v
+          }
+          yield* storage.set(QUOTES_KEY, next)
+        })
 
       const enqueue = (job: SyncJob): Effect.Effect<void, SyncError> =>
         Effect.gen(function* () {
@@ -71,6 +87,7 @@ export class SyncService extends Effect.Service<SyncService>()(
         }
 
         const remaining: QueuedJob[] = []
+        const dedupedQuoteIds: string[] = []
         let applied = 0
         const results = result.right.results
         for (let i = 0; i < queue.length; i++) {
@@ -78,11 +95,17 @@ export class SyncService extends Effect.Service<SyncService>()(
           const r = results[i]
           if (r?.ok) {
             applied++
+            if (r.deduped && item.job.kind === "upsertQuote") {
+              dedupedQuoteIds.push(item.job.id)
+            }
           } else {
             remaining.push({ ...item, attempts: item.attempts + 1 })
           }
         }
         yield* writeQueue(remaining)
+        if (dedupedQuoteIds.length > 0) {
+          yield* removeLocalQuotes(dedupedQuoteIds).pipe(Effect.either)
+        }
         return { applied, failed: remaining.length }
       }).pipe(
         Effect.mapError(
