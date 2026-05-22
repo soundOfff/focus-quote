@@ -39,3 +39,8 @@ export class AuthError extends Data.TaggedError("AuthError")<{
   readonly message: string
   readonly cause?: unknown
 }> {}
+
+export class DuplicateQuoteError extends Data.TaggedError("DuplicateQuoteError")<{
+  readonly existingId: string
+  readonly contentHash: string
+}> {}
