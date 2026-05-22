@@ -4,8 +4,16 @@ import { SyncService } from "@/services/sync"
 import { StorageService } from "@/services/storage"
 import { ApiService } from "@/services/api"
 import { NetworkError } from "@/shared/errors"
+import { AUTH_TOKEN_KEY } from "@/shared/auth-storage"
 import type { QuoteId } from "@focus-quote/shared"
 import { resetChromeStorage } from "./setup"
+
+const seedAuthToken = () =>
+  new Promise<void>((resolve) =>
+    chrome.storage.local.set({ [AUTH_TOKEN_KEY]: "test-token" }, () =>
+      resolve(),
+    ),
+  )
 
 let calls = 0
 let mode: "ok" | "fail-all" | "fail-second" = "ok"
@@ -45,8 +53,9 @@ const sampleJob = (id: string) => ({
 })
 
 describe("SyncService", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetChromeStorage()
+    await seedAuthToken()
     calls = 0
     mode = "ok"
   })
