@@ -13,7 +13,20 @@ import {
 } from "../lib/study-artifacts"
 import { maybeGenerateTopic } from "../lib/topic"
 
-type Result = { ok: true } | { ok: false; error: string }
+type Result = { ok: true; deduped?: true } | { ok: false; error: string }
+
+const isUniqueConstraintViolation = (err: unknown): boolean => {
+  if (!err || typeof err !== "object") return false
+  const e = err as { code?: unknown; message?: unknown }
+  const msg =
+    typeof e.message === "string" ? e.message : String((err as Error).message ?? "")
+  return (
+    e.code === "SQLITE_CONSTRAINT_UNIQUE" ||
+    e.code === "SQLITE_CONSTRAINT" ||
+    msg.includes("UNIQUE constraint failed") ||
+    msg.includes("quotes_user_content_hash_uq")
+  )
+}
 
 export const syncRoutes = new Hono<{ Variables: RequireUserVariables }>()
   .use("*", requireUser)
@@ -23,8 +36,8 @@ export const syncRoutes = new Hono<{ Variables: RequireUserVariables }>()
     const results: Result[] = []
     for (const job of jobs) {
       try {
-        await applyJob(userId, job)
-        results.push({ ok: true })
+        const r = await applyJob(userId, job)
+        results.push(r?.deduped ? { ok: true, deduped: true } : { ok: true })
       } catch (err) {
         results.push({
           ok: false,
@@ -55,35 +68,47 @@ export const syncRoutes = new Hono<{ Variables: RequireUserVariables }>()
     return c.json({ results })
   })
 
-async function applyJob(userId: string, job: SyncJobInput): Promise<void> {
+async function applyJob(
+  userId: string,
+  job: SyncJobInput,
+): Promise<{ deduped?: true } | void> {
   switch (job.kind) {
     case "upsertQuote": {
-      // UUID id collisions across users are negligible; ownership enforced
-      // on read/delete via WHERE user_id = ?.
-      await db
-        .insert(quotes)
-        .values({
-          id: job.id,
-          userId,
-          text: job.text,
-          sourceUrl: job.sourceUrl,
-          sourceTitle: job.sourceTitle,
-          tag: job.tag,
-          contentHash: job.contentHash,
-          createdAt: job.createdAt,
-          updatedAt: job.updatedAt,
-        })
-        .onConflictDoUpdate({
-          target: quotes.id,
-          set: {
+      // Re-sending the same id from one device is idempotent
+      // (last-write-wins via onConflictDoUpdate on quotes.id). A *different*
+      // id carrying the same trimmed text (cross-device duplicate) is
+      // rejected by the (user_id, content_hash) partial unique index; we
+      // catch the violation and surface it as `deduped: true` so the client
+      // can drop its local copy without retrying.
+      try {
+        await db
+          .insert(quotes)
+          .values({
+            id: job.id,
+            userId,
             text: job.text,
             sourceUrl: job.sourceUrl,
             sourceTitle: job.sourceTitle,
             tag: job.tag,
             contentHash: job.contentHash,
+            createdAt: job.createdAt,
             updatedAt: job.updatedAt,
-          },
-        })
+          })
+          .onConflictDoUpdate({
+            target: quotes.id,
+            set: {
+              text: job.text,
+              sourceUrl: job.sourceUrl,
+              sourceTitle: job.sourceTitle,
+              tag: job.tag,
+              contentHash: job.contentHash,
+              updatedAt: job.updatedAt,
+            },
+          })
+      } catch (err) {
+        if (isUniqueConstraintViolation(err)) return { deduped: true }
+        throw err
+      }
       return
     }
     case "deleteQuote": {
