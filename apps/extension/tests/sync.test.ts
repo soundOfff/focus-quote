@@ -113,6 +113,27 @@ describe("SyncService", () => {
     expect(r.remaining).toBe(2)
   })
 
+  it("noops drain when no auth token (guest mode)", async () => {
+    // Wipe the seeded token; drain should not touch the API or shrink the queue.
+    await new Promise<void>((resolve) =>
+      chrome.storage.local.remove(AUTH_TOKEN_KEY, () => resolve()),
+    )
+    const program = Effect.gen(function* () {
+      const sync = yield* SyncService
+      yield* sync.enqueue(sampleJob("q1"))
+      yield* sync.enqueue(sampleJob("q2"))
+      const result = yield* sync.drain
+      const remaining = yield* sync.queueSize
+      return { result, remaining }
+    }).pipe(Effect.provide(TestLayer))
+
+    const r = await Effect.runPromise(program)
+    expect(r.result.applied).toBe(0)
+    expect(r.result.failed).toBe(0)
+    expect(r.remaining).toBe(2)
+    expect(calls).toBe(0)
+  })
+
   it("keeps individual failed items in the queue, drops successes", async () => {
     mode = "fail-second"
     const program = Effect.gen(function* () {
