@@ -3,6 +3,7 @@ import { StorageService } from "./storage"
 import { ApiService } from "./api"
 import { SyncJob } from "@focus-quote/shared"
 import { SyncError } from "../shared/errors"
+import { AUTH_TOKEN_KEY } from "../shared/auth-storage"
 
 const QUEUE_KEY = "focusquote.syncQueue"
 // Kept in sync with quotes.ts; SyncService can't import QuotesService
@@ -74,6 +75,14 @@ export class SyncService extends Effect.Service<SyncService>()(
       > = Effect.gen(function* () {
         const queue = yield* readQueue
         if (queue.length === 0) return { applied: 0, failed: 0 }
+
+        // Guest mode: with no auth token, every request would 401. Leave the
+        // queue intact and noop; the next sign-in kicks drain explicitly so
+        // guest writes migrate to the new account.
+        const token = yield* storage
+          .get<string>(AUTH_TOKEN_KEY)
+          .pipe(Effect.catchAll(() => Effect.succeed(null)))
+        if (!token) return { applied: 0, failed: 0 }
 
         // Send the entire queue in one round trip; server returns
         // a per-item ok/error tuple.
