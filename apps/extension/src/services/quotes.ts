@@ -7,7 +7,7 @@ import {
   quoteContentHash,
   type QuoteId,
 } from "@focus-quote/shared"
-import { ValidationError } from "../shared/errors"
+import { DuplicateQuoteError, ValidationError } from "../shared/errors"
 
 const QUOTES_KEY = "focusquote.quotes"
 
@@ -108,6 +108,17 @@ export class QuotesService extends Effect.Service<QuotesService>()(
               new ValidationError({ message: "hash failed", cause }),
           })
           const all = yield* readAll
+          const existing = Object.values(all).find(
+            (q) => q.contentHash === contentHash,
+          )
+          if (existing) {
+            return yield* Effect.fail(
+              new DuplicateQuoteError({
+                existingId: existing.id,
+                contentHash,
+              }),
+            )
+          }
           const now = new Date().toISOString()
           const quote: Quote = {
             id: crypto.randomUUID() as QuoteId,
