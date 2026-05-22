@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
 import {
   Flame,
+  LogIn,
+  Lock,
   Settings as SettingsIcon,
   Target as TargetIcon,
 } from "lucide-preact"
@@ -118,7 +120,7 @@ const loadPopupExtras = Effect.gen(function* () {
   }
 })
 
-type View = "main" | "settings"
+type View = "main" | "settings" | "signin"
 
 export function App() {
   return (
@@ -204,16 +206,16 @@ function AppInner() {
   }, [])
 
   useEffect(() => {
-    if (!user) return
+    if (!authReady) return
     refresh(query)
     refreshExtras()
-  }, [user])
+  }, [authReady, user])
 
   useEffect(() => {
-    if (!user) return
+    if (!authReady) return
     const t = setTimeout(() => refresh(query), 120)
     return () => clearTimeout(t)
-  }, [query, user])
+  }, [query, authReady, user])
 
   // Listen for auth-callback broadcasting a sign-in. Session start/finish/
   // cancel toasts surface in the newtab navigator (see newtab/App.tsx); the
@@ -276,15 +278,20 @@ function AppInner() {
     )
   }
 
-  if (!user) {
+  if (view === "signin") {
     return (
       <div class="min-h-[460px] w-[380px] overflow-y-auto bg-paper text-ink-2">
-        <SignIn onSignedIn={refreshAuth} />
+        <SignIn
+          onSignedIn={() => {
+            refreshAuth()
+            setView("main")
+          }}
+        />
       </div>
     )
   }
 
-  if (view === "settings") {
+  if (view === "settings" && user) {
     return (
       <div class="min-h-[460px] w-[380px] overflow-y-auto bg-paper text-ink-2">
         <SettingsView
@@ -299,6 +306,8 @@ function AppInner() {
     )
   }
 
+  const isGuest = user === null
+
   return (
     <div class="flex max-h-[760px] min-h-[460px] w-[380px] flex-col overflow-hidden bg-paper text-ink-2">
       {/* 1. Header bar */}
@@ -311,14 +320,27 @@ function AppInner() {
             {dateLabel}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => setView("settings")}
-          aria-label="Settings"
-          class="rounded-chip p-[6px] text-muted transition-colors hover:bg-paper-2 hover:text-ink-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40"
-        >
-          <SettingsIcon size={14} strokeWidth={1.7} />
-        </button>
+        <div class="flex items-center gap-1">
+          {isGuest ? (
+            <button
+              type="button"
+              onClick={() => setView("signin")}
+              class="inline-flex items-center gap-1 rounded-chip border border-amber-deep/40 bg-amber-deep/10 px-[10px] py-[5px] text-[11px] font-medium text-amber-deep transition-colors hover:bg-amber-deep/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40"
+            >
+              <LogIn size={11} strokeWidth={2} />
+              Sign in
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setView("settings")}
+              aria-label="Settings"
+              class="rounded-chip p-[6px] text-muted transition-colors hover:bg-paper-2 hover:text-ink-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40"
+            >
+              <SettingsIcon size={14} strokeWidth={1.7} />
+            </button>
+          )}
+        </div>
       </header>
 
       {/* 2. Today's intent band */}
@@ -345,11 +367,15 @@ function AppInner() {
 
       {/* 3. Focus session */}
       <section class="flex shrink-0 flex-col gap-3 px-4 pb-4 pt-[14px]">
-        <SessionPanel
-          defaultDurationMinutes={prefs.defaultDurationMinutes}
-          defaultBreakMinutes={prefs.defaultBreakMinutes}
-          onChange={refreshExtras}
-        />
+        {isGuest ? (
+          <SessionLockedCard onSignIn={() => setView("signin")} />
+        ) : (
+          <SessionPanel
+            defaultDurationMinutes={prefs.defaultDurationMinutes}
+            defaultBreakMinutes={prefs.defaultBreakMinutes}
+            onChange={refreshExtras}
+          />
+        )}
         <StatsLine
           streak={streak}
           today={todayCount}
@@ -385,6 +411,32 @@ function AppInner() {
           <QuoteList quotes={quotes} onDelete={handleDelete} />
         </div>
       </section>
+    </div>
+  )
+}
+
+function SessionLockedCard({ onSignIn }: { onSignIn: () => void }) {
+  return (
+    <div class="flex items-start gap-3 rounded-card border border-rule bg-paper-2 p-3">
+      <div class="rounded-chip bg-paper p-[6px] text-muted">
+        <Lock size={14} strokeWidth={1.8} aria-hidden />
+      </div>
+      <div class="flex-1">
+        <p class="text-[12.5px] font-medium leading-[1.35] text-ink-2">
+          Sign in to run focus sessions
+        </p>
+        <p class="mt-[2px] text-[11px] leading-[1.4] text-muted">
+          Quotes save locally even while signed out.
+        </p>
+        <button
+          type="button"
+          onClick={onSignIn}
+          class="mt-2 inline-flex items-center gap-1 rounded-chip border border-amber-deep/40 bg-amber-deep/10 px-[10px] py-[4px] text-[11px] font-medium text-amber-deep transition-colors hover:bg-amber-deep/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40"
+        >
+          <LogIn size={11} strokeWidth={2} />
+          Sign in
+        </button>
+      </div>
     </div>
   )
 }
