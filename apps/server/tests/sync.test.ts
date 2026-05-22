@@ -27,6 +27,7 @@ describe("/api/sync/batch", () => {
             sourceUrl: null,
             sourceTitle: null,
             tag: null,
+            contentHash: "a".repeat(64),
             createdAt: now,
             updatedAt: now,
           },
@@ -65,14 +66,14 @@ describe("/api/sync/batch", () => {
     await fetch("/api/sync/batch", {
       ...json({
         jobs: [
-          { kind: "upsertQuote", id: "qx", text: "v1", sourceUrl: null, sourceTitle: null, tag: null, createdAt: t1, updatedAt: t1 },
+          { kind: "upsertQuote", id: "qx", text: "v1", sourceUrl: null, sourceTitle: null, tag: null, contentHash: "b".repeat(64), createdAt: t1, updatedAt: t1 },
         ],
       }),
     })
     await fetch("/api/sync/batch", {
       ...json({
         jobs: [
-          { kind: "upsertQuote", id: "qx", text: "v2", sourceUrl: null, sourceTitle: null, tag: null, createdAt: t1, updatedAt: t2 },
+          { kind: "upsertQuote", id: "qx", text: "v2", sourceUrl: null, sourceTitle: null, tag: null, contentHash: "c".repeat(64), createdAt: t1, updatedAt: t2 },
         ],
       }),
     })

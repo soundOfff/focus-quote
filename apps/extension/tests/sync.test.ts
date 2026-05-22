@@ -39,6 +39,7 @@ const sampleJob = (id: string) => ({
   sourceUrl: null,
   sourceTitle: null,
   tag: null,
+  contentHash: "0".repeat(64),
   createdAt: "2026-05-04T00:00:00Z",
   updatedAt: "2026-05-04T00:00:00Z",
 })

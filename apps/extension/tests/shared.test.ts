@@ -10,6 +10,7 @@ describe("schemas", () => {
       sourceUrl: null,
       sourceTitle: null,
       tag: null,
+      contentHash: "0".repeat(64),
       createdAt: "2026-05-04",
       updatedAt: "2026-05-04",
     })

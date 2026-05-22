@@ -20,12 +20,15 @@ export type UserMediaRefId = Schema.Schema.Type<typeof UserMediaRefId>
 
 const NullableString = Schema.NullOr(Schema.String)
 
+const ContentHash = Schema.String.pipe(Schema.length(64))
+
 export const Quote = Schema.Struct({
   id: QuoteId,
   text: Schema.String.pipe(Schema.minLength(1)),
   sourceUrl: NullableString,
   sourceTitle: NullableString,
   tag: NullableString,
+  contentHash: ContentHash,
   createdAt: Schema.String,
   updatedAt: Schema.String,
 })
@@ -264,6 +267,7 @@ export const SyncJob = Schema.Union(
     sourceUrl: NullableString,
     sourceTitle: NullableString,
     tag: NullableString,
+    contentHash: ContentHash,
     createdAt: Schema.String,
     updatedAt: Schema.String,
   }),

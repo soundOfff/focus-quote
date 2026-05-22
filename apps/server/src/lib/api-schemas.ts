@@ -112,6 +112,7 @@ export const SyncJobInput = z.discriminatedUnion("kind", [
     sourceUrl: z.string().nullable(),
     sourceTitle: z.string().nullable(),
     tag: z.string().nullable(),
+    contentHash: z.string().length(64),
     createdAt: ISO,
     updatedAt: ISO,
   }),

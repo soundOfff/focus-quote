@@ -1,11 +1,14 @@
 import { Hono } from "hono"
 import { zValidator } from "@hono/zod-validator"
 import { and, desc, eq, like, or, sql } from "drizzle-orm"
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { db } from "../db/client"
 import { quotes } from "../db/schema"
 import { requireUser, type RequireUserVariables } from "../middleware/require-user"
 import { ListQuotesQuery, NewQuoteInput } from "../lib/api-schemas"
+
+const hashQuoteText = (text: string): string =>
+  createHash("sha256").update(text.trim()).digest("hex")
 
 export const quotesRoutes = new Hono<{ Variables: RequireUserVariables }>()
   .use("*", requireUser)
@@ -38,6 +41,7 @@ export const quotesRoutes = new Hono<{ Variables: RequireUserVariables }>()
       sourceUrl: body.sourceUrl,
       sourceTitle: body.sourceTitle,
       tag: body.tag,
+      contentHash: hashQuoteText(body.text),
       createdAt: now,
       updatedAt: now,
     })
@@ -64,6 +68,9 @@ const toQuoteDTO = (row: typeof quotes.$inferSelect) => ({
   sourceUrl: row.sourceUrl,
   sourceTitle: row.sourceTitle,
   tag: row.tag,
+  // Backfilled by migrate.ts; fall back to a fresh hash if a row somehow
+  // slipped through (shouldn't happen in practice, but keeps the wire type honest).
+  contentHash: row.contentHash ?? hashQuoteText(row.text),
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
 })

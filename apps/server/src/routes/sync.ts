@@ -69,6 +69,7 @@ async function applyJob(userId: string, job: SyncJobInput): Promise<void> {
           sourceUrl: job.sourceUrl,
           sourceTitle: job.sourceTitle,
           tag: job.tag,
+          contentHash: job.contentHash,
           createdAt: job.createdAt,
           updatedAt: job.updatedAt,
         })
@@ -79,6 +80,7 @@ async function applyJob(userId: string, job: SyncJobInput): Promise<void> {
             sourceUrl: job.sourceUrl,
             sourceTitle: job.sourceTitle,
             tag: job.tag,
+            contentHash: job.contentHash,
             updatedAt: job.updatedAt,
           },
         })

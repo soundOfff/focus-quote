@@ -1,7 +1,12 @@
 import { Effect, Schema } from "effect"
 import { StorageService } from "./storage"
 import { SyncService } from "./sync"
-import { Quote, NewQuote, type QuoteId } from "@focus-quote/shared"
+import {
+  Quote,
+  NewQuote,
+  quoteContentHash,
+  type QuoteId,
+} from "@focus-quote/shared"
 import { ValidationError } from "../shared/errors"
 
 const QUOTES_KEY = "focusquote.quotes"
@@ -19,9 +24,51 @@ export class QuotesService extends Effect.Service<QuotesService>()(
       const readAll = Effect.gen(function* () {
         const raw = yield* storage.get<unknown>(QUOTES_KEY)
         if (raw === null) return {} as QuoteRecord
-        return yield* Schema.decodeUnknown(QuoteRecord)(raw).pipe(
-          Effect.catchAll(() => Effect.succeed({} as QuoteRecord)),
+        const decoded = yield* Schema.decodeUnknown(QuoteRecord)(raw).pipe(
+          Effect.catchAll(() => Effect.succeed(null as QuoteRecord | null)),
         )
+        if (decoded !== null) return decoded
+        // Pre-#5 records lack `contentHash`. Lazy-backfill any missing hashes
+        // so the local dedup check has something to compare against.
+        const rawRecord = (raw as Record<string, Record<string, unknown>>) ?? {}
+        const updated: Record<string, Quote> = {}
+        let touched = false
+        for (const [id, entry] of Object.entries(rawRecord)) {
+          const text = typeof entry?.text === "string" ? entry.text : ""
+          if (!text) continue
+          const hash = yield* Effect.tryPromise({
+            try: () => quoteContentHash(text),
+            catch: () => null,
+          }).pipe(Effect.catchAll(() => Effect.succeed(null as string | null)))
+          if (!hash) continue
+          updated[id] = {
+            id: id as QuoteId,
+            text,
+            sourceUrl: (entry.sourceUrl as string | null) ?? null,
+            sourceTitle: (entry.sourceTitle as string | null) ?? null,
+            tag: (entry.tag as string | null) ?? null,
+            contentHash:
+              typeof entry.contentHash === "string" && entry.contentHash.length === 64
+                ? entry.contentHash
+                : hash,
+            createdAt:
+              typeof entry.createdAt === "string"
+                ? entry.createdAt
+                : new Date().toISOString(),
+            updatedAt:
+              typeof entry.updatedAt === "string"
+                ? entry.updatedAt
+                : new Date().toISOString(),
+          }
+          if (
+            typeof entry.contentHash !== "string" ||
+            entry.contentHash.length !== 64
+          ) {
+            touched = true
+          }
+        }
+        if (touched) yield* storage.set(QUOTES_KEY, updated)
+        return updated as QuoteRecord
       })
 
       const writeAll = (record: QuoteRecord) => storage.set(QUOTES_KEY, record)
@@ -55,6 +102,12 @@ export class QuotesService extends Effect.Service<QuotesService>()(
                 new ValidationError({ message: "invalid quote", cause: e }),
             ),
           )
+          const contentHash = yield* Effect.tryPromise({
+            try: () => quoteContentHash(validated.text),
+            catch: (cause) =>
+              new ValidationError({ message: "hash failed", cause }),
+          })
+          const all = yield* readAll
           const now = new Date().toISOString()
           const quote: Quote = {
             id: crypto.randomUUID() as QuoteId,
@@ -62,10 +115,10 @@ export class QuotesService extends Effect.Service<QuotesService>()(
             sourceUrl: validated.sourceUrl,
             sourceTitle: validated.sourceTitle,
             tag: validated.tag,
+            contentHash,
             createdAt: now,
             updatedAt: now,
           }
-          const all = yield* readAll
           yield* writeAll({ ...all, [quote.id]: quote })
           yield* sync.enqueue({
             kind: "upsertQuote",
@@ -74,6 +127,7 @@ export class QuotesService extends Effect.Service<QuotesService>()(
             sourceUrl: quote.sourceUrl,
             sourceTitle: quote.sourceTitle,
             tag: quote.tag,
+            contentHash: quote.contentHash,
             createdAt: quote.createdAt,
             updatedAt: quote.updatedAt,
           })
