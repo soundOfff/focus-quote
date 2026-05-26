@@ -11,11 +11,11 @@ import { isAnyToolActive, subscribeToolState } from "./toolbar/tool-state"
 import { toolbarStore } from "./store"
 import { PREFS_KEY, defaultPrefs } from "../shared/prefs"
 import {
-  TRANSLATE_LANGUAGES,
   isValidTranslateFrom,
   isValidTranslateTo,
 } from "../shared/translation"
 import { injectHostScrollbarStyles } from "./inject-scrollbar"
+import { createSelectionBar, type SelectionBar } from "./toolbar/selection-bar"
 
 // Themed scrollbars for in-page UI (save row, Quote+AI, debug panel, etc.)
 injectHostScrollbarStyles()
@@ -32,20 +32,6 @@ type Prefs = {
   translateFromLang: string
   translateToLang: string
 }
-interface SaveRow {
-  root: HTMLDivElement
-  saveBtn: HTMLButtonElement
-  resultCard: HTMLDivElement
-  fromPill: HTMLButtonElement
-  toPill: HTMLButtonElement
-  globeBtn: HTMLButtonElement
-  tagBtn: HTMLButtonElement
-  getFromLang: () => string
-  getToLang: () => string
-  setFromLang: (code: string) => void
-  setToLang: (code: string) => void
-}
-
 let activeSession: ActiveSession = null
 // Tracks the last-known session id so we can detect transitions
 // (start, end, switch) and flush per-session toolbar chat history.
@@ -56,7 +42,7 @@ let prefs: Prefs = {
   translateFromLang: defaultPrefs.translateFromLang,
   translateToLang: defaultPrefs.translateToLang,
 }
-let saveRow: SaveRow | null = null
+let selectionBar: SelectionBar | null = null
 
 const isBlockedHost = (hostname: string): boolean => {
   const h = hostname.toLowerCase()
@@ -100,9 +86,9 @@ const refreshSessionAndPrivacy = async () => {
       translateToLang: isValidTranslateTo(to) ? to : defaultPrefs.translateToLang,
     }
   }
-  if (saveRow) {
-    saveRow.setFromLang(prefs.translateFromLang)
-    saveRow.setToLang(prefs.translateToLang)
+  if (selectionBar) {
+    selectionBar.setFromLang(prefs.translateFromLang)
+    selectionBar.setToLang(prefs.translateToLang)
   }
 
   // Each focus session gets a clean Quote+AI chat. Cross a session
@@ -254,28 +240,7 @@ chrome.runtime.onMessage.addListener((msg: unknown) => {
   showToast(msg.message, msg.variant ?? "info")
 })
 
-// ---------------- Floating save row on selection ----------------
-//
-// The widget that pops up next to a text selection has two jobs: save the
-// quote and translate it inline. The Save button + From/To selects + a
-// translate icon all live on the same row, with a thin result card hanging
-// directly beneath when a translation succeeds. There's no popover — once
-// the selection collapses, the whole row disappears together.
-
-const ROW_ATTR = "data-focusquote-save"
-// SVG icons inlined so the row is self-contained — no extra fetches and no
-// host CSP issues with web fonts. All icons use currentColor so we can swap
-// foreground per-pill.
-const SAVE_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`
-const GLOBE_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3.5 12h17"/><path d="M12 3.5a13.5 13.5 0 0 1 0 17"/><path d="M12 3.5a13.5 13.5 0 0 0 0 17"/></svg>`
-const TAG_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 13.5L13.5 20.5a1.4 1.4 0 0 1-2 0L3 12V3h9l8.5 8.5a1.4 1.4 0 0 1 0 2z"/><circle cx="7.5" cy="7.5" r="1.25" fill="currentColor" stroke="none"/></svg>`
-const CHEVRON_ICON = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`
-
-const MYMEMORY_LIMIT = 500
-
-let pendingText = ""
-let isVisible = false
-let currentTranslateAbort: AbortController | null = null
+// ---------------- Selection toolbar (Direction A) ----------------
 
 const readLegacyTranslatePref = (key: string, fallback: string): string => {
   try {
@@ -305,392 +270,6 @@ const persistTranslatePrefs = (nextFrom: string, nextTo: string): void => {
     .catch(() => {})
 }
 
-// ---- Save-row visual building blocks --------------------------------------
-//
-// The new visual treatment (Image #3) puts the orange Save button, the
-// FROM/TO language pills, and the globe/tag icon buttons inside one cream
-// "card" frame. Each control is a separate pill so it can highlight on
-// hover without bleeding into its neighbours. Everything is built with
-// cssText so we never depend on Tailwind reaching the host page.
-
-const COLORS = {
-  frame: "rgb(255 251 245)",
-  frameBorder: "rgb(231 224 211)",
-  ink: "rgb(35 37 29)",
-  muted: "rgb(150 145 130)",
-  pill: "rgb(255 255 255)",
-  pillBorder: "rgb(231 224 211)",
-  pillHoverBorder: "rgb(204 195 180)",
-  codeBg: "rgb(246 241 232)",
-  codeBorder: "rgb(225 217 202)",
-  orange: "rgb(247 165 1)",
-  orangeHover: "rgb(232 152 0)",
-  arrow: "rgb(150 145 130)",
-}
-
-const labelByCode = (code: string): string => {
-  if (code === "auto") return "Auto"
-  const found = TRANSLATE_LANGUAGES.find((l) => l.code === code)
-  return found?.label ?? code.toUpperCase()
-}
-
-const stylePill = (btn: HTMLButtonElement, opts: { padX: number; padY: number }): void => {
-  btn.style.cssText = [
-    "all:unset",
-    "box-sizing:border-box",
-    "display:inline-flex",
-    "align-items:center",
-    "gap:8px",
-    `padding:${opts.padY}px ${opts.padX}px`,
-    `background:${COLORS.pill}`,
-    `border:1px solid ${COLORS.pillBorder}`,
-    "border-radius:10px",
-    `color:${COLORS.ink}`,
-    "cursor:pointer",
-    "transition:border-color 120ms ease, background-color 120ms ease",
-  ].join(";")
-  btn.addEventListener("mouseenter", () => {
-    btn.style.borderColor = COLORS.pillHoverBorder
-  })
-  btn.addEventListener("mouseleave", () => {
-    btn.style.borderColor = COLORS.pillBorder
-  })
-}
-
-const styleIconPill = (btn: HTMLButtonElement): void => {
-  stylePill(btn, { padX: 9, padY: 9 })
-  btn.style.color = COLORS.ink
-}
-
-// Build one of the FROM / TO language pills. Returns the button plus
-// imperative setters so callers can refresh the displayed language without
-// rebuilding the element.
-const createLangPill = (
-  caption: string,
-): { btn: HTMLButtonElement; setLang: (code: string) => void; getLang: () => string } => {
-  const btn = document.createElement("button")
-  btn.type = "button"
-  stylePill(btn, { padX: 12, padY: 8 })
-
-  const labelGroup = document.createElement("span")
-  labelGroup.style.cssText = "display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;line-height:1"
-
-  const caps = document.createElement("span")
-  caps.textContent = caption
-  caps.style.cssText = `font:600 9px/1 system-ui,-apple-system,sans-serif;letter-spacing:.12em;color:${COLORS.muted};text-transform:uppercase`
-  labelGroup.appendChild(caps)
-
-  const name = document.createElement("span")
-  name.style.cssText = `font:600 14px/1.15 system-ui,-apple-system,sans-serif;color:${COLORS.ink}`
-  labelGroup.appendChild(name)
-
-  btn.appendChild(labelGroup)
-
-  const codeBadge = document.createElement("span")
-  codeBadge.style.cssText = [
-    "display:inline-flex",
-    "align-items:center",
-    "justify-content:center",
-    "padding:2px 6px",
-    `background:${COLORS.codeBg}`,
-    `border:1px solid ${COLORS.codeBorder}`,
-    "border-radius:5px",
-    `color:${COLORS.ink}`,
-    "font:700 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace",
-    "letter-spacing:.04em",
-  ].join(";")
-  btn.appendChild(codeBadge)
-
-  const chev = document.createElement("span")
-  chev.innerHTML = CHEVRON_ICON
-  chev.style.cssText = `display:inline-flex;color:${COLORS.muted}`
-  btn.appendChild(chev)
-
-  let currentCode = ""
-  const setLang = (code: string): void => {
-    currentCode = code
-    name.textContent = labelByCode(code)
-    codeBadge.textContent = code.toUpperCase()
-  }
-  const getLang = (): string => currentCode
-
-  return { btn, setLang, getLang }
-}
-
-const createSaveRow = (): SaveRow => {
-  const root = document.createElement("div")
-  root.setAttribute(ROW_ATTR, "")
-  root.style.cssText = [
-    "position:fixed",
-    "z-index:2147483646",
-    "display:flex",
-    "flex-direction:column",
-    "align-items:stretch",
-    "gap:6px",
-    "user-select:none",
-    "pointer-events:auto",
-    "opacity:0",
-    "transform:translateY(-4px)",
-    "transition:opacity 150ms ease,transform 150ms ease",
-    "font:500 13px/1 system-ui,-apple-system,sans-serif",
-  ].join(";")
-  // Stop mousedown from collapsing the selection before our click handlers run.
-  root.addEventListener("mousedown", (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-  })
-
-  // Outer cream frame containing Save + language pills + icon actions.
-  const frame = document.createElement("div")
-  frame.style.cssText = [
-    "display:inline-flex",
-    "align-items:center",
-    "gap:8px",
-    `background:${COLORS.frame}`,
-    `border:1px solid ${COLORS.frameBorder}`,
-    "border-radius:14px",
-    "padding:6px",
-    "box-shadow:0 6px 18px rgba(0,0,0,.10)",
-    "white-space:nowrap",
-  ].join(";")
-  root.appendChild(frame)
-
-  // Orange "Save quote" button.
-  const saveBtn = document.createElement("button")
-  saveBtn.type = "button"
-  saveBtn.setAttribute("aria-label", "Save quote to FocusQuote")
-  saveBtn.style.cssText = [
-    "all:unset",
-    "box-sizing:border-box",
-    "display:inline-flex",
-    "align-items:center",
-    "gap:8px",
-    "padding:10px 16px",
-    `background:${COLORS.orange}`,
-    `color:${COLORS.ink}`,
-    "border-radius:10px",
-    "cursor:pointer",
-    "font:700 14px/1 system-ui,-apple-system,sans-serif",
-    "box-shadow:inset 0 -1px 0 rgba(0,0,0,.08)",
-    "transition:background-color 120ms ease",
-  ].join(";")
-  saveBtn.addEventListener("mouseenter", () => {
-    saveBtn.style.backgroundColor = COLORS.orangeHover
-  })
-  saveBtn.addEventListener("mouseleave", () => {
-    saveBtn.style.backgroundColor = COLORS.orange
-  })
-  saveBtn.innerHTML = `${SAVE_ICON}<span>Save quote</span>`
-  saveBtn.addEventListener("click", handleSaveClick)
-  frame.appendChild(saveBtn)
-
-  // FROM | → | TO group.
-  const langGroup = document.createElement("div")
-  langGroup.style.cssText = "display:inline-flex;align-items:center;gap:6px"
-  frame.appendChild(langGroup)
-
-  const fromPart = createLangPill("FROM")
-  fromPart.btn.setAttribute("aria-label", "Translate from")
-  fromPart.btn.title = "Translate from"
-  langGroup.appendChild(fromPart.btn)
-
-  const arrow = document.createElement("span")
-  arrow.textContent = "→"
-  arrow.style.cssText = `font:500 14px/1 system-ui,-apple-system,sans-serif;color:${COLORS.arrow}`
-  langGroup.appendChild(arrow)
-
-  const toPart = createLangPill("TO")
-  toPart.btn.setAttribute("aria-label", "Translate to")
-  toPart.btn.title = "Translate to"
-  langGroup.appendChild(toPart.btn)
-
-  // Initial language values from saved prefs (with legacy fallback).
-  const initialFrom = isValidTranslateFrom(prefs.translateFromLang)
-    ? prefs.translateFromLang
-    : isValidTranslateFrom(
-          readLegacyTranslatePref("focusquote.translate.from", defaultPrefs.translateFromLang),
-        )
-      ? readLegacyTranslatePref("focusquote.translate.from", defaultPrefs.translateFromLang)
-      : "auto"
-  const initialTo = isValidTranslateTo(prefs.translateToLang)
-    ? prefs.translateToLang
-    : isValidTranslateTo(
-          readLegacyTranslatePref("focusquote.translate.to", defaultPrefs.translateToLang),
-        )
-      ? readLegacyTranslatePref("focusquote.translate.to", defaultPrefs.translateToLang)
-      : "en"
-  fromPart.setLang(initialFrom)
-  toPart.setLang(initialTo)
-
-  // Globe icon: opens the language picker / triggers translation. Until the
-  // filterable picker lands (next commit), clicking it runs translation with
-  // the currently-selected languages.
-  const globeBtn = document.createElement("button")
-  globeBtn.type = "button"
-  globeBtn.setAttribute("aria-label", "Translate selection")
-  globeBtn.title = "Translate selection"
-  styleIconPill(globeBtn)
-  globeBtn.innerHTML = GLOBE_ICON
-  globeBtn.addEventListener("click", handleTranslateClick)
-  frame.appendChild(globeBtn)
-
-  // Tag icon: opens a tag input prompt. Real popover UI is a future task,
-  // but a simple prompt() keeps the affordance functional today.
-  const tagBtn = document.createElement("button")
-  tagBtn.type = "button"
-  tagBtn.setAttribute("aria-label", "Add tag to quote")
-  tagBtn.title = "Add tag to quote"
-  styleIconPill(tagBtn)
-  tagBtn.innerHTML = TAG_ICON
-  tagBtn.addEventListener("click", handleTagClick)
-  frame.appendChild(tagBtn)
-
-  const resultCard = document.createElement("div")
-  resultCard.style.cssText = [
-    "display:none",
-    "max-width:360px",
-    "background:rgb(255 255 255)",
-    "color:rgb(35 37 29)",
-    "border:1px solid rgb(191 193 183)",
-    "border-radius:10px",
-    "padding:10px 12px",
-    "font:13px/1.5 system-ui,-apple-system,sans-serif",
-    "white-space:pre-wrap",
-    "word-break:break-word",
-    "max-height:200px",
-    "overflow:auto",
-    "box-shadow:0 4px 14px rgba(0,0,0,.10)",
-  ].join(";")
-  resultCard.setAttribute("data-fq-scrollbar", "")
-  root.appendChild(resultCard)
-
-  return {
-    root,
-    saveBtn,
-    resultCard,
-    fromPill: fromPart.btn,
-    toPill: toPart.btn,
-    globeBtn,
-    tagBtn,
-    getFromLang: fromPart.getLang,
-    getToLang: toPart.getLang,
-    setFromLang: (code) => {
-      fromPart.setLang(code)
-      persistTranslatePrefs(code, toPart.getLang())
-    },
-    setToLang: (code) => {
-      toPart.setLang(code)
-      persistTranslatePrefs(fromPart.getLang(), code)
-    },
-  }
-}
-
-const ensureRow = (): SaveRow => {
-  if (saveRow && saveRow.root.isConnected) return saveRow
-  saveRow = createSaveRow()
-  // Attach to <html> so transformed/filtered body ancestors can't clip us.
-  ;(document.documentElement || document.body).appendChild(saveRow.root)
-  void saveRow.root.offsetWidth // force reflow for first transition
-  return saveRow
-}
-
-const positionRow = (row: SaveRow, rect: DOMRect) => {
-  const margin = 8
-  const r = row.root.getBoundingClientRect()
-  const w = r.width > 0 ? r.width : 320
-  const h = r.height > 0 ? r.height : 36
-  const aboveTop = rect.top - h - margin
-  const useAbove = aboveTop > 8
-  const top = useAbove ? aboveTop : rect.bottom + margin
-  let left = rect.left + rect.width / 2 - w / 2
-  left = Math.max(8, Math.min(left, window.innerWidth - w - 8))
-  row.root.style.top = `${top}px`
-  row.root.style.left = `${left}px`
-}
-
-const showRow = (text: string, rect: DOMRect) => {
-  const row = ensureRow()
-  pendingText = text
-  // Re-measure after content (text length affects width).
-  positionRow(row, rect)
-  // Run a second pass on the next frame in case the browser hasn't finalized
-  // intrinsic widths of the selects yet.
-  requestAnimationFrame(() => positionRow(row, rect))
-  row.root.style.opacity = "1"
-  row.root.style.transform = "translateY(0)"
-  isVisible = true
-}
-
-const hideRow = () => {
-  if (!saveRow || !isVisible) return
-  saveRow.root.style.opacity = "0"
-  saveRow.root.style.transform = "translateY(-4px)"
-  // Reset translate UI so it doesn't flash stale content next time.
-  saveRow.resultCard.style.display = "none"
-  saveRow.resultCard.textContent = ""
-  currentTranslateAbort?.abort()
-  currentTranslateAbort = null
-  isVisible = false
-}
-
-const isInsideOurUI = (node: Node | null): boolean => {
-  let el: Node | null = node
-  while (el) {
-    if (el instanceof Element) {
-      if (el.hasAttribute(ROW_ATTR)) return true
-      if (el.hasAttribute("data-focusquote-toast")) return true
-    }
-    el = el.parentNode
-  }
-  return false
-}
-
-const checkSelection = () => {
-  // If any other toolbar tool (Quote+AI, Guide Me, Annotate) is active,
-  // the save-quote bar would compete for attention. Hide ourselves.
-  if (isAnyToolActive()) {
-    hideRow()
-    return
-  }
-  const sel = window.getSelection()
-  if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
-    hideRow()
-    return
-  }
-  const text = sel.toString().trim()
-  if (text.length === 0) {
-    hideRow()
-    return
-  }
-  const range = sel.getRangeAt(0)
-  if (isInsideOurUI(range.commonAncestorContainer)) return
-
-  const rect = range.getBoundingClientRect()
-  if (rect.width === 0 && rect.height === 0) {
-    hideRow()
-    return
-  }
-  showRow(text, rect)
-}
-
-function handleSaveClick() {
-  if (!pendingText) return
-  const payload = {
-    type: "focusquote.saveQuote" as const,
-    text: pendingText,
-    sourceUrl: location.href,
-    sourceTitle: document.title || null,
-    tag: null,
-  }
-  chrome.runtime.sendMessage(payload).catch(() => {
-    showToast("Couldn't save — extension reloaded?", "error")
-  })
-  pendingText = ""
-  hideRow()
-  // collapse the selection after saving so the row doesn't reappear
-  window.getSelection()?.removeAllRanges()
-}
-
 interface MyMemoryResponse {
   responseData?: { translatedText?: string }
   responseStatus?: number | string
@@ -709,8 +288,6 @@ const isQuotaResponse = (data: MyMemoryResponse): boolean => {
   const status = data?.responseStatus
   const details = (data?.responseDetails ?? "").toUpperCase()
   if (status === 429 || status === "429") return true
-  // MyMemory free tier returns the limit message in `responseDetails` as a
-  // success-status (200) payload — recognize the wording.
   return (
     details.includes("MYMEMORY WARNING") &&
     (details.includes("FREE TRANSLATIONS") || details.includes("DAILY"))
@@ -733,7 +310,6 @@ const fetchTranslation = async (
   if (isQuotaResponse(data)) throw new TranslateQuotaError()
   const translated = data?.responseData?.translatedText
   if (typeof translated === "string" && translated.length > 0) {
-    // MyMemory sometimes returns the quota message in `translatedText` too.
     if (translated.toUpperCase().includes("MYMEMORY WARNING")) {
       throw new TranslateQuotaError()
     }
@@ -744,97 +320,119 @@ const fetchTranslation = async (
   throw new Error("Empty translation")
 }
 
-function handleTagClick() {
-  if (!pendingText) return
-  // Lightweight first pass: native prompt. A proper popover with tag
-  // chips lands with the trusted-sources UI work later in the sprint.
-  const raw = window.prompt("Add a tag for this quote:")?.trim() ?? ""
-  const tag = raw.length > 0 ? raw.slice(0, 60) : null
-  const payload = {
-    type: "focusquote.saveQuote" as const,
-    text: pendingText,
-    sourceUrl: location.href,
-    sourceTitle: document.title || null,
-    tag,
-  }
-  chrome.runtime.sendMessage(payload).catch(() => {
-    showToast("Couldn't save — extension reloaded?", "error")
-  })
-  pendingText = ""
-  hideRow()
-  window.getSelection()?.removeAllRanges()
+const resolveInitialLangs = (): { from: string; to: string } => {
+  const from = isValidTranslateFrom(prefs.translateFromLang)
+    ? prefs.translateFromLang
+    : isValidTranslateFrom(
+          readLegacyTranslatePref("focusquote.translate.from", defaultPrefs.translateFromLang),
+        )
+      ? readLegacyTranslatePref("focusquote.translate.from", defaultPrefs.translateFromLang)
+      : "auto"
+  const to = isValidTranslateTo(prefs.translateToLang)
+    ? prefs.translateToLang
+    : isValidTranslateTo(
+          readLegacyTranslatePref("focusquote.translate.to", defaultPrefs.translateToLang),
+        )
+      ? readLegacyTranslatePref("focusquote.translate.to", defaultPrefs.translateToLang)
+      : "en"
+  return { from, to }
 }
 
-function handleTranslateClick() {
-  if (!saveRow) return
-  const row = saveRow
-  const text = pendingText.slice(0, MYMEMORY_LIMIT)
-  if (!text) return
+const ensureBar = (): SelectionBar => {
+  if (selectionBar && selectionBar.root.isConnected) return selectionBar
+  const initial = resolveInitialLangs()
+  selectionBar = createSelectionBar({
+    onSave: (text) => {
+      const payload = {
+        type: "focusquote.saveQuote" as const,
+        text,
+        sourceUrl: location.href,
+        sourceTitle: document.title || null,
+        tag: null,
+      }
+      chrome.runtime.sendMessage(payload).catch(() => {
+        showToast("Couldn't save — extension reloaded?", "error")
+        selectionBar?.hide()
+      })
+    },
+    onTranslate: fetchTranslation,
+    onTag: (text) => {
+      const raw = window.prompt("Add a tag for this quote:")?.trim() ?? ""
+      const tag = raw.length > 0 ? raw.slice(0, 60) : null
+      const payload = {
+        type: "focusquote.saveQuote" as const,
+        text,
+        sourceUrl: location.href,
+        sourceTitle: document.title || null,
+        tag,
+      }
+      chrome.runtime.sendMessage(payload).catch(() => {
+        showToast("Couldn't save — extension reloaded?", "error")
+      })
+      selectionBar?.hide()
+      window.getSelection()?.removeAllRanges()
+    },
+    onLanguageChange: persistTranslatePrefs,
+    initialFromLang: initial.from,
+    initialToLang: initial.to,
+  })
+  ;(document.documentElement || document.body).appendChild(selectionBar.root)
+  void selectionBar.root.offsetWidth
+  return selectionBar
+}
 
-  const from = row.getFromLang() || "auto"
-  const to = row.getToLang() || "en"
-  if (from !== "auto" && from === to) {
-    row.resultCard.style.display = "block"
-    row.resultCard.style.color = "rgb(110 113 99)"
-    row.resultCard.textContent = "Source and target languages match."
+const hideBar = () => {
+  if (!selectionBar || !selectionBar.isVisible()) return
+  selectionBar.hide()
+}
+
+const isInsideOurUI = (node: Node | null): boolean => {
+  let el: Node | null = node
+  while (el) {
+    if (el instanceof Element) {
+      if (el.hasAttribute("data-focusquote-selection-bar")) return true
+      if (el.hasAttribute("data-focusquote-lang-dropdown")) return true
+      if (el.hasAttribute("data-focusquote-toast")) return true
+    }
+    el = el.parentNode
+  }
+  return false
+}
+
+const checkSelection = () => {
+  if (isAnyToolActive()) {
+    hideBar()
     return
   }
-
-  row.resultCard.style.display = "block"
-  row.resultCard.style.color = "#bcbcbc"
-  row.resultCard.textContent = "Translating…"
-  // Re-anchor since the result card grew the row's height.
   const sel = window.getSelection()
-  if (sel && sel.rangeCount > 0) {
-    requestAnimationFrame(() =>
-      positionRow(row, sel.getRangeAt(0).getBoundingClientRect()),
-    )
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+    hideBar()
+    return
   }
+  const text = sel.toString().trim()
+  if (text.length === 0) {
+    hideBar()
+    return
+  }
+  const range = sel.getRangeAt(0)
+  if (isInsideOurUI(range.commonAncestorContainer)) return
 
-  currentTranslateAbort?.abort()
-  currentTranslateAbort = new AbortController()
-  fetchTranslation(text, from, to, currentTranslateAbort.signal)
-    .then((out) => {
-      row.resultCard.style.color = "rgb(35 37 29)"
-      row.resultCard.textContent = out
-      if (sel && sel.rangeCount > 0) {
-        requestAnimationFrame(() =>
-          positionRow(row, sel.getRangeAt(0).getBoundingClientRect()),
-        )
-      }
-    })
-    .catch((err) => {
-      if ((err as Error).name === "AbortError") return
-      if (err instanceof TranslateQuotaError) {
-        row.resultCard.style.color = "rgb(205 66 57)"
-        row.resultCard.textContent =
-          "Daily free translations reached. Resets at midnight UTC — free service from MyMemory."
-        return
-      }
-      row.resultCard.style.color = "rgb(205 66 57)"
-      row.resultCard.textContent = `Translation failed: ${
-        err instanceof Error ? err.message : "unknown"
-      }`
-    })
+  const rect = range.getBoundingClientRect()
+  if (rect.width === 0 && rect.height === 0) {
+    hideBar()
+    return
+  }
+  const bar = ensureBar()
+  bar.show(text, rect)
 }
 
-// ---- listeners ----
-//
-// Strategy: SHOW only on mouseup / keyup (selection finalized).
-// USE selectionchange only to HIDE when the selection collapses,
-// so we don't fight the user mid-drag.
-
 const onMouseUp = (e: MouseEvent) => {
-  if (saveRow && saveRow.root.contains(e.target as Node)) return
-  // delay so the browser has finalized the selection
+  if (selectionBar && selectionBar.root.contains(e.target as Node)) return
   setTimeout(checkSelection, 0)
 }
 
 const onKeyUp = (e: KeyboardEvent) => {
-  // shift / cmd / ctrl combos commonly used to extend selection;
-  // selectionchange will catch the drop-to-zero case for us
   if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
-    // also handle keyboard nav inside contenteditable
     if (
       e.key !== "ArrowLeft" &&
       e.key !== "ArrowRight" &&
@@ -852,28 +450,32 @@ const onKeyUp = (e: KeyboardEvent) => {
 const onSelectionChange = () => {
   const sel = window.getSelection()
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
-    hideRow()
+    hideBar()
   }
 }
 
 const onMouseDown = (e: MouseEvent) => {
-  if (saveRow && saveRow.root.contains(e.target as Node)) return
-  hideRow()
+  if (selectionBar && selectionBar.root.contains(e.target as Node)) return
+  if (isInsideOurUI(e.target as Node)) return
+  hideBar()
 }
 
 document.addEventListener("mouseup", onMouseUp)
 document.addEventListener("keyup", onKeyUp)
 document.addEventListener("selectionchange", onSelectionChange)
 document.addEventListener("mousedown", onMouseDown, true)
-// capture so we react even when an inner scrollable element scrolls
-window.addEventListener("scroll", hideRow, { passive: true, capture: true })
-window.addEventListener("resize", hideRow, { passive: true })
-window.addEventListener("blur", hideRow)
 
-// Hide the save-quote bar whenever another toolbar tool becomes active;
-// re-evaluate selection when no tool is active so the bar can return.
+const onScrollOrResize = () => {
+  if (selectionBar?.isDropdownOpen()) return
+  hideBar()
+}
+
+window.addEventListener("scroll", onScrollOrResize, { passive: true, capture: true })
+window.addEventListener("resize", onScrollOrResize, { passive: true })
+window.addEventListener("blur", hideBar)
+
 subscribeToolState((active) => {
-  if (active) hideRow()
+  if (active) hideBar()
   else setTimeout(checkSelection, 0)
 })
 
