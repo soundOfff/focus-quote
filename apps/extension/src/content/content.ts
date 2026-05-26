@@ -361,8 +361,9 @@ const ensureBar = (): SelectionBar => {
     },
     onTranslate: fetchTranslation,
     onTag: (text) => {
-      const raw = window.prompt("Add a tag for this quote:")?.trim() ?? ""
-      const tag = raw.length > 0 ? raw.slice(0, 60) : null
+      const raw = window.prompt("Add a tag for this quote:")
+      if (raw === null) return
+      const tag = raw.trim().slice(0, 60) || null
       const payload = {
         type: "focusquote.saveQuote" as const,
         text,
