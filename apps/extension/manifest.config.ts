@@ -47,6 +47,7 @@ export default defineManifest({
         "src/auth-callback/index.html",
         "src/content/spaNavInjector.js",
         "src/content/notificationsPageWorld.js",
+        "assets/fonts/*.woff2",
       ],
       matches: ["<all_urls>"],
     },

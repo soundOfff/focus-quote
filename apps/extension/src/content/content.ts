@@ -15,10 +15,14 @@ import {
   isValidTranslateTo,
 } from "../shared/translation"
 import { injectHostScrollbarStyles } from "./inject-scrollbar"
+import { injectHostFonts } from "./inject-fonts"
 import { createSelectionBar, type SelectionBar } from "./toolbar/selection-bar"
 
 // Themed scrollbars for in-page UI (save row, Quote+AI, debug panel, etc.)
 injectHostScrollbarStyles()
+
+// Geist + JetBrains Mono for the Direction A selection toolbar.
+injectHostFonts()
 
 // Floating focus-mode toolbar (only renders while a session is active).
 initFocusToolbar()
