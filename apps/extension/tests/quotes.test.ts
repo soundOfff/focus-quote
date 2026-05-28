@@ -84,6 +84,41 @@ describe("QuotesService", () => {
     expect(r.empty).toHaveLength(2)
   })
 
+  it("moves a quote into a folder and enqueues an upsert", async () => {
+    const program = Effect.gen(function* () {
+      const quotes = yield* QuotesService
+      const saved = yield* quotes.save({
+        text: "movable",
+        sourceUrl: null,
+        sourceTitle: null,
+        tag: "a",
+      })
+      const moved = yield* quotes.setFolder(saved.id, " b ")
+      const unfiled = yield* quotes.setFolder(saved.id, "")
+      const listed = yield* quotes.list()
+      return { moved, unfiled, listed }
+    }).pipe(Effect.provide(TestLayer))
+
+    const r = await Effect.runPromise(program)
+    expect(r.moved?.tag).toBe("b")
+    expect(r.unfiled?.tag).toBeNull()
+    expect(r.listed[0]!.tag).toBeNull()
+  })
+
+  it("setFolder returns null for an unknown quote", async () => {
+    const program = Effect.gen(function* () {
+      const quotes = yield* QuotesService
+      return yield* quotes.setFolder(
+        "does-not-exist" as Parameters<
+          (typeof quotes)["setFolder"]
+        >[0],
+        "x",
+      )
+    }).pipe(Effect.provide(TestLayer))
+
+    expect(await Effect.runPromise(program)).toBeNull()
+  })
+
   it("removes a quote and enqueues a delete sync job", async () => {
     const program = Effect.gen(function* () {
       const quotes = yield* QuotesService

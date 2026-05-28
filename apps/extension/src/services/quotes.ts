@@ -166,7 +166,37 @@ export class QuotesService extends Effect.Service<QuotesService>()(
           yield* sync.enqueue({ kind: "deleteQuote", id })
         })
 
-      return { list, search, save, remove }
+      // Moves a quote into a Folder. A blank/null folder clears the tag,
+      // dropping the quote into the Unfiled bucket. Re-enqueues an upsert so
+      // the change syncs.
+      const setFolder = (id: QuoteId, folder: string | null) =>
+        Effect.gen(function* () {
+          const all = yield* readAll
+          const existing = all[id]
+          if (!existing) return null
+          const trimmed = folder?.trim()
+          const tag = trimmed ? trimmed : null
+          const updated: Quote = {
+            ...existing,
+            tag,
+            updatedAt: new Date().toISOString(),
+          }
+          yield* writeAll({ ...all, [id]: updated })
+          yield* sync.enqueue({
+            kind: "upsertQuote",
+            id: updated.id,
+            text: updated.text,
+            sourceUrl: updated.sourceUrl,
+            sourceTitle: updated.sourceTitle,
+            tag: updated.tag,
+            contentHash: updated.contentHash,
+            createdAt: updated.createdAt,
+            updatedAt: updated.updatedAt,
+          })
+          return updated
+        })
+
+      return { list, search, save, remove, setFolder }
     }),
     dependencies: [StorageService.Default, SyncService.Default],
   },
