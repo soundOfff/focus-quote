@@ -31,6 +31,10 @@ export const Prefs = Schema.Struct({
   recallAutoGenerate: Schema.Boolean,
   aiMasterEnabled: Schema.Boolean,
   autoTitleEnabled: Schema.Boolean,
+  aiFeatureOverrides: Schema.Record({
+    key: Schema.String,
+    value: Schema.Boolean,
+  }),
 })
 export type Prefs = Schema.Schema.Type<typeof Prefs>
 
@@ -46,6 +50,7 @@ export const defaultPrefs: Prefs = {
   recallAutoGenerate: true,
   aiMasterEnabled: true,
   autoTitleEnabled: false,
+  aiFeatureOverrides: {},
 }
 
 const clampInt = (value: unknown, min: number, max: number, fallback: number) => {
@@ -84,6 +89,17 @@ const parseRecallDepth = (value: unknown): RecallDepth =>
 const parseBool = (value: unknown, fallback: boolean): boolean =>
   typeof value === "boolean" ? value : fallback
 
+const parseFeatureOverrides = (
+  value: unknown,
+): Record<string, boolean> => {
+  if (!value || typeof value !== "object") return {}
+  const out: Record<string, boolean> = {}
+  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof val === "boolean") out[key] = val
+  }
+  return out
+}
+
 const normalizePrefs = (raw: unknown): Prefs => {
   if (!raw || typeof raw !== "object") return defaultPrefs
   const input = raw as Record<string, unknown>
@@ -118,6 +134,7 @@ const normalizePrefs = (raw: unknown): Prefs => {
       input.autoTitleEnabled,
       defaultPrefs.autoTitleEnabled,
     ),
+    aiFeatureOverrides: parseFeatureOverrides(input.aiFeatureOverrides),
   }
 }
 
@@ -183,6 +200,7 @@ const settingsPayload = (prefs: Prefs, extras: PrefsRemoteExtras = {}) => ({
   recallAutoGenerate: prefs.recallAutoGenerate,
   aiMasterEnabled: prefs.aiMasterEnabled,
   autoTitleEnabled: prefs.autoTitleEnabled,
+  aiFeatureOverrides: prefs.aiFeatureOverrides,
   ...(extras.todayGoal !== undefined ? { todayGoal: extras.todayGoal } : {}),
   ...(extras.debugOverlayEnabled !== undefined
     ? { debugOverlayEnabled: extras.debugOverlayEnabled }
@@ -219,6 +237,8 @@ export const pullPrefsFromRemote = (
         .recallAutoGenerate,
       aiMasterEnabled: (s as { aiMasterEnabled?: unknown }).aiMasterEnabled,
       autoTitleEnabled: (s as { autoTitleEnabled?: unknown }).autoTitleEnabled,
+      aiFeatureOverrides: (s as { aiFeatureOverrides?: unknown })
+        .aiFeatureOverrides,
     })
     yield* savePrefs(storage, next)
     return next

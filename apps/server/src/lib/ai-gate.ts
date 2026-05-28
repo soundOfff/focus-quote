@@ -19,6 +19,7 @@ export const loadAiGateSettings = async (
     .select({
       aiMasterEnabled: userSettings.aiMasterEnabled,
       autoTitleEnabled: userSettings.autoTitleEnabled,
+      aiFeatureOverrides: userSettings.aiFeatureOverrides,
     })
     .from(userSettings)
     .where(eq(userSettings.userId, userId))
@@ -26,8 +27,12 @@ export const loadAiGateSettings = async (
   if (!row) return { masterEnabled: true }
   return {
     masterEnabled: row.aiMasterEnabled,
-    // Only "auto"-tier features need an explicit opt-in override persisted.
-    featureOverrides: { autoTitle: row.autoTitleEnabled },
+    // Generic per-feature overrides, with autoTitle's dedicated column (issue
+    // #9) authoritative for that one feature.
+    featureOverrides: {
+      ...row.aiFeatureOverrides,
+      autoTitle: row.autoTitleEnabled,
+    },
   }
 }
 

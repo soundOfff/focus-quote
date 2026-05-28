@@ -22,6 +22,7 @@ import type {
   RecallVerdict,
   ToolbarRuntimeState,
 } from "./schema"
+import type { AiFeature } from "./ai-features"
 
 // ---- Quotes ----
 
@@ -344,6 +345,7 @@ export interface UpdateUserSettingsRequest {
   toolbarSide?: "left" | "right"
   aiMasterEnabled?: boolean
   autoTitleEnabled?: boolean
+  aiFeatureOverrides?: Partial<Record<AiFeature, boolean>>
 }
 
 export interface UpdateUserSettingsResponse {

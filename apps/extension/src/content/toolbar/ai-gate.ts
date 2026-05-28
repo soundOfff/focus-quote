@@ -13,7 +13,12 @@ export const aiFeatureEnabled = async (feature: AiFeature): Promise<boolean> => 
     const prefs = out[PREFS_KEY] as Record<string, unknown> | undefined
     const masterEnabled =
       typeof prefs?.aiMasterEnabled === "boolean" ? prefs.aiMasterEnabled : true
-    return isAiFeatureEnabled(feature, { masterEnabled })
+    const featureOverrides =
+      prefs?.aiFeatureOverrides &&
+      typeof prefs.aiFeatureOverrides === "object"
+        ? (prefs.aiFeatureOverrides as Partial<Record<AiFeature, boolean>>)
+        : undefined
+    return isAiFeatureEnabled(feature, { masterEnabled, featureOverrides })
   } catch {
     return true
   }

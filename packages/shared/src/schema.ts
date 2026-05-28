@@ -189,6 +189,12 @@ export const UserSettings = Schema.Struct({
   autoTitleEnabled: Schema.optionalWith(Schema.Boolean, {
     default: () => false,
   }),
+  // Per-feature AI overrides (issue #5). Absent feature falls back to its tier
+  // default; merged into the gate's featureOverrides. Keyed by AiFeature.
+  aiFeatureOverrides: Schema.optionalWith(
+    Schema.Record({ key: Schema.String, value: Schema.Boolean }),
+    { default: () => ({}) },
+  ),
   updatedAt: Schema.String,
 })
 export type UserSettings = Schema.Schema.Type<typeof UserSettings>
