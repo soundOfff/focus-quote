@@ -29,6 +29,9 @@ import type {
   RecallGradeResponse,
   ListTopicsResponse,
   RenameTopicResponse,
+  ListVaultItemsResponse,
+  CreateVaultItemRequest,
+  CreateVaultItemResponse,
   SyncBatchRequest,
   SyncBatchResponse,
   MeResponse,
@@ -239,6 +242,20 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
       deleteTopicMedia: (label: string, mediaId: string) =>
         request<{ ok: boolean }>(
           `/api/topics/${encodeURIComponent(label)}/media/${mediaId}`,
+          { method: "DELETE" },
+        ),
+      listTopicVault: (topicId: string) =>
+        request<ListVaultItemsResponse>(
+          `/api/topics/${encodeURIComponent(topicId)}/vault`,
+        ),
+      addTopicVaultItem: (topicId: string, body: CreateVaultItemRequest) =>
+        request<CreateVaultItemResponse>(
+          `/api/topics/${encodeURIComponent(topicId)}/vault`,
+          { method: "POST", json: body },
+        ),
+      deleteTopicVaultItem: (topicId: string, itemId: string) =>
+        request<{ ok: boolean }>(
+          `/api/topics/${encodeURIComponent(topicId)}/vault/${itemId}`,
           { method: "DELETE" },
         ),
 

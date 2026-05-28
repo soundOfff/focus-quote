@@ -488,6 +488,32 @@ export const topicMedia = sqliteTable(
   }),
 )
 
+// A Topic's Vault: curated items kept under a topic — notes (kind="note") and
+// saved URLs (kind="url"). Keyed by the first-class topic id (ADR 0001).
+export const topicVaultItems = sqliteTable(
+  "topic_vault_items",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    topicId: text("topic_id")
+      .notNull()
+      .references(() => topics.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    body: text("body").notNull(),
+    title: text("title"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    userTopicCreatedIdx: index(
+      "topic_vault_items_user_topic_created_idx",
+    ).on(t.userId, t.topicId, t.createdAt),
+  }),
+)
+
 // Cross-device toolbar runtime state (zustand persist replacement). One row
 // per (user, name) where `payload` is the serialized state blob.
 export const toolbarRuntimeState = sqliteTable(

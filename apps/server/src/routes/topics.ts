@@ -8,6 +8,7 @@ import {
   focusSessions,
   mediaBucketFiles,
   topicMedia,
+  topicVaultItems,
   topics,
 } from "../db/schema"
 import {
@@ -23,6 +24,12 @@ const AttachTopicMediaInput = z.object({
 
 const RenameTopicInput = z.object({
   name: z.string().min(1).max(60),
+})
+
+const CreateVaultItemInput = z.object({
+  kind: z.enum(["note", "url"]),
+  body: z.string().min(1).max(2000),
+  title: z.string().max(200).nullable().optional(),
 })
 
 const decodeTopic = (raw: string) => decodeURIComponent(raw).slice(0, 60)
@@ -131,5 +138,79 @@ export const topicsRoutes = new Hono<{ Variables: RequireUserVariables }>()
     await db
       .delete(topicMedia)
       .where(and(eq(topicMedia.id, mediaId), eq(topicMedia.userId, userId)))
+    return c.json({ ok: true })
+  })
+  // ---- Vault items (notes + saved URLs), keyed by the topic id ----
+  .get("/:id/vault", async (c) => {
+    const userId = c.get("user").id
+    const topicId = c.req.param("id")
+    const items = await db
+      .select({
+        id: topicVaultItems.id,
+        topicId: topicVaultItems.topicId,
+        kind: topicVaultItems.kind,
+        body: topicVaultItems.body,
+        title: topicVaultItems.title,
+        createdAt: topicVaultItems.createdAt,
+      })
+      .from(topicVaultItems)
+      .where(
+        and(
+          eq(topicVaultItems.userId, userId),
+          eq(topicVaultItems.topicId, topicId),
+        ),
+      )
+      .orderBy(desc(topicVaultItems.createdAt))
+      .limit(100)
+    return c.json({ items })
+  })
+  .post("/:id/vault", zValidator("json", CreateVaultItemInput), async (c) => {
+    const userId = c.get("user").id
+    const topicId = c.req.param("id")
+    const [topic] = await db
+      .select({ id: topics.id })
+      .from(topics)
+      .where(and(eq(topics.id, topicId), eq(topics.userId, userId)))
+      .limit(1)
+    if (!topic) {
+      return c.json({ error: "Topic not found", code: "NOT_FOUND" }, 404)
+    }
+    const body = c.req.valid("json")
+    const id = randomUUID()
+    const createdAt = new Date().toISOString()
+    await db.insert(topicVaultItems).values({
+      id,
+      userId,
+      topicId,
+      kind: body.kind,
+      body: body.body,
+      title: body.title ?? null,
+      createdAt,
+    })
+    return c.json(
+      {
+        item: {
+          id,
+          topicId,
+          kind: body.kind,
+          body: body.body,
+          title: body.title ?? null,
+          createdAt,
+        },
+      },
+      201,
+    )
+  })
+  .delete("/:id/vault/:itemId", async (c) => {
+    const userId = c.get("user").id
+    const itemId = c.req.param("itemId")
+    await db
+      .delete(topicVaultItems)
+      .where(
+        and(
+          eq(topicVaultItems.id, itemId),
+          eq(topicVaultItems.userId, userId),
+        ),
+      )
     return c.json({ ok: true })
   })

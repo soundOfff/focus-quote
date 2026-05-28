@@ -143,6 +143,31 @@ export interface RenameTopicResponse {
   topic: { id: string; name: string }
 }
 
+export type VaultItemKind = "note" | "url"
+
+export interface VaultItem {
+  id: string
+  topicId: string
+  kind: VaultItemKind
+  body: string
+  title: string | null
+  createdAt: string
+}
+
+export interface ListVaultItemsResponse {
+  items: ReadonlyArray<VaultItem>
+}
+
+export interface CreateVaultItemRequest {
+  kind: VaultItemKind
+  body: string
+  title?: string | null
+}
+
+export interface CreateVaultItemResponse {
+  item: VaultItem
+}
+
 // ---- Session URLs (AI analysis) ----
 
 export interface SessionUrlBatchRequest {
