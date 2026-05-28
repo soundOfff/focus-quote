@@ -300,6 +300,20 @@ npm run dev:extension
 - **Effect-driven** - embrace functional composition, avoid imperative side-effects in services
 - **Incremental** - ship small, test often, iterate based on usage
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for `soundOfff/focus-quote`, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical triage roles map 1:1 to label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root cover the whole product. See `docs/agents/domain.md`.
+
 ---
 
 **When in doubt:**
