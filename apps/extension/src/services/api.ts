@@ -202,6 +202,14 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
         request<SessionResourcesResponse>(
           `/api/focus-sessions/${sessionId}/resources`,
         ),
+      attachSessionVaultLink: (
+        sessionId: string,
+        body: { url: string; title?: string | null },
+      ) =>
+        request<CreateVaultItemResponse>(
+          `/api/focus-sessions/${sessionId}/vault-link`,
+          { method: "POST", json: body },
+        ),
       regenerateArtifact: (sessionId: string, body: RegenerateRequest) =>
         request<RegenerateResponse>(
           `/api/focus-sessions/${sessionId}/regenerate`,

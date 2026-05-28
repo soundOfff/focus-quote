@@ -8,6 +8,7 @@ import {
   recallAttempts,
   sessionActions,
   sessionUrls,
+  topicVaultItems,
 } from "../db/schema"
 import { requireUser, type RequireUserVariables } from "../middleware/require-user"
 import { z } from "zod"
@@ -22,8 +23,17 @@ import {
   parseResourceRecommendations,
   parseStudyTips,
 } from "../lib/study-artifacts"
-import { maybeAutoDeriveGoal, maybeGenerateTopic } from "../lib/topic"
+import {
+  ensureTopicId,
+  maybeAutoDeriveGoal,
+  maybeGenerateTopic,
+} from "../lib/topic"
 import { gradeRecallAnswer } from "../lib/llm"
+
+const VaultLinkInput = z.object({
+  url: z.string().min(1).max(2000),
+  title: z.string().max(200).nullable().optional(),
+})
 
 export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>()
   .use("*", requireUser)
@@ -36,6 +46,63 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
       .orderBy(desc(focusSessions.startedAt))
       .limit(200)
     return c.json({ sessions: rows.map(toSessionDTO) })
+  })
+  // Save a visited link into the session's Topic Vault. Resolves (and lazily
+  // creates) the session's Topic entity, then inserts a "url" vault item.
+  .post("/:id/vault-link", zValidator("json", VaultLinkInput), async (c) => {
+    const userId = c.get("user").id
+    const id = c.req.param("id")
+    const { url, title } = c.req.valid("json")
+    const [session] = await db
+      .select({
+        id: focusSessions.id,
+        topicId: focusSessions.topicId,
+        topic: focusSessions.topic,
+      })
+      .from(focusSessions)
+      .where(and(eq(focusSessions.id, id), eq(focusSessions.userId, userId)))
+      .limit(1)
+    if (!session) {
+      return c.json({ error: "Not found", code: "NOT_FOUND" }, 404)
+    }
+    let topicId = session.topicId
+    if (!topicId) {
+      if (!session.topic) {
+        return c.json(
+          { error: "Session has no topic to attach to", code: "BAD_REQUEST" },
+          400,
+        )
+      }
+      topicId = await ensureTopicId(userId, session.topic)
+      await db
+        .update(focusSessions)
+        .set({ topicId })
+        .where(and(eq(focusSessions.id, id), eq(focusSessions.userId, userId)))
+    }
+    const itemId = randomUUID()
+    const createdAt = new Date().toISOString()
+    await db.insert(topicVaultItems).values({
+      id: itemId,
+      userId,
+      topicId,
+      kind: "url",
+      body: url,
+      title: title ?? null,
+      createdAt,
+    })
+    return c.json(
+      {
+        item: {
+          id: itemId,
+          topicId,
+          kind: "url",
+          body: url,
+          title: title ?? null,
+          createdAt,
+        },
+      },
+      201,
+    )
   })
   .post("/", zValidator("json", UpsertFocusSessionInput), async (c) => {
     const userId = c.get("user").id

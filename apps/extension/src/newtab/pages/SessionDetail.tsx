@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
 import {
   ArrowLeft,
+  BookmarkCheck,
+  BookmarkPlus,
   BookOpen,
   Brain,
   CheckCircle2,
@@ -454,8 +456,31 @@ function Section({
   )
 }
 
-function UrlsBlock({ urls }: { urls: UrlRow[] }) {
+const saveVaultLink = (sessionId: string, url: string, title: string | null) =>
+  Effect.gen(function* () {
+    const api = yield* ApiService
+    return yield* api.attachSessionVaultLink(sessionId, { url, title })
+  })
+
+function UrlsBlock({
+  urls,
+  sessionId,
+}: {
+  urls: UrlRow[]
+  sessionId: string
+}) {
   const [open, setOpen] = useState(false)
+  const [saved, setSaved] = useState<Set<string>>(new Set())
+  const [savingId, setSavingId] = useState<string | null>(null)
+
+  const promote = (u: UrlRow) => {
+    if (saved.has(u.id) || savingId) return
+    setSavingId(u.id)
+    runP(saveVaultLink(sessionId, u.url, u.title))
+      .then(() => setSaved((prev) => new Set(prev).add(u.id)))
+      .catch(() => {})
+      .finally(() => setSavingId(null))
+  }
   return (
     <Surface class="p-0">
       <button
@@ -505,6 +530,20 @@ function UrlsBlock({ urls }: { urls: UrlRow[] }) {
                   </div>
                 )}
               </div>
+              <button
+                type="button"
+                onClick={() => promote(u)}
+                disabled={saved.has(u.id) || savingId === u.id}
+                aria-label="Save to topic vault"
+                title="Save to topic vault"
+                class="shrink-0 rounded p-0.5 text-mute transition-colors hover:text-ink disabled:cursor-default"
+              >
+                {saved.has(u.id) ? (
+                  <BookmarkCheck size={12} class="text-accent-green" />
+                ) : (
+                  <BookmarkPlus size={12} />
+                )}
+              </button>
               </ListRow>
             </li>
           ))}
@@ -779,7 +818,7 @@ export function SessionDetail({ sessionId }: Props) {
           </Section>
         )}
 
-        <UrlsBlock urls={data.urls} />
+        <UrlsBlock urls={data.urls} sessionId={sessionId} />
     </div>
   )
 }
