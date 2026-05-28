@@ -24,6 +24,7 @@ import { ApiService } from "../../services/api"
 import { runP } from "../runtime"
 import { navigateHome } from "../router"
 import type {
+  AiFeature,
   RecallQuestion,
   RecallVerdict,
   RegenerateArtifact,
@@ -31,6 +32,8 @@ import type {
   Session,
   SessionUrl,
 } from "@focus-quote/shared"
+import { isAiFeatureEnabled } from "@focus-quote/shared"
+import { PREFS_KEY } from "../../shared/prefs"
 import {
   Badge,
   Button,
@@ -521,12 +524,64 @@ interface Props {
 // rendered by `newtab/App.tsx` and stays mounted across home ↔ session-detail
 // transitions. Detail no longer wraps its own AppShell so popping back to home
 // doesn't tear down + refetch TopicsSection / SessionsSection.
+// The study artifacts a generate-all run fans out, each mapped to the AI
+// feature that gates it (ADR 0002). "topic" is gated by the master switch only.
+const GENERATE_ALL_ARTIFACTS: ReadonlyArray<{
+  artifact: RegenerateArtifact
+  feature: AiFeature
+}> = [
+  { artifact: "summary", feature: "sessionSummary" },
+  { artifact: "studyTips", feature: "studyTips" },
+  { artifact: "recallQuestions", feature: "recallQuestions" },
+  { artifact: "resourceRecommendations", feature: "resourceRecommendations" },
+]
+
 export function SessionDetail({ sessionId }: Props) {
   const [data, setData] = useState<PageData | null>(null)
   const [loading, setLoading] = useState(true)
   const [regenerating, setRegenerating] = useState<Set<RegenerateArtifact>>(
     new Set(),
   )
+  const [aiMasterEnabled, setAiMasterEnabled] = useState(true)
+  const [generatingAll, setGeneratingAll] = useState(false)
+
+  useEffect(() => {
+    chrome.storage.local
+      .get(PREFS_KEY)
+      .then((out) => {
+        const p = out[PREFS_KEY] as Record<string, unknown> | undefined
+        if (typeof p?.aiMasterEnabled === "boolean") {
+          setAiMasterEnabled(p.aiMasterEnabled)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const generateAll = () => {
+    const targets: RegenerateArtifact[] = []
+    if (aiMasterEnabled) targets.push("topic")
+    for (const t of GENERATE_ALL_ARTIFACTS) {
+      if (isAiFeatureEnabled(t.feature, { masterEnabled: aiMasterEnabled })) {
+        targets.push(t.artifact)
+      }
+    }
+    if (targets.length === 0) return
+    setGeneratingAll(true)
+    runP(
+      Effect.gen(function* () {
+        const api = yield* ApiService
+        // Sequential so we don't fan a burst of LLM calls at the server.
+        for (const artifact of targets) {
+          yield* api
+            .regenerateArtifact(sessionId, { artifact })
+            .pipe(Effect.catchAll(() => Effect.void))
+        }
+      }),
+    )
+      .then(() => refresh())
+      .catch(() => {})
+      .finally(() => setGeneratingAll(false))
+  }
 
   const refresh = () => {
     setLoading(true)
@@ -604,6 +659,12 @@ export function SessionDetail({ sessionId }: Props) {
 
   const s = data.session
   const d = derived!
+  const hasArtifacts = !!(
+    data.summary ||
+    (data.tips && data.tips.length) ||
+    (data.questions && data.questions.length) ||
+    (data.resources && data.resources.length)
+  )
 
   return (
     <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 overflow-y-auto px-4 py-6 sm:px-6">
@@ -662,7 +723,7 @@ export function SessionDetail({ sessionId }: Props) {
           </p>
         </Surface>
 
-        {d.status === "completed" && (
+        {(d.status === "completed" || hasArtifacts) && (
           <>
             <SummaryBlock
               summary={data.summary}
@@ -692,13 +753,29 @@ export function SessionDetail({ sessionId }: Props) {
           </>
         )}
 
-        {d.status !== "completed" && data.urls.length > 0 && (
+        {d.status !== "completed" && data.urls.length > 0 && !hasArtifacts && (
           <Section
             icon={<Sparkles size={14} class="text-mute" />}
             title="AI insights"
-            subtitle="Complete the session to unlock AI summary, study tips, recall questions, and resource recommendations."
+            subtitle="This session didn't finish — generate its AI summary, study tips, recall questions, and resource recommendations now."
           >
-            <div class="h-1" />
+            <div class="flex flex-col items-start gap-2">
+              <Button
+                onClick={generateAll}
+                variant="primary"
+                size="sm"
+                disabled={!aiMasterEnabled || generatingAll}
+                class="gap-1.5"
+              >
+                <Sparkles size={12} />
+                {generatingAll ? "Generating…" : "Generate all"}
+              </Button>
+              {!aiMasterEnabled && (
+                <p class="text-xs text-mute">
+                  AI is turned off — enable it in Settings.
+                </p>
+              )}
+            </div>
           </Section>
         )}
 
