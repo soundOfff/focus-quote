@@ -6,14 +6,14 @@ export type HomeMainTab =
   | "sessions"
   | "quotes"
   | "topics"
-  | "archive"
+  | "history"
 
 const tabs: ReadonlyArray<{ value: HomeMainTab; label: string }> = [
   { value: "overview", label: "Overview" },
   { value: "sessions", label: "Sessions" },
   { value: "quotes", label: "Quotes" },
   { value: "topics", label: "Topics" },
-  { value: "archive", label: "Archive" },
+  { value: "history", label: "History" },
 ]
 
 export function HomeSubNav({

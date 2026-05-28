@@ -28,7 +28,7 @@ const dayBucket = (iso: string): "today" | "yesterday" | "week" | "older" => {
   return "older"
 }
 
-export function HomeArchivePanel() {
+export function HomeHistoryPanel() {
   const [sessions, setSessions] = useState<ReadonlyArray<Session>>([])
   const [ready, setReady] = useState(false)
 
@@ -39,16 +39,16 @@ export function HomeArchivePanel() {
       .finally(() => setReady(true))
   }, [])
 
-  const archived = useMemo(
+  const older = useMemo(
     () => sessions.filter((s) => dayBucket(s.startedAt) === "older"),
     [sessions],
   )
 
   if (!ready) return null
-  if (archived.length === 0) {
+  if (older.length === 0) {
     return (
       <EmptyState
-        title="Archive is empty"
+        title="History is empty"
         description="Older sessions (beyond the last week) show up here for deep review."
       />
     )
@@ -56,7 +56,7 @@ export function HomeArchivePanel() {
 
   return (
     <div class="flex flex-col gap-2">
-      {archived.map((s) => (
+      {older.map((s) => (
         <SessionCard key={s.id} session={s} />
       ))}
     </div>

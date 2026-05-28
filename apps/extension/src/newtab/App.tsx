@@ -32,7 +32,7 @@ import { HomeSubNav, type HomeMainTab } from "./components/HomeSubNav"
 import { HomeSidebar } from "./components/HomeSidebar"
 import { RecentSessionCards } from "./components/RecentSessionCards"
 import { HomeQuotesPanel } from "./components/HomeQuotesPanel"
-import { HomeArchivePanel } from "./components/HomeArchivePanel"
+import { HomeHistoryPanel } from "./components/HomeHistoryPanel"
 
 interface Stats {
   todaySessions: number
@@ -134,7 +134,7 @@ const isHomeMainTab = (v: unknown): v is HomeMainTab =>
   v === "sessions" ||
   v === "quotes" ||
   v === "topics" ||
-  v === "archive"
+  v === "history"
 
 export function App() {
   return (
@@ -350,10 +350,10 @@ function AppInner() {
                           </h2>
                           <button
                             type="button"
-                            onClick={() => setHomeTabPersist("archive")}
+                            onClick={() => setHomeTabPersist("history")}
                             class="text-[10px] font-semibold uppercase tracking-wide text-link-blue transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
                           >
-                            View archive →
+                            View history →
                           </button>
                         </div>
                         {recentSessions.length === 0 ? (
@@ -386,10 +386,10 @@ function AppInner() {
                     <TopicsSection />
                   </div>
                 )}
-                {homeTab === "archive" && (
+                {homeTab === "history" && (
                   <div class="flex flex-col gap-4 pt-1">
-                    <h1 class="text-xl font-bold text-ink">Archive</h1>
-                    <HomeArchivePanel />
+                    <h1 class="text-xl font-bold text-ink">History</h1>
+                    <HomeHistoryPanel />
                   </div>
                 )}
               </div>
