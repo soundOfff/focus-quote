@@ -350,6 +350,12 @@ function AppInner() {
     debouncedPrefsPersist(next)
   }
 
+  const setAiMasterEnabled = (enabled: boolean) => {
+    const next: Prefs = { ...prefs, aiMasterEnabled: enabled }
+    setPrefs(next)
+    debouncedPrefsPersist(next)
+  }
+
   const setRecallEnabled = (enabled: boolean) => {
     const next: Prefs = { ...prefs, recallEnabled: enabled }
     setPrefs(next)
@@ -608,6 +614,25 @@ function AppInner() {
               </TabPanel>
 
               <TabPanel active={activeTab === "ai"}>
+                <Surface>
+                  <SectionHeader
+                    title="AI assistance"
+                    subtitle="Master switch for every AI feature. When off, nothing spends tokens — distraction detection, summaries, Quote + AI and Guide Me all pause."
+                  />
+                  <div class="flex items-center justify-between">
+                    <span class="text-[13px] text-ink-2">
+                      {prefs.aiMasterEnabled
+                        ? "AI assistance enabled"
+                        : "AI assistance disabled"}
+                    </span>
+                    <Toggle
+                      enabled={prefs.aiMasterEnabled}
+                      onToggle={() => setAiMasterEnabled(!prefs.aiMasterEnabled)}
+                      ariaLabel="Toggle AI assistance"
+                    />
+                  </div>
+                </Surface>
+
                 <Surface>
                   <SectionHeader
                     title="OpenRouter API key"

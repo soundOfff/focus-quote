@@ -29,6 +29,7 @@ export const Prefs = Schema.Struct({
   recallQuestionCount: RecallQuestionCount,
   recallDepth: RecallDepth,
   recallAutoGenerate: Schema.Boolean,
+  aiMasterEnabled: Schema.Boolean,
 })
 export type Prefs = Schema.Schema.Type<typeof Prefs>
 
@@ -42,6 +43,7 @@ export const defaultPrefs: Prefs = {
   recallQuestionCount: 5,
   recallDepth: "standard",
   recallAutoGenerate: true,
+  aiMasterEnabled: true,
 }
 
 const clampInt = (value: unknown, min: number, max: number, fallback: number) => {
@@ -105,6 +107,10 @@ const normalizePrefs = (raw: unknown): Prefs => {
     recallAutoGenerate: parseBool(
       input.recallAutoGenerate,
       defaultPrefs.recallAutoGenerate,
+    ),
+    aiMasterEnabled: parseBool(
+      input.aiMasterEnabled,
+      defaultPrefs.aiMasterEnabled,
     ),
   }
 }
@@ -203,6 +209,9 @@ export const pullPrefsFromRemote = (
       recallDepth: (s as { recallDepth?: unknown }).recallDepth,
       recallAutoGenerate: (s as { recallAutoGenerate?: unknown })
         .recallAutoGenerate,
+      // aiMasterEnabled is local-only for now (not yet persisted server-side),
+      // so carry the local value forward rather than letting it reset.
+      aiMasterEnabled: fallback.aiMasterEnabled,
     })
     yield* savePrefs(storage, next)
     return next

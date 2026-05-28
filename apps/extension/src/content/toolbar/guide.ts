@@ -8,6 +8,7 @@ import {
   type PopoverHandle,
 } from "./popover"
 import { apiPost, ApiCallError } from "./api"
+import { aiFeatureEnabled } from "./ai-gate"
 import { toolbarStore } from "../store"
 import type { GuideStep, GuideStepsResponse } from "@focus-quote/shared"
 
@@ -656,6 +657,14 @@ export const installGuideButton = (shell: ToolbarShell): (() => void) => {
 
   const submit = async (goal: string) => {
     if (!currentPopover) return
+    if (!(await aiFeatureEnabled("guideMe"))) {
+      renderErrorState(
+        currentPopover.body,
+        "Guide Me is turned off. Enable AI assistance in FocusQuote settings.",
+        () => submit(goal),
+      )
+      return
+    }
     lastGoal = goal
     renderLoadingState(currentPopover.body)
     currentAbort?.abort()

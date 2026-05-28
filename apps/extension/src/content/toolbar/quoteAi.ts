@@ -7,6 +7,7 @@ import {
   type PopoverHandle,
 } from "./popover"
 import { apiPost, ApiCallError } from "./api"
+import { aiFeatureEnabled } from "./ai-gate"
 import { toolbarStore } from "../store"
 import type {
   QuoteAssistantRequest,
@@ -300,9 +301,15 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
   let currentAbort: AbortController | null = null
   let unsubStore: (() => void) | null = null
 
-  const onClick = () => {
+  const onClick = async () => {
     if (currentPopover) {
       currentPopover.close()
+      return
+    }
+    if (!(await aiFeatureEnabled("quoteAssistant"))) {
+      openMessage(
+        "Quote + AI is turned off. Enable AI assistance in FocusQuote settings.",
+      )
       return
     }
     const state = toolbarStore.getState().chat
