@@ -583,6 +583,9 @@ export function SessionDetail({ sessionId }: Props) {
   )
   const [aiMasterEnabled, setAiMasterEnabled] = useState(true)
   const [autoTitleEnabled, setAutoTitleEnabled] = useState(false)
+  const [featureOverrides, setFeatureOverrides] = useState<
+    Partial<Record<AiFeature, boolean>>
+  >({})
   const [generatingAll, setGeneratingAll] = useState(false)
 
   useEffect(() => {
@@ -596,6 +599,11 @@ export function SessionDetail({ sessionId }: Props) {
         if (typeof p?.autoTitleEnabled === "boolean") {
           setAutoTitleEnabled(p.autoTitleEnabled)
         }
+        if (p?.aiFeatureOverrides && typeof p.aiFeatureOverrides === "object") {
+          setFeatureOverrides(
+            p.aiFeatureOverrides as Partial<Record<AiFeature, boolean>>,
+          )
+        }
       })
       .catch(() => {})
   }, [])
@@ -604,7 +612,12 @@ export function SessionDetail({ sessionId }: Props) {
     const targets: RegenerateArtifact[] = []
     if (aiMasterEnabled) targets.push("topic")
     for (const t of GENERATE_ALL_ARTIFACTS) {
-      if (isAiFeatureEnabled(t.feature, { masterEnabled: aiMasterEnabled })) {
+      if (
+        isAiFeatureEnabled(t.feature, {
+          masterEnabled: aiMasterEnabled,
+          featureOverrides,
+        })
+      ) {
         targets.push(t.artifact)
       }
     }
@@ -614,7 +627,7 @@ export function SessionDetail({ sessionId }: Props) {
       !data?.session?.goal &&
       isAiFeatureEnabled("autoTitle", {
         masterEnabled: aiMasterEnabled,
-        featureOverrides: { autoTitle: autoTitleEnabled },
+        featureOverrides: { ...featureOverrides, autoTitle: autoTitleEnabled },
       })
     ) {
       targets.push("title")

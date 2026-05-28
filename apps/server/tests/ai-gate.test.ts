@@ -51,4 +51,41 @@ describe("server AI gate", () => {
     }
     expect(body.settings.aiMasterEnabled).toBe(false)
   })
+
+  it("gates a single on-demand feature via aiFeatureOverrides", async () => {
+    const { userId, token } = await createTestUser()
+    const put = await authedFetch(token)("/api/settings", {
+      ...json({
+        ...baseSettings,
+        aiFeatureOverrides: { sessionSummary: false },
+      }),
+      method: "PUT",
+    })
+    expect(put.status).toBe(200)
+
+    const gate = await loadAiGateSettings(userId)
+    expect(gate.featureOverrides?.sessionSummary).toBe(false)
+    // Only the overridden feature is disabled; siblings keep their tier default.
+    expect(await aiFeatureEnabledForUser(userId, "sessionSummary")).toBe(false)
+    expect(await aiFeatureEnabledForUser(userId, "studyTips")).toBe(true)
+  })
+
+  it("round-trips aiFeatureOverrides through GET /api/settings", async () => {
+    const { token } = await createTestUser()
+    await authedFetch(token)("/api/settings", {
+      ...json({
+        ...baseSettings,
+        aiFeatureOverrides: { studyTips: false, guideMe: true },
+      }),
+      method: "PUT",
+    })
+    const get = await authedFetch(token)("/api/settings")
+    const body = (await get.json()) as {
+      settings: { aiFeatureOverrides: Record<string, boolean> }
+    }
+    expect(body.settings.aiFeatureOverrides).toEqual({
+      studyTips: false,
+      guideMe: true,
+    })
+  })
 })

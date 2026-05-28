@@ -183,6 +183,7 @@ export const UserSettingsInput = z.object({
   recallAutoGenerate: z.boolean().optional(),
   aiMasterEnabled: z.boolean().optional(),
   autoTitleEnabled: z.boolean().optional(),
+  aiFeatureOverrides: z.record(z.string().max(64), z.boolean()).optional(),
 })
 export type UserSettingsInput = z.infer<typeof UserSettingsInput>
 

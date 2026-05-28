@@ -333,6 +333,12 @@ export const userSettings = sqliteTable("user_settings", {
   autoTitleEnabled: integer("auto_title_enabled", { mode: "boolean" })
     .notNull()
     .default(false),
+  // Per-feature AI overrides (issue #5), keyed by AiFeature. Absent keys fall
+  // back to the feature's tier default in the shared gate resolver.
+  aiFeatureOverrides: text("ai_feature_overrides", { mode: "json" })
+    .$type<Record<string, boolean>>()
+    .notNull()
+    .default(sql`'{}'`),
   updatedAt: text("updated_at")
     .notNull()
     .default(sql`(datetime('now'))`),

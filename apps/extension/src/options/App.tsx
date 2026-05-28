@@ -45,7 +45,8 @@ import {
   type ProfilePrefs,
 } from "../shared/profile"
 import { TRANSLATE_LANGUAGES } from "../shared/translation"
-import type { Theme, User } from "@focus-quote/shared"
+import type { Theme, User, AiFeature } from "@focus-quote/shared"
+import { aiFeatureDefault } from "@focus-quote/shared"
 import { runP } from "./runtime"
 import { PrivacySection } from "./components/PrivacySection"
 import {
@@ -63,6 +64,56 @@ import {
 import { AppShell } from "../ui/AppShell"
 import { ToastProvider, useToast } from "../ui/Toast"
 import type { RecallDepth, RecallQuestionCount } from "../shared/prefs"
+
+// Token-spending features that get an individual toggle in the AI tab. autoTitle
+// is omitted — it has its own dedicated section (issue #9).
+const AI_FEATURE_CONTROLS: ReadonlyArray<{
+  feature: AiFeature
+  label: string
+  description: string
+}> = [
+  {
+    feature: "distractionDetection",
+    label: "Distraction detection",
+    description:
+      "Scores the pages you visit during a session so FocusQuote can flag off-topic tabs.",
+  },
+  {
+    feature: "sessionSummary",
+    label: "Session summaries",
+    description: "Generates a recap of what you read after a session ends.",
+  },
+  {
+    feature: "studyTips",
+    label: "Study tips",
+    description: "Suggests follow-up actions based on a session's topic.",
+  },
+  {
+    feature: "recallQuestions",
+    label: "Recall questions",
+    description: "Writes quiz questions from the material you captured.",
+  },
+  {
+    feature: "resourceRecommendations",
+    label: "Resource recommendations",
+    description: "Recommends further reading related to a session's topic.",
+  },
+  {
+    feature: "quoteAssistant",
+    label: "Quote + AI",
+    description: "Explains or expands on a quote from the capture toolbar.",
+  },
+  {
+    feature: "guideMe",
+    label: "Guide Me",
+    description: "Walks you through next steps from the capture toolbar.",
+  },
+  {
+    feature: "recallGrading",
+    label: "Recall grading",
+    description: "Grades your answers to recall questions.",
+  },
+]
 
 const loadInitial = Effect.gen(function* () {
   const storage = yield* StorageService
@@ -362,6 +413,15 @@ function AppInner() {
     debouncedPrefsPersist(next)
   }
 
+  const setFeatureOverride = (feature: AiFeature, enabled: boolean) => {
+    const next: Prefs = {
+      ...prefs,
+      aiFeatureOverrides: { ...prefs.aiFeatureOverrides, [feature]: enabled },
+    }
+    setPrefs(next)
+    debouncedPrefsPersist(next)
+  }
+
   const setRecallEnabled = (enabled: boolean) => {
     const next: Prefs = { ...prefs, recallEnabled: enabled }
     setPrefs(next)
@@ -637,6 +697,45 @@ function AppInner() {
                       ariaLabel="Toggle AI assistance"
                     />
                   </div>
+                </Surface>
+
+                <Surface>
+                  <SectionHeader
+                    title="Per-feature controls"
+                    subtitle="Turn individual AI features on or off. Each only spends tokens when enabled and the master switch above is on."
+                  />
+                  <div class="flex flex-col gap-3">
+                    {AI_FEATURE_CONTROLS.map((control) => {
+                      const enabled =
+                        prefs.aiFeatureOverrides[control.feature] ??
+                        aiFeatureDefault(control.feature)
+                      return (
+                        <div
+                          key={control.feature}
+                          class="flex items-start justify-between gap-3"
+                        >
+                          <div class="min-w-0">
+                            <p class="text-[13px] text-ink-2">{control.label}</p>
+                            <p class="text-[11px] text-muted">
+                              {control.description}
+                            </p>
+                          </div>
+                          <Toggle
+                            enabled={enabled}
+                            onToggle={() =>
+                              setFeatureOverride(control.feature, !enabled)
+                            }
+                            ariaLabel={`Toggle ${control.label}`}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {!prefs.aiMasterEnabled && (
+                    <p class="mt-2 text-[11px] text-muted">
+                      Turn on AI assistance above for these to take effect.
+                    </p>
+                  )}
                 </Surface>
 
                 <Surface>

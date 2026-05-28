@@ -27,6 +27,7 @@ const toDTO = (row: SettingsRow) => ({
   recallAutoGenerate: row.recallAutoGenerate,
   aiMasterEnabled: row.aiMasterEnabled,
   autoTitleEnabled: row.autoTitleEnabled,
+  aiFeatureOverrides: row.aiFeatureOverrides,
   updatedAt: row.updatedAt,
 })
 
@@ -82,6 +83,7 @@ export const settingsRoutes = new Hono<{ Variables: RequireUserVariables }>()
       recallAutoGenerate: body.recallAutoGenerate ?? true,
       aiMasterEnabled: body.aiMasterEnabled ?? true,
       autoTitleEnabled: body.autoTitleEnabled ?? false,
+      aiFeatureOverrides: body.aiFeatureOverrides ?? {},
       updatedAt: now,
     }
     await db
