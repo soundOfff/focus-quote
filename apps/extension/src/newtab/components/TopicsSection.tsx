@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
-import { ImagePlus, Layers, Loader2, Pencil, Timer, Trash2, X } from "lucide-preact"
+import {
+  ImagePlus,
+  Layers,
+  Loader2,
+  Pencil,
+  Plus,
+  Timer,
+  Trash2,
+  X,
+} from "lucide-preact"
 import { ApiService } from "../../services/api"
 import { runP } from "../runtime"
-import type { Topic } from "@focus-quote/shared"
+import type { Topic, VaultItem } from "@focus-quote/shared"
 import { Button, SectionHeader, Surface } from "../../ui/primitives"
 import { useToast } from "../../ui/Toast"
 
@@ -70,6 +79,29 @@ const renameTopic = (id: string, name: string) =>
     return yield* api.renameTopic(id, name)
   })
 
+const loadVault = (topicId: string) =>
+  Effect.gen(function* () {
+    const api = yield* ApiService
+    const res = yield* api
+      .listTopicVault(topicId)
+      .pipe(Effect.catchAll(() => Effect.succeed({ items: [] as VaultItem[] })))
+    return res.items as VaultItem[]
+  })
+
+const addVaultNote = (topicId: string, body: string) =>
+  Effect.gen(function* () {
+    const api = yield* ApiService
+    return yield* api.addTopicVaultItem(topicId, { kind: "note", body })
+  })
+
+const deleteVaultItem = (topicId: string, itemId: string) =>
+  Effect.gen(function* () {
+    const api = yield* ApiService
+    yield* api
+      .deleteTopicVaultItem(topicId, itemId)
+      .pipe(Effect.catchAll(() => Effect.void))
+  })
+
 const fmtHours = (ms: number): string => {
   if (ms < 60_000) return "<1m"
   if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m`
@@ -98,9 +130,13 @@ export function TopicsSection() {
   const [topics, setTopics] = useState<ReadonlyArray<Topic>>([])
   const [ready, setReady] = useState(false)
   const [openTopic, setOpenTopic] = useState<string | null>(null)
+  const [openTopicId, setOpenTopicId] = useState<string | null>(null)
   const [media, setMedia] = useState<ReadonlyArray<TopicMediaItem>>([])
   const [mediaLoading, setMediaLoading] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [notes, setNotes] = useState<ReadonlyArray<VaultItem>>([])
+  const [noteDraft, setNoteDraft] = useState("")
+  const [addingNote, setAddingNote] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
@@ -114,19 +150,28 @@ export function TopicsSection() {
 
   const visibleTopics = useMemo(() => topics.slice(0, 9), [topics])
 
-  const open = (label: string) => {
-    setOpenTopic(label)
+  const open = (topic: Topic) => {
+    setOpenTopic(topic.name)
+    setOpenTopicId(topic.id)
     setMedia([])
+    setNotes([])
+    setNoteDraft("")
     setMediaLoading(true)
-    runP(loadTopicMedia(label))
+    runP(loadTopicMedia(topic.name))
       .then((items) => setMedia(items))
       .catch(() => setMedia([]))
       .finally(() => setMediaLoading(false))
+    runP(loadVault(topic.id))
+      .then((items) => setNotes(items))
+      .catch(() => setNotes([]))
   }
 
   const close = () => {
     setOpenTopic(null)
+    setOpenTopicId(null)
     setMedia([])
+    setNotes([])
+    setNoteDraft("")
   }
 
   const onPick = (e: Event) => {
@@ -187,6 +232,32 @@ export function TopicsSection() {
       })
   }
 
+  const handleAddNote = () => {
+    const topicId = openTopicId
+    const body = noteDraft.trim()
+    if (!topicId || !body || addingNote) return
+    setAddingNote(true)
+    runP(addVaultNote(topicId, body))
+      .then(() => {
+        setNoteDraft("")
+        return runP(loadVault(topicId))
+      })
+      .then((items) => {
+        if (items) setNotes(items)
+      })
+      .catch((err) => {
+        console.error("[FocusQuote] add vault note:", err)
+        toast.error("Couldn't save note.")
+      })
+      .finally(() => setAddingNote(false))
+  }
+
+  const handleDeleteNote = (itemId: string) => {
+    if (!openTopicId) return
+    setNotes((prev) => prev.filter((n) => n.id !== itemId))
+    runP(deleteVaultItem(openTopicId, itemId)).catch(() => {})
+  }
+
   if (!ready) return null
   if (topics.length === 0) return null
 
@@ -201,7 +272,7 @@ export function TopicsSection() {
           <button
             type="button"
             key={t.name}
-            onClick={() => (openTopic === t.name ? close() : open(t.name))}
+            onClick={() => (openTopic === t.name ? close() : open(t))}
             class="rounded-md border border-hairline bg-surface p-3 text-left transition-colors hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
             aria-expanded={openTopic === t.name}
           >
@@ -294,6 +365,75 @@ export function TopicsSection() {
                 </figure>
               ))
             )}
+          </div>
+
+          <div class="mt-4 border-t border-hairline-soft pt-3">
+            <h4 class="mb-2 text-xs font-semibold uppercase tracking-wide text-mute">
+              Notes
+            </h4>
+            <div class="flex flex-col gap-1.5">
+              {notes.length === 0 ? (
+                <p class="text-xs text-mute">No notes yet.</p>
+              ) : (
+                notes.map((n) => (
+                  <div
+                    key={n.id}
+                    class="group flex items-start justify-between gap-2 rounded-md border border-hairline-soft bg-surface-doc px-2.5 py-1.5"
+                  >
+                    {n.kind === "url" ? (
+                      <a
+                        href={n.body}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="min-w-0 truncate text-xs font-medium text-link-blue hover:underline"
+                        title={n.body}
+                      >
+                        {n.title || n.body}
+                      </a>
+                    ) : (
+                      <p class="min-w-0 whitespace-pre-wrap break-words text-xs text-body">
+                        {n.body}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteNote(n.id)}
+                      aria-label="Delete note"
+                      class="shrink-0 rounded p-0.5 text-mute opacity-0 transition-opacity hover:text-accent-red group-hover:opacity-100"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+            <div class="mt-2 flex items-start gap-2">
+              <textarea
+                value={noteDraft}
+                placeholder="Add a note to this topic's vault…"
+                rows={2}
+                onInput={(e) =>
+                  setNoteDraft((e.currentTarget as HTMLTextAreaElement).value)
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault()
+                    handleAddNote()
+                  }
+                }}
+                class="min-h-[2.25rem] flex-1 resize-y rounded-md border border-hairline-soft bg-canvas px-2 py-1.5 text-xs text-ink outline-none focus:ring-1 focus:ring-focus-ring/70"
+              />
+              <Button
+                onClick={handleAddNote}
+                variant="ghost"
+                size="sm"
+                disabled={addingNote || !noteDraft.trim()}
+                aria-label="Add note"
+                class="gap-1"
+              >
+                <Plus size={12} /> Add
+              </Button>
+            </div>
           </div>
         </Surface>
       )}
