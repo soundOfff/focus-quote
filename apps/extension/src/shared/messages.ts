@@ -120,6 +120,34 @@ export const isActionEventMessage = (msg: unknown): msg is ActionEventMessage =>
   )
 }
 
+/**
+ * Asks the service worker to drain one Conversation turn into the offline sync
+ * queue (ai_chat_threads/messages). Sent from the in-page toolbar whenever a
+ * turn is appended; the SW derives the deterministic thread id and enqueues the
+ * thread upsert + message append. Guests are a noop (drain needs a token).
+ */
+export interface SyncConversationMessage {
+  type: "focusquote.syncConversation"
+  url: string
+  passage: string
+  role: "user" | "assistant"
+  content: string
+}
+
+export const isSyncConversationMessage = (
+  msg: unknown,
+): msg is SyncConversationMessage => {
+  if (typeof msg !== "object" || msg === null) return false
+  const m = msg as Record<string, unknown>
+  return (
+    m.type === "focusquote.syncConversation" &&
+    typeof m.url === "string" &&
+    typeof m.passage === "string" &&
+    typeof m.content === "string" &&
+    (m.role === "user" || m.role === "assistant")
+  )
+}
+
 /** Opens the extension action popup (user-gesture only; extension pages only). */
 export interface OpenPopupMessage {
   type: "focusquote.ui.openPopup"

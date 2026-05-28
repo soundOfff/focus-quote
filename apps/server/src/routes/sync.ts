@@ -2,7 +2,14 @@ import { Hono } from "hono"
 import { zValidator } from "@hono/zod-validator"
 import { and, eq } from "drizzle-orm"
 import { db } from "../db/client"
-import { quotes, focusSessions, sessionUrls, sessionActions } from "../db/schema"
+import {
+  quotes,
+  focusSessions,
+  sessionUrls,
+  sessionActions,
+  aiChatThreads,
+  aiChatMessages,
+} from "../db/schema"
 import { requireUser, type RequireUserVariables } from "../middleware/require-user"
 import { SyncBatchInput, type SyncJobInput } from "../lib/api-schemas"
 import { maybeGenerateSummary } from "../lib/summary"
@@ -197,6 +204,75 @@ async function applyJob(
           at: job.at,
         })
         .onConflictDoNothing({ target: sessionActions.id })
+      return
+    }
+    case "upsertChatThread": {
+      // The thread id is derived client-side from the article URL alone, so two
+      // users highlighting the same article could collide on it. Guard against
+      // cross-user writes: ack-and-skip a colliding id owned by someone else
+      // (returns ok so the client drops it rather than retrying forever).
+      const [existing] = await db
+        .select({ id: aiChatThreads.id, userId: aiChatThreads.userId })
+        .from(aiChatThreads)
+        .where(eq(aiChatThreads.id, job.id))
+        .limit(1)
+      if (existing) {
+        if (existing.userId !== userId) return
+        await db
+          .update(aiChatThreads)
+          .set({
+            passage: job.passage,
+            sourceUrl: job.sourceUrl,
+            updatedAt: job.updatedAt,
+          })
+          .where(
+            and(eq(aiChatThreads.id, job.id), eq(aiChatThreads.userId, userId)),
+          )
+        return
+      }
+      await db
+        .insert(aiChatThreads)
+        .values({
+          id: job.id,
+          userId,
+          kind: "quote_assistant",
+          passage: job.passage,
+          sourceUrl: job.sourceUrl,
+          goal: null,
+          createdAt: job.createdAt,
+          updatedAt: job.updatedAt,
+        })
+        .onConflictDoNothing({ target: aiChatThreads.id })
+      return
+    }
+    case "appendChatMessage": {
+      const [owned] = await db
+        .select({ id: aiChatThreads.id })
+        .from(aiChatThreads)
+        .where(
+          and(
+            eq(aiChatThreads.id, job.threadId),
+            eq(aiChatThreads.userId, userId),
+          ),
+        )
+        .limit(1)
+      if (!owned) throw new Error("Thread not owned by user")
+
+      await db
+        .insert(aiChatMessages)
+        .values({
+          id: job.id,
+          threadId: job.threadId,
+          userId,
+          role: job.role,
+          content: job.content,
+          createdAt: job.createdAt,
+        })
+        .onConflictDoNothing({ target: aiChatMessages.id })
+      await db
+        .update(aiChatThreads)
+        .set({ updatedAt: job.createdAt })
+        .where(eq(aiChatThreads.id, job.threadId))
       return
     }
   }

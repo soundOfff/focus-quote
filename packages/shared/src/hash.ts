@@ -9,8 +9,11 @@ const toHex = (bytes: Uint8Array): string => {
   return out
 }
 
-export const quoteContentHash = async (text: string): Promise<string> => {
-  const input = new TextEncoder().encode(text.trim())
+export const sha256Hex = async (text: string): Promise<string> => {
+  const input = new TextEncoder().encode(text)
   const digest = await crypto.subtle.digest("SHA-256", input)
   return toHex(new Uint8Array(digest))
 }
+
+export const quoteContentHash = (text: string): Promise<string> =>
+  sha256Hex(text.trim())

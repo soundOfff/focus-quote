@@ -57,6 +57,118 @@ describe("/api/sync/batch", () => {
     expect(((await sessions.json()) as { sessions: unknown[] }).sessions).toHaveLength(1)
   })
 
+  it("drains a Conversation into ai_chat_threads/messages, idempotently", async () => {
+    const { token } = await createTestUser()
+    const fetch = authedFetch(token)
+    const t0 = "2026-05-28T00:00:00.000Z"
+    const t1 = "2026-05-28T00:00:01.000Z"
+    const t2 = "2026-05-28T00:00:02.000Z"
+    const threadId = "conv_test_thread"
+
+    const batch = {
+      ...json({
+        jobs: [
+          {
+            kind: "upsertChatThread",
+            id: threadId,
+            sourceUrl: "https://example.com/post",
+            passage: "the highlighted passage",
+            createdAt: t0,
+            updatedAt: t0,
+          },
+          {
+            kind: "appendChatMessage",
+            id: "m1",
+            threadId,
+            role: "user",
+            content: "what does this mean?",
+            createdAt: t1,
+          },
+          {
+            kind: "appendChatMessage",
+            id: "m2",
+            threadId,
+            role: "assistant",
+            content: "it means...",
+            createdAt: t2,
+          },
+        ],
+      }),
+    }
+
+    const res = await fetch("/api/sync/batch", batch)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { results: Array<{ ok: boolean }> }
+    expect(body.results.every((r) => r.ok)).toBe(true)
+
+    // Re-draining the same queue (offline retry) must not duplicate anything.
+    await fetch("/api/sync/batch", batch)
+
+    const threads = await fetch("/api/ai-history/threads?kind=quote_assistant")
+    const threadBody = (await threads.json()) as {
+      threads: Array<{ id: string; sourceUrl: string | null; passage: string | null }>
+    }
+    expect(threadBody.threads).toHaveLength(1)
+    expect(threadBody.threads[0]!.id).toBe(threadId)
+    expect(threadBody.threads[0]!.sourceUrl).toBe("https://example.com/post")
+    expect(threadBody.threads[0]!.passage).toBe("the highlighted passage")
+
+    const messages = await fetch(
+      `/api/ai-history/threads/${threadId}/messages`,
+    )
+    const msgBody = (await messages.json()) as {
+      messages: Array<{ id: string; role: string; content: string }>
+    }
+    expect(msgBody.messages).toHaveLength(2)
+    expect(msgBody.messages.map((m) => m.role)).toEqual(["user", "assistant"])
+  })
+
+  it("does not leak Conversations across users", async () => {
+    const { token: tokenA } = await createTestUser()
+    const { token: tokenB } = await createTestUser()
+    const fetchA = authedFetch(tokenA)
+    const fetchB = authedFetch(tokenB)
+    const now = "2026-05-28T00:00:00.000Z"
+
+    await fetchA("/api/sync/batch", {
+      ...json({
+        jobs: [
+          {
+            kind: "upsertChatThread",
+            id: "conv_shared_id",
+            sourceUrl: "https://example.com/x",
+            passage: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+      }),
+    })
+
+    // B cannot append to A's thread; the FK/ownership check rejects that item.
+    const res = await fetchB("/api/sync/batch", {
+      ...json({
+        jobs: [
+          {
+            kind: "appendChatMessage",
+            id: "mb",
+            threadId: "conv_shared_id",
+            role: "user",
+            content: "sneaky",
+            createdAt: now,
+          },
+        ],
+      }),
+    })
+    const body = (await res.json()) as { results: Array<{ ok: boolean }> }
+    expect(body.results[0]!.ok).toBe(false)
+
+    const threadsB = await fetchB("/api/ai-history/threads?kind=quote_assistant")
+    expect(
+      ((await threadsB.json()) as { threads: unknown[] }).threads,
+    ).toHaveLength(0)
+  })
+
   it("upsertQuote is idempotent (last-write-wins on updatedAt)", async () => {
     const { token } = await createTestUser()
     const fetch = authedFetch(token)

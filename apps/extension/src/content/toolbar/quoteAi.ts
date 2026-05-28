@@ -424,6 +424,22 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
     renderFromStore()
     unsubStore = toolbarStore.subscribe(() => renderFromStore())
 
+    // Drain a turn into the structured offline sync queue (ai_chat_threads).
+    // Fire-and-forget; the SW noops for guests (drain needs a bearer token).
+    const syncTurn = (role: "user" | "assistant", content: string) => {
+      const chat = toolbarStore.getState().chat
+      if (!chat.activeUrl || content.trim().length === 0) return
+      void chrome.runtime
+        .sendMessage({
+          type: "focusquote.syncConversation",
+          url: chat.activeUrl,
+          passage: chat.passage,
+          role,
+          content,
+        })
+        .catch(() => {})
+    }
+
     const sendTurn = async (rawMessage: string) => {
       const trimmed = rawMessage.trim()
       composer.input.value = ""
@@ -433,6 +449,7 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
         toolbarStore
           .getState()
           .appendChatTurn({ role: "user", content: trimmed })
+        syncTurn("user", trimmed)
       }
 
       // Show loading state in the summary block while the request flies.
@@ -465,6 +482,7 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
         toolbarStore
           .getState()
           .appendChatTurn({ role: "assistant", content: res.reply })
+        syncTurn("assistant", res.reply)
       } catch (err) {
         if ((err as Error).name === "AbortError") return
         const message =

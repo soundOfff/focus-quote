@@ -148,6 +148,22 @@ export const SyncJobInput = z.discriminatedUnion("kind", [
     payload: z.string().min(1).max(4000),
     at: ISO,
   }),
+  z.object({
+    kind: z.literal("upsertChatThread"),
+    id: z.string().min(1).max(120),
+    sourceUrl: z.string().min(1).max(2048),
+    passage: NullableString,
+    createdAt: ISO,
+    updatedAt: ISO,
+  }),
+  z.object({
+    kind: z.literal("appendChatMessage"),
+    id: z.string().min(1).max(120),
+    threadId: z.string().min(1).max(120),
+    role: z.enum(["user", "assistant"]),
+    content: z.string().min(1).max(8000),
+    createdAt: ISO,
+  }),
 ])
 export type SyncJobInput = z.infer<typeof SyncJobInput>
 
