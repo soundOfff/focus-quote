@@ -61,9 +61,11 @@ export interface ToolbarShell {
 const readSide = (): ToolbarSide => {
   try {
     const v = localStorage.getItem(SIDE_STORAGE_KEY)
-    return v === "left" ? "left" : "right"
+    // Default to the left for new/unset users; an explicit "right" is honored.
+    if (v === "right") return "right"
+    return "left"
   } catch {
-    return "right"
+    return "left"
   }
 }
 
