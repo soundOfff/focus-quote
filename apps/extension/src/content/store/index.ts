@@ -2,6 +2,12 @@ import { createStore } from "zustand/vanilla"
 import { createJSONStorage, persist } from "zustand/middleware"
 import type { GuideStep, QuoteAssistantTurn } from "@focus-quote/shared"
 import { dualSessionStorage } from "./storageAdapter"
+import {
+  appendTurn,
+  conversationKey,
+  openConversation,
+  type ConversationMap,
+} from "./conversations"
 
 export interface ActionEvent {
   id: string
@@ -13,9 +19,14 @@ export interface ActionEvent {
 
 interface ChatSlice {
   isOpen: boolean
+  /** Normalized URL of the active conversation. */
+  activeUrl: string
+  /** Mirror of the active conversation's fields, for read convenience. */
   passage: string
   sourceUrl: string
   history: QuoteAssistantTurn[]
+  /** Every article's Conversation, keyed by normalized URL. */
+  conversations: ConversationMap
 }
 
 interface GuideSlice {
@@ -37,7 +48,6 @@ export interface ToolbarState {
   openChat: (passage: string, sourceUrl: string) => void
   closeChat: () => void
   appendChatTurn: (turn: QuoteAssistantTurn) => void
-  resetChat: () => void
   openGuide: (goal: string, steps: GuideStep[]) => void
   closeGuide: () => void
   patchGuide: (next: Partial<GuideSlice>) => void
@@ -47,9 +57,11 @@ export interface ToolbarState {
 
 const initialChat = (): ChatSlice => ({
   isOpen: false,
+  activeUrl: "",
   passage: "",
   sourceUrl: "",
   history: [],
+  conversations: {},
 })
 
 const initialGuide = (): GuideSlice => ({
@@ -71,20 +83,39 @@ export const toolbarStore = createStore<ToolbarState>()(
       guide: initialGuide(),
       actions: initialActions(),
       openChat: (passage, sourceUrl) =>
-        set((s) => ({
-          chat: s.chat.history.length
-            ? { ...s.chat, isOpen: true }
-            : { isOpen: true, passage, sourceUrl, history: [] },
-        })),
+        set((s) => {
+          const conversations = openConversation(
+            s.chat.conversations,
+            sourceUrl,
+            passage,
+          )
+          const key = conversationKey(sourceUrl)
+          const active = conversations[key] ?? { passage, history: [] }
+          return {
+            chat: {
+              isOpen: true,
+              activeUrl: key,
+              sourceUrl: key,
+              passage: active.passage,
+              history: active.history,
+              conversations,
+            },
+          }
+        }),
       closeChat: () => set((s) => ({ chat: { ...s.chat, isOpen: false } })),
       appendChatTurn: (turn) =>
-        set((s) => ({
-          chat: {
-            ...s.chat,
-            history: [...s.chat.history, turn].slice(-40),
-          },
-        })),
-      resetChat: () => set(() => ({ chat: initialChat() })),
+        set((s) => {
+          const conversations = appendTurn(
+            s.chat.conversations,
+            s.chat.activeUrl,
+            turn,
+          )
+          const active = conversations[conversationKey(s.chat.activeUrl)] ?? {
+            passage: s.chat.passage,
+            history: [],
+          }
+          return { chat: { ...s.chat, history: active.history, conversations } }
+        }),
       openGuide: (goal, steps) =>
         set(() => ({
           guide: {
@@ -110,6 +141,14 @@ export const toolbarStore = createStore<ToolbarState>()(
     }),
     {
       name: STORE_NAME,
+      version: 1,
+      // v0 stored a single global chat; v1 keys conversations by article URL.
+      // Drop the old chat shape on upgrade; guide/actions carry over.
+      migrate: (persisted, from) => {
+        const prev = (persisted ?? {}) as Partial<ToolbarState>
+        if (from < 1) return { ...prev, chat: initialChat() }
+        return prev
+      },
       storage: createJSONStorage(() => dualSessionStorage),
       partialize: (s) => ({
         chat: s.chat,

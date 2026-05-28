@@ -9,6 +9,7 @@ import {
 import { apiPost, ApiCallError } from "./api"
 import { aiFeatureEnabled } from "./ai-gate"
 import { toolbarStore } from "../store"
+import { getConversation } from "../store/conversations"
 import type {
   QuoteAssistantRequest,
   QuoteAssistantResponse,
@@ -312,19 +313,21 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
       )
       return
     }
-    const state = toolbarStore.getState().chat
-    if (state.history.length === 0) {
-      const passage = grabSelection()
-      if (!passage) {
-        openMessage(
-          "Highlight some text on the page first, then click Quote+AI to ask the assistant about it.",
-        )
-        return
-      }
-      toolbarStore.getState().openChat(passage, location.href)
-    } else {
-      toolbarStore.getState().openChat(state.passage, state.sourceUrl)
+    const url = location.href
+    const existing = getConversation(
+      toolbarStore.getState().chat.conversations,
+      url,
+    )
+    const passage = grabSelection()
+    // A brand-new conversation needs a highlighted passage to seed it; an
+    // existing one can be reopened (a new highlight, if any, adds context).
+    if ((!existing || existing.history.length === 0) && !passage) {
+      openMessage(
+        "Highlight some text on the page first, then click Quote+AI to ask the assistant about it.",
+      )
+      return
     }
+    toolbarStore.getState().openChat(passage, url)
     openChat()
   }
 

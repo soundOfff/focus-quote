@@ -7,7 +7,14 @@ describe("toolbarStore", () => {
     resetChromeStorage()
     sessionStorage.clear()
     toolbarStore.setState({
-      chat: { isOpen: false, passage: "", sourceUrl: "", history: [] },
+      chat: {
+        isOpen: false,
+        activeUrl: "",
+        passage: "",
+        sourceUrl: "",
+        history: [],
+        conversations: {},
+      },
       guide: { isOpen: false, steps: [], index: 0, status: "paused", goal: "" },
       actions: { buffer: [] },
     })
@@ -24,6 +31,20 @@ describe("toolbarStore", () => {
     expect(chat.isOpen).toBe(false)
     expect(chat.history).toHaveLength(1)
     expect(chat.passage).toBe("passage")
+  })
+
+  it("keeps separate conversations per article URL", () => {
+    toolbarStore.getState().openChat("p-a", "https://a.example.com/article")
+    toolbarStore.getState().appendChatTurn({ role: "user", content: "on a" })
+    toolbarStore.getState().openChat("p-b", "https://b.example.com/article")
+    toolbarStore.getState().appendChatTurn({ role: "user", content: "on b" })
+
+    // Reopening A (no new highlight) restores A's thread, not B's.
+    toolbarStore.getState().openChat("", "https://a.example.com/article")
+    const chat = toolbarStore.getState().chat
+    expect(chat.history).toHaveLength(1)
+    expect(chat.history[0]!.content).toBe("on a")
+    expect(chat.passage).toBe("p-a")
   })
 
   it("tracks guide status and action buffer", () => {

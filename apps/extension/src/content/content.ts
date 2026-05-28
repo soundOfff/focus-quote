@@ -8,7 +8,6 @@ import { initFocusToolbar } from "./toolbar"
 import { mountActionCapture } from "./actionCapture"
 import { extractPageContent } from "./pageContent"
 import { isAnyToolActive, subscribeToolState } from "./toolbar/tool-state"
-import { toolbarStore } from "./store"
 import { PREFS_KEY, defaultPrefs } from "../shared/prefs"
 import {
   isValidTranslateFrom,
@@ -37,10 +36,6 @@ type Prefs = {
   translateToLang: string
 }
 let activeSession: ActiveSession = null
-// Tracks the last-known session id so we can detect transitions
-// (start, end, switch) and flush per-session toolbar chat history.
-let lastSessionId: string | null = null
-let lastSessionInitialized = false
 let privacy: Privacy = { trackUrls: false, blocklist: [] }
 let prefs: Prefs = {
   translateFromLang: defaultPrefs.translateFromLang,
@@ -93,24 +88,6 @@ const refreshSessionAndPrivacy = async () => {
   if (selectionBar) {
     selectionBar.setFromLang(prefs.translateFromLang)
     selectionBar.setToLang(prefs.translateToLang)
-  }
-
-  // Each focus session gets a clean Quote+AI chat. Cross a session
-  // boundary (start, end, or switching to a different session) and we
-  // reset the persisted chat history so threads don't bleed between
-  // sessions. The initial page load establishes the baseline without
-  // wiping a thread the user might still be referencing.
-  const nextSessionId = activeSession?.sessionId ?? null
-  if (!lastSessionInitialized) {
-    lastSessionId = nextSessionId
-    lastSessionInitialized = true
-  } else if (nextSessionId !== lastSessionId) {
-    try {
-      toolbarStore.getState().resetChat()
-    } catch (err) {
-      console.warn("[FocusQuote] failed to flush chat on session change:", err)
-    }
-    lastSessionId = nextSessionId
   }
 }
 
