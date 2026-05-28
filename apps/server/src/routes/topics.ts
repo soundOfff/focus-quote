@@ -4,7 +4,12 @@ import { z } from "zod"
 import { and, desc, eq } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { db } from "../db/client"
-import { mediaBucketFiles, topicMedia } from "../db/schema"
+import {
+  focusSessions,
+  mediaBucketFiles,
+  topicMedia,
+  topics,
+} from "../db/schema"
 import {
   requireUser,
   type RequireUserVariables,
@@ -16,14 +21,61 @@ const AttachTopicMediaInput = z.object({
   note: z.string().max(280).nullable().optional(),
 })
 
+const RenameTopicInput = z.object({
+  name: z.string().min(1).max(60),
+})
+
 const decodeTopic = (raw: string) => decodeURIComponent(raw).slice(0, 60)
 
 export const topicsRoutes = new Hono<{ Variables: RequireUserVariables }>()
   .use("*", requireUser)
   .get("/", async (c) => {
     const userId = c.get("user").id
-    const topics = await listTopics(userId)
-    return c.json({ topics })
+    const list = await listTopics(userId)
+    return c.json({ topics: list })
+  })
+  // Rename a Topic by its stable id. The legacy text label is cascaded onto the
+  // user's focus sessions + topic media so label-keyed lookups stay consistent.
+  .patch("/:id", zValidator("json", RenameTopicInput), async (c) => {
+    const userId = c.get("user").id
+    const id = c.req.param("id")
+    const name = c.req.valid("json").name.trim()
+    if (!name) {
+      return c.json({ error: "Invalid name", code: "BAD_REQUEST" }, 400)
+    }
+    const [topic] = await db
+      .select({ id: topics.id })
+      .from(topics)
+      .where(and(eq(topics.id, id), eq(topics.userId, userId)))
+      .limit(1)
+    if (!topic) {
+      return c.json({ error: "Topic not found", code: "NOT_FOUND" }, 404)
+    }
+    const [clash] = await db
+      .select({ id: topics.id })
+      .from(topics)
+      .where(and(eq(topics.userId, userId), eq(topics.name, name)))
+      .limit(1)
+    if (clash && clash.id !== id) {
+      return c.json(
+        { error: "A topic with that name already exists", code: "CONFLICT" },
+        409,
+      )
+    }
+    const now = new Date().toISOString()
+    await db
+      .update(topics)
+      .set({ name, updatedAt: now })
+      .where(and(eq(topics.id, id), eq(topics.userId, userId)))
+    await db
+      .update(focusSessions)
+      .set({ topic: name })
+      .where(and(eq(focusSessions.userId, userId), eq(focusSessions.topicId, id)))
+    await db
+      .update(topicMedia)
+      .set({ topic: name })
+      .where(and(eq(topicMedia.userId, userId), eq(topicMedia.topicId, id)))
+    return c.json({ topic: { id, name } })
   })
   .get("/:label/media", async (c) => {
     const userId = c.get("user").id

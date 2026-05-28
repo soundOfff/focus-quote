@@ -6,6 +6,9 @@ export type QuoteId = Schema.Schema.Type<typeof QuoteId>
 export const SessionId = Schema.String.pipe(Schema.brand("SessionId"))
 export type SessionId = Schema.Schema.Type<typeof SessionId>
 
+export const TopicId = Schema.String.pipe(Schema.brand("TopicId"))
+export type TopicId = Schema.Schema.Type<typeof TopicId>
+
 export const SessionUrlId = Schema.String.pipe(Schema.brand("SessionUrlId"))
 export type SessionUrlId = Schema.Schema.Type<typeof SessionUrlId>
 

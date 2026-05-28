@@ -28,6 +28,7 @@ import type {
   RecallGradeRequest,
   RecallGradeResponse,
   ListTopicsResponse,
+  RenameTopicResponse,
   SyncBatchRequest,
   SyncBatchResponse,
   MeResponse,
@@ -62,7 +63,7 @@ import type {
 } from "@focus-quote/shared"
 
 interface RequestOptions {
-  method?: "GET" | "POST" | "DELETE" | "PUT"
+  method?: "GET" | "POST" | "DELETE" | "PUT" | "PATCH"
   json?: unknown
   query?: Record<string, string | number | undefined>
 }
@@ -209,6 +210,11 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
           { method: "POST", json: body },
         ),
       listTopics: () => request<ListTopicsResponse>("/api/topics"),
+      renameTopic: (id: string, name: string) =>
+        request<RenameTopicResponse>(`/api/topics/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          json: { name },
+        }),
       listTopicMedia: (label: string) =>
         request<{
           items: Array<{

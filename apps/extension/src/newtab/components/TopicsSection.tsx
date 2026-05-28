@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
-import { ImagePlus, Layers, Loader2, Timer, Trash2, X } from "lucide-preact"
+import { ImagePlus, Layers, Loader2, Pencil, Timer, Trash2, X } from "lucide-preact"
 import { ApiService } from "../../services/api"
 import { runP } from "../runtime"
 import type { Topic } from "@focus-quote/shared"
@@ -62,6 +62,12 @@ const detachMedia = (label: string, mediaId: string) =>
     yield* api
       .deleteTopicMedia(label, mediaId)
       .pipe(Effect.catchAll(() => Effect.void))
+  })
+
+const renameTopic = (id: string, name: string) =>
+  Effect.gen(function* () {
+    const api = yield* ApiService
+    return yield* api.renameTopic(id, name)
   })
 
 const fmtHours = (ms: number): string => {
@@ -155,6 +161,32 @@ export function TopicsSection() {
     runP(detachMedia(openTopic, mediaId)).catch(() => {})
   }
 
+  const handleRename = () => {
+    if (!openTopic) return
+    const current = openTopic
+    const target = topics.find((t) => t.name === current)
+    if (!target) return
+    const next = window.prompt("Rename topic", current)?.trim()
+    if (!next || next === current) return
+    runP(renameTopic(target.id, next))
+      .then(() => {
+        toast.success("Topic renamed.")
+        setOpenTopic(next)
+        return runP(loadTopics)
+      })
+      .then((t) => {
+        if (t) setTopics(t)
+        return runP(loadTopicMedia(next))
+      })
+      .then((items) => {
+        if (items) setMedia(items)
+      })
+      .catch((err) => {
+        console.error("[FocusQuote] rename topic:", err)
+        toast.error("Couldn't rename topic.")
+      })
+  }
+
   if (!ready) return null
   if (topics.length === 0) return null
 
@@ -215,6 +247,14 @@ export function TopicsSection() {
                   disabled={busy}
                 />
               </label>
+              <Button
+                onClick={handleRename}
+                variant="ghost"
+                size="sm"
+                aria-label="Rename topic"
+              >
+                <Pencil size={12} />
+              </Button>
               <Button onClick={close} variant="ghost" size="sm" aria-label="Close">
                 <X size={12} />
               </Button>

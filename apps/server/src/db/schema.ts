@@ -118,6 +118,29 @@ export const quotes = sqliteTable(
   }),
 )
 
+// First-class Topic entity (ADR 0001). A Topic groups focus sessions sharing a
+// theme and owns a Vault. Identity is the stable id; the AI-suggested name is a
+// mutable attribute. Backfilled from the legacy focus_sessions.topic label.
+export const topics = sqliteTable(
+  "topics",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    userNameUnique: uniqueIndex("topics_user_name_unique").on(t.userId, t.name),
+  }),
+)
+
 export const focusSessions = sqliteTable(
   "focus_sessions",
   {
@@ -141,6 +164,9 @@ export const focusSessions = sqliteTable(
     recallQuestions: text("recall_questions"),
     resourceRecommendations: text("resource_recommendations"),
     topic: text("topic"),
+    topicId: text("topic_id").references(() => topics.id, {
+      onDelete: "set null",
+    }),
   },
   (t) => ({
     userStartedIdx: index("focus_sessions_user_started_idx").on(
@@ -442,6 +468,9 @@ export const topicMedia = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     topic: text("topic").notNull(),
+    topicId: text("topic_id").references(() => topics.id, {
+      onDelete: "cascade",
+    }),
     fileId: text("file_id")
       .notNull()
       .references(() => mediaBucketFiles.id, { onDelete: "cascade" }),

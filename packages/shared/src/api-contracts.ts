@@ -123,6 +123,7 @@ export interface RecallGradeResponse {
 }
 
 export interface Topic {
+  id: string
   name: string
   sessionCount: number
   completedCount: number
@@ -132,6 +133,14 @@ export interface Topic {
 
 export interface ListTopicsResponse {
   topics: ReadonlyArray<Topic>
+}
+
+export interface RenameTopicRequest {
+  name: string
+}
+
+export interface RenameTopicResponse {
+  topic: { id: string; name: string }
 }
 
 // ---- Session URLs (AI analysis) ----
