@@ -320,6 +320,10 @@ export const userSettings = sqliteTable("user_settings", {
   recallAutoGenerate: integer("recall_auto_generate", { mode: "boolean" })
     .notNull()
     .default(true),
+  // Master switch for all token-spending AI features (ADR 0002). Off = no AI.
+  aiMasterEnabled: integer("ai_master_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
   updatedAt: text("updated_at")
     .notNull()
     .default(sql`(datetime('now'))`),

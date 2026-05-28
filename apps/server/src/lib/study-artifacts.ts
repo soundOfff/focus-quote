@@ -1,6 +1,7 @@
 import { and, asc, eq } from "drizzle-orm"
 import { db } from "../db/client"
 import { focusSessions, sessionUrls, userSettings } from "../db/schema"
+import { aiFeatureEnabledForUser } from "./ai-gate"
 import {
   generateRecallQuestions,
   generateResourceRecommendations,
@@ -119,6 +120,9 @@ const maybeGenerate = async (
   opts: { force?: boolean } = {},
 ): Promise<void> => {
   try {
+    // Master AI gate (ADR 0002): never spend tokens for a disabled feature,
+    // even on an explicit force-regenerate.
+    if (!(await aiFeatureEnabledForUser(userId, artifact))) return
     const ctx = await loadInput(userId, sessionId)
     if (!ctx) return
     if (!opts.force && ctx.session[artifact]) return // cached

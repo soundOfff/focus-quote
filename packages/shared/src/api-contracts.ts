@@ -341,6 +341,7 @@ export interface UpdateUserSettingsRequest {
   debugOverlayEnabled?: boolean
   notificationsBlocked?: boolean
   toolbarSide?: "left" | "right"
+  aiMasterEnabled?: boolean
 }
 
 export interface UpdateUserSettingsResponse {

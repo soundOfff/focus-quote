@@ -2,6 +2,7 @@ import { and, asc, eq } from "drizzle-orm"
 import { db } from "../db/client"
 import { focusSessions, sessionUrls } from "../db/schema"
 import { summarizeSession } from "./llm"
+import { aiFeatureEnabledForUser } from "./ai-gate"
 
 /**
  * Generates and persists an AI summary for a completed session, if one
@@ -19,6 +20,8 @@ export const maybeGenerateSummary = async (
   opts: { force?: boolean } = {},
 ): Promise<void> => {
   try {
+    // Master AI gate (ADR 0002).
+    if (!(await aiFeatureEnabledForUser(userId, "sessionSummary"))) return
     const [session] = await db
       .select({
         id: focusSessions.id,

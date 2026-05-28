@@ -25,6 +25,7 @@ const toDTO = (row: SettingsRow) => ({
   recallQuestionCount: row.recallQuestionCount,
   recallDepth: row.recallDepth as "easy" | "standard" | "challenging",
   recallAutoGenerate: row.recallAutoGenerate,
+  aiMasterEnabled: row.aiMasterEnabled,
   updatedAt: row.updatedAt,
 })
 
@@ -78,6 +79,7 @@ export const settingsRoutes = new Hono<{ Variables: RequireUserVariables }>()
       recallQuestionCount: clampRecallCount(body.recallQuestionCount),
       recallDepth: body.recallDepth ?? "standard",
       recallAutoGenerate: body.recallAutoGenerate ?? true,
+      aiMasterEnabled: body.aiMasterEnabled ?? true,
       updatedAt: now,
     }
     await db

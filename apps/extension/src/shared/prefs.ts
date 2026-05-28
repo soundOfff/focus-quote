@@ -175,6 +175,7 @@ const settingsPayload = (prefs: Prefs, extras: PrefsRemoteExtras = {}) => ({
   recallQuestionCount: prefs.recallQuestionCount,
   recallDepth: prefs.recallDepth,
   recallAutoGenerate: prefs.recallAutoGenerate,
+  aiMasterEnabled: prefs.aiMasterEnabled,
   ...(extras.todayGoal !== undefined ? { todayGoal: extras.todayGoal } : {}),
   ...(extras.debugOverlayEnabled !== undefined
     ? { debugOverlayEnabled: extras.debugOverlayEnabled }
@@ -209,9 +210,7 @@ export const pullPrefsFromRemote = (
       recallDepth: (s as { recallDepth?: unknown }).recallDepth,
       recallAutoGenerate: (s as { recallAutoGenerate?: unknown })
         .recallAutoGenerate,
-      // aiMasterEnabled is local-only for now (not yet persisted server-side),
-      // so carry the local value forward rather than letting it reset.
-      aiMasterEnabled: fallback.aiMasterEnabled,
+      aiMasterEnabled: (s as { aiMasterEnabled?: unknown }).aiMasterEnabled,
     })
     yield* savePrefs(storage, next)
     return next

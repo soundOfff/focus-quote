@@ -85,6 +85,13 @@
       "when": 1780001201483,
       "tag": "0011_tired_azazel",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1780002132910,
+      "tag": "0012_light_sentinel",
+      "breakpoints": true
     }
   ]
 }

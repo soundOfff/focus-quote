@@ -181,6 +181,7 @@ export const UserSettingsInput = z.object({
   recallQuestionCount: RecallQuestionCountInput.optional(),
   recallDepth: RecallDepthInput.optional(),
   recallAutoGenerate: z.boolean().optional(),
+  aiMasterEnabled: z.boolean().optional(),
 })
 export type UserSettingsInput = z.infer<typeof UserSettingsInput>
 

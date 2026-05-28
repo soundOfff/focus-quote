@@ -179,6 +179,9 @@ export const UserSettings = Schema.Struct({
   debugOverlayEnabled: Schema.Boolean,
   notificationsBlocked: Schema.Boolean,
   toolbarSide: Schema.Literal("left", "right"),
+  aiMasterEnabled: Schema.optionalWith(Schema.Boolean, {
+    default: () => true,
+  }),
   updatedAt: Schema.String,
 })
 export type UserSettings = Schema.Schema.Type<typeof UserSettings>

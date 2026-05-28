@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto"
 import { db } from "../db/client"
 import { focusSessions, sessionUrls, topicMedia, topics } from "../db/schema"
 import { generateGoalSummary, generateTopic } from "./llm"
+import { loadAiGateSettings } from "./ai-gate"
 
 type Database = typeof db
 
@@ -16,6 +17,7 @@ export const maybeAutoDeriveGoal = async (
   sessionId: string,
 ): Promise<void> => {
   try {
+    if (!(await loadAiGateSettings(userId)).masterEnabled) return
     const [session] = await db
       .select({
         id: focusSessions.id,
@@ -71,6 +73,7 @@ export const maybeGenerateTopic = async (
   sessionId: string,
 ): Promise<void> => {
   try {
+    if (!(await loadAiGateSettings(userId)).masterEnabled) return
     const [session] = await db
       .select({
         id: focusSessions.id,
