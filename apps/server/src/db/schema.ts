@@ -149,6 +149,10 @@ export const focusSessions = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     goal: text("goal"),
+    // AI-generated session label (issue #9). Distinct from goal: opt-in,
+    // never overwrites a user goal, and only surfaces as the label when the
+    // goal is empty. Gated by the autoTitle AI feature (ADR 0002).
+    title: text("title"),
     durationMinutes: integer("duration_minutes").notNull().default(25),
     breakMinutes: integer("break_minutes").notNull().default(5),
     completed: integer("completed", { mode: "boolean" })
@@ -324,6 +328,11 @@ export const userSettings = sqliteTable("user_settings", {
   aiMasterEnabled: integer("ai_master_enabled", { mode: "boolean" })
     .notNull()
     .default(true),
+  // Per-feature override for the auto-title generator (issue #9). Default off
+  // (the autoTitle feature is "auto" tier — opt-in, spends tokens unprompted).
+  autoTitleEnabled: integer("auto_title_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
   updatedAt: text("updated_at")
     .notNull()
     .default(sql`(datetime('now'))`),

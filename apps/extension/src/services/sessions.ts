@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect"
 import { StorageService } from "./storage"
 import { SyncService } from "./sync"
+import { ApiService } from "./api"
 import { Session, NewSession, type SessionId } from "@focus-quote/shared"
 import { ValidationError } from "../shared/errors"
 
@@ -44,6 +45,7 @@ export class SessionsService extends Effect.Service<SessionsService>()(
     effect: Effect.gen(function* () {
       const storage = yield* StorageService
       const sync = yield* SyncService
+      const api = yield* ApiService
 
       const readAll = Effect.gen(function* () {
         const raw = yield* storage.get<unknown>(SESSIONS_KEY)
@@ -62,7 +64,23 @@ export class SessionsService extends Effect.Service<SessionsService>()(
           const arr = Object.values(all).sort((a, b) =>
             b.startedAt.localeCompare(a.startedAt),
           )
-          return limit ? arr.slice(0, limit) : arr
+          const sliced = limit ? arr.slice(0, limit) : arr
+          // Overlay server-generated titles (issue #9). Titles are produced
+          // server-side and aren't part of the local-first store, so we fetch
+          // and merge by id. Fail-open: offline or signed-out → local data
+          // unchanged.
+          const titles = yield* api.listSessions().pipe(
+            Effect.map((res) => {
+              const map = new Map<string, string | null | undefined>()
+              for (const s of res.sessions) map.set(s.id, s.title)
+              return map
+            }),
+            Effect.catchAll(() => Effect.succeed(null)),
+          )
+          if (!titles) return sliced
+          return sliced.map((s) =>
+            titles.has(s.id) ? { ...s, title: titles.get(s.id) } : s,
+          )
         })
 
       const start = (input: NewSession) =>
@@ -156,6 +174,10 @@ export class SessionsService extends Effect.Service<SessionsService>()(
 
       return { list, start, complete, cancel, getActive, stats }
     }),
-    dependencies: [StorageService.Default, SyncService.Default],
+    dependencies: [
+      StorageService.Default,
+      SyncService.Default,
+      ApiService.Default,
+    ],
   },
 ) {}

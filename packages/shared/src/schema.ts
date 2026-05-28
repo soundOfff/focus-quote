@@ -48,6 +48,9 @@ export type NewQuote = Schema.Schema.Type<typeof NewQuote>
 export const Session = Schema.Struct({
   id: SessionId,
   goal: NullableString,
+  // AI-generated label (issue #9). Server-provided; absent on locally-created
+  // sessions, so the key is optional (undefined until the server fills it).
+  title: Schema.optional(NullableString),
   durationMinutes: Schema.Number,
   breakMinutes: Schema.Number,
   completed: Schema.Boolean,
@@ -181,6 +184,10 @@ export const UserSettings = Schema.Struct({
   toolbarSide: Schema.Literal("left", "right"),
   aiMasterEnabled: Schema.optionalWith(Schema.Boolean, {
     default: () => true,
+  }),
+  // Opt-in auto-title generator toggle (issue #9). Default off.
+  autoTitleEnabled: Schema.optionalWith(Schema.Boolean, {
+    default: () => false,
   }),
   updatedAt: Schema.String,
 })

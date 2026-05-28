@@ -2,8 +2,8 @@ import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { db } from "../db/client"
 import { focusSessions, sessionUrls, topicMedia, topics } from "../db/schema"
-import { generateGoalSummary, generateTopic } from "./llm"
-import { loadAiGateSettings } from "./ai-gate"
+import { generateGoalSummary, generateSessionTitle, generateTopic } from "./llm"
+import { aiFeatureEnabledForUser, loadAiGateSettings } from "./ai-gate"
 
 type Database = typeof db
 
@@ -59,6 +59,69 @@ export const maybeAutoDeriveGoal = async (
       )
   } catch (err) {
     console.warn("[topic] auto-derive goal failed for", sessionId, err)
+  }
+}
+
+/**
+ * Auto-Title (issue #9). When the autoTitle feature is opted in AND the user
+ * set no goal, derive a short session title from the session's Topic + visited
+ * URLs and store it under `title`. Never touches `goal` — the title is a
+ * separate label shown only when the goal is empty. Skips when a title already
+ * exists (unless `force`). Self-gating + fail-open, so it is safe to `void`
+ * from any completion path.
+ */
+export const maybeGenerateTitle = async (
+  userId: string,
+  sessionId: string,
+  opts: { force?: boolean } = {},
+): Promise<void> => {
+  try {
+    if (!(await aiFeatureEnabledForUser(userId, "autoTitle"))) return
+    const [session] = await db
+      .select({
+        id: focusSessions.id,
+        goal: focusSessions.goal,
+        title: focusSessions.title,
+        topic: focusSessions.topic,
+      })
+      .from(focusSessions)
+      .where(
+        and(eq(focusSessions.id, sessionId), eq(focusSessions.userId, userId)),
+      )
+      .limit(1)
+    if (!session) return
+    // A real goal owns the label — never compete with or overwrite it.
+    if (session.goal && session.goal.trim().length > 0) return
+    if (!opts.force && session.title) return
+
+    const urls = await db
+      .select({
+        url: sessionUrls.url,
+        title: sessionUrls.title,
+        category: sessionUrls.category,
+      })
+      .from(sessionUrls)
+      .where(
+        and(
+          eq(sessionUrls.sessionId, sessionId),
+          eq(sessionUrls.userId, userId),
+        ),
+      )
+      .orderBy(asc(sessionUrls.visitedAt))
+      .limit(30)
+    if (urls.length === 0) return
+
+    const title = await generateSessionTitle({ topic: session.topic, urls })
+    if (!title) return
+
+    await db
+      .update(focusSessions)
+      .set({ title })
+      .where(
+        and(eq(focusSessions.id, sessionId), eq(focusSessions.userId, userId)),
+      )
+  } catch (err) {
+    console.warn("[topic] auto-title failed for", sessionId, err)
   }
 }
 

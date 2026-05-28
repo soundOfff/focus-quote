@@ -582,6 +582,7 @@ export function SessionDetail({ sessionId }: Props) {
     new Set(),
   )
   const [aiMasterEnabled, setAiMasterEnabled] = useState(true)
+  const [autoTitleEnabled, setAutoTitleEnabled] = useState(false)
   const [generatingAll, setGeneratingAll] = useState(false)
 
   useEffect(() => {
@@ -591,6 +592,9 @@ export function SessionDetail({ sessionId }: Props) {
         const p = out[PREFS_KEY] as Record<string, unknown> | undefined
         if (typeof p?.aiMasterEnabled === "boolean") {
           setAiMasterEnabled(p.aiMasterEnabled)
+        }
+        if (typeof p?.autoTitleEnabled === "boolean") {
+          setAutoTitleEnabled(p.autoTitleEnabled)
         }
       })
       .catch(() => {})
@@ -603,6 +607,17 @@ export function SessionDetail({ sessionId }: Props) {
       if (isAiFeatureEnabled(t.feature, { masterEnabled: aiMasterEnabled })) {
         targets.push(t.artifact)
       }
+    }
+    // Auto-title only applies to goal-less sessions (issue #9); the server
+    // skips it otherwise, but we avoid the wasted round-trip here.
+    if (
+      !data?.session?.goal &&
+      isAiFeatureEnabled("autoTitle", {
+        masterEnabled: aiMasterEnabled,
+        featureOverrides: { autoTitle: autoTitleEnabled },
+      })
+    ) {
+      targets.push("title")
     }
     if (targets.length === 0) return
     setGeneratingAll(true)
@@ -745,7 +760,7 @@ export function SessionDetail({ sessionId }: Props) {
             )}
           </div>
           <h1 class="text-balance text-2xl font-bold text-ink">
-            {s.goal || (
+            {s.goal || s.title || (
               <span class="text-mute">Session without a goal</span>
             )}
           </h1>

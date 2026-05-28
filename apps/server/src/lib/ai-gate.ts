@@ -16,11 +16,19 @@ export const loadAiGateSettings = async (
   userId: string,
 ): Promise<AiGateSettings> => {
   const [row] = await db
-    .select({ aiMasterEnabled: userSettings.aiMasterEnabled })
+    .select({
+      aiMasterEnabled: userSettings.aiMasterEnabled,
+      autoTitleEnabled: userSettings.autoTitleEnabled,
+    })
     .from(userSettings)
     .where(eq(userSettings.userId, userId))
     .limit(1)
-  return { masterEnabled: row ? row.aiMasterEnabled : true }
+  if (!row) return { masterEnabled: true }
+  return {
+    masterEnabled: row.aiMasterEnabled,
+    // Only "auto"-tier features need an explicit opt-in override persisted.
+    featureOverrides: { autoTitle: row.autoTitleEnabled },
+  }
 }
 
 export const aiFeatureEnabledForUser = async (

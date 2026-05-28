@@ -356,6 +356,12 @@ function AppInner() {
     debouncedPrefsPersist(next)
   }
 
+  const setAutoTitleEnabled = (enabled: boolean) => {
+    const next: Prefs = { ...prefs, autoTitleEnabled: enabled }
+    setPrefs(next)
+    debouncedPrefsPersist(next)
+  }
+
   const setRecallEnabled = (enabled: boolean) => {
     const next: Prefs = { ...prefs, recallEnabled: enabled }
     setPrefs(next)
@@ -631,6 +637,32 @@ function AppInner() {
                       ariaLabel="Toggle AI assistance"
                     />
                   </div>
+                </Surface>
+
+                <Surface>
+                  <SectionHeader
+                    title="Auto-title sessions"
+                    subtitle="When you start a session without a goal, FocusQuote can name it for you from its topic and the pages you visited. Off by default — it spends a few tokens per session."
+                  />
+                  <div class="flex items-center justify-between">
+                    <span class="text-[13px] text-ink-2">
+                      {prefs.autoTitleEnabled
+                        ? "Auto-title enabled"
+                        : "Auto-title disabled"}
+                    </span>
+                    <Toggle
+                      enabled={prefs.autoTitleEnabled}
+                      onToggle={() =>
+                        setAutoTitleEnabled(!prefs.autoTitleEnabled)
+                      }
+                      ariaLabel="Toggle auto-title"
+                    />
+                  </div>
+                  {!prefs.aiMasterEnabled && (
+                    <p class="mt-2 text-[11px] text-muted">
+                      Turn on AI assistance above for this to take effect.
+                    </p>
+                  )}
                 </Surface>
 
                 <Surface>

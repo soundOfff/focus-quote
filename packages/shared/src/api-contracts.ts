@@ -103,6 +103,7 @@ export type RegenerateArtifact =
   | "recallQuestions"
   | "resourceRecommendations"
   | "topic"
+  | "title"
 
 export interface RegenerateRequest {
   artifact: RegenerateArtifact
@@ -342,6 +343,7 @@ export interface UpdateUserSettingsRequest {
   notificationsBlocked?: boolean
   toolbarSide?: "left" | "right"
   aiMasterEnabled?: boolean
+  autoTitleEnabled?: boolean
 }
 
 export interface UpdateUserSettingsResponse {

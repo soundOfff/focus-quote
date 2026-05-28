@@ -216,7 +216,7 @@ export function SessionCard({ session }: CardProps) {
         <div class="flex-1 min-w-0">
           <div class="mb-1.5 flex flex-wrap items-center gap-2">
             <span class="truncate text-sm font-semibold text-ink">
-              {session.goal || (
+              {session.goal || session.title || (
                 <span class="text-mute">No goal</span>
               )}
             </span>

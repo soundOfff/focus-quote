@@ -26,8 +26,10 @@ import {
 import {
   ensureTopicId,
   maybeAutoDeriveGoal,
+  maybeGenerateTitle,
   maybeGenerateTopic,
 } from "../lib/topic"
+import { aiFeatureEnabledForUser } from "../lib/ai-gate"
 import { gradeRecallAnswer } from "../lib/llm"
 
 const VaultLinkInput = z.object({
@@ -144,19 +146,28 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
     // generation (fire-and-forget — generation may take a few seconds and
     // we don't want to block the response).
     if (row.completed) {
-      // Auto-derive the goal first if the user didn't set one, so downstream
-      // study artifacts (recall / recommendations / topic / summary) can
-      // benefit from a meaningful goal string.
+      // When the user set no goal, one of two AI fillers labels the session:
+      // an opt-in auto-Title (issue #9) or, by default, an auto-derived Goal.
+      // Only one runs so we never double-spend or compete for the label.
       const hasGoal = (row.goal ?? "").trim().length > 0
       const downstream = async () => {
-        if (!hasGoal) await maybeAutoDeriveGoal(userId, row.id)
+        const autoTitle =
+          !hasGoal && (await aiFeatureEnabledForUser(userId, "autoTitle"))
+        if (!hasGoal && !autoTitle) await maybeAutoDeriveGoal(userId, row.id)
         if (!row.summary) void maybeGenerateSummary(userId, row.id)
         if (!row.studyTips) void maybeGenerateStudyTips(userId, row.id)
         if (!row.recallQuestions)
           void maybeGenerateRecallQuestions(userId, row.id)
         if (!row.resourceRecommendations)
           void maybeGenerateResourceRecommendations(userId, row.id)
-        if (!row.topic) void maybeGenerateTopic(userId, row.id)
+        // Topic feeds the title prompt, so on the auto-title path resolve it
+        // first (awaited) before deriving the title.
+        if (autoTitle) {
+          if (!row.topic) await maybeGenerateTopic(userId, row.id)
+          await maybeGenerateTitle(userId, row.id)
+        } else if (!row.topic) {
+          void maybeGenerateTopic(userId, row.id)
+        }
       }
       void downstream()
     }
@@ -276,6 +287,7 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
           "recallQuestions",
           "resourceRecommendations",
           "topic",
+          "title",
         ]),
       }),
     ),
@@ -315,6 +327,17 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
             ),
           )
         await maybeGenerateTopic(userId, id)
+      } else if (artifact === "title") {
+        await db
+          .update(focusSessions)
+          .set({ title: null })
+          .where(
+            and(
+              eq(focusSessions.id, id),
+              eq(focusSessions.userId, userId),
+            ),
+          )
+        await maybeGenerateTitle(userId, id, { force: true })
       } else {
         // study-artifacts (3 of them)
         await forceRegenerate(userId, id, artifact)
@@ -382,6 +405,7 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
 const toSessionDTO = (row: typeof focusSessions.$inferSelect) => ({
   id: row.id,
   goal: row.goal,
+  title: row.title,
   durationMinutes: row.durationMinutes,
   breakMinutes: row.breakMinutes,
   completed: row.completed,

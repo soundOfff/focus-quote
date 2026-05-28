@@ -182,6 +182,7 @@ export const UserSettingsInput = z.object({
   recallDepth: RecallDepthInput.optional(),
   recallAutoGenerate: z.boolean().optional(),
   aiMasterEnabled: z.boolean().optional(),
+  autoTitleEnabled: z.boolean().optional(),
 })
 export type UserSettingsInput = z.infer<typeof UserSettingsInput>
 

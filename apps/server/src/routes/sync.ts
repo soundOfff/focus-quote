@@ -11,7 +11,7 @@ import {
   maybeGenerateResourceRecommendations,
   maybeGenerateStudyTips,
 } from "../lib/study-artifacts"
-import { maybeGenerateTopic } from "../lib/topic"
+import { maybeGenerateTitle, maybeGenerateTopic } from "../lib/topic"
 
 type Result = { ok: true; deduped?: true } | { ok: false; error: string }
 
@@ -63,6 +63,8 @@ export const syncRoutes = new Hono<{ Variables: RequireUserVariables }>()
       void maybeGenerateRecallQuestions(userId, id)
       void maybeGenerateResourceRecommendations(userId, id)
       void maybeGenerateTopic(userId, id)
+      // Self-gated + only writes when the goal is empty (issue #9).
+      void maybeGenerateTitle(userId, id)
     }
 
     return c.json({ results })

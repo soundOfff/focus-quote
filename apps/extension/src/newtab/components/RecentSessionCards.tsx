@@ -72,7 +72,7 @@ export function RecentSessionCards({
               </div>
               <div class="flex min-w-0 flex-1 flex-col gap-1 px-3 py-3 pr-2">
                 <span class="truncate text-sm font-semibold text-ink">
-                  {session.goal || "Session without a goal"}
+                  {session.goal || session.title || "Session without a goal"}
                 </span>
                 <p class="line-clamp-2 text-xs leading-relaxed text-mute">
                   {d.blurb}

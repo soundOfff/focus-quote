@@ -98,6 +98,12 @@ Produce ONE short phrase (4-8 words, no period, no markdown) describing the most
 Avoid generic phrases like "Browsing the web" unless the URLs are truly mixed/unfocused.
 Reply with strict JSON: {"goal": string}. No prose outside JSON, no markdown fences.`
 
+const SYSTEM_TITLE = `You are titling a focus session for a tidy history list, in the user's language.
+You receive the session's broad topic category and the pages visited (with titles).
+Produce ONE concise title (2-6 words, Title Case, no period, no quotes, no markdown) naming the specific subject of the session — e.g. "React Server Components", "Borrow Checker Lifetimes", "Senior PM Applications".
+Be specific to the visited content; lean on the topic category only for framing. Avoid generic titles like "Web Browsing" unless the pages are truly unfocused.
+Reply with strict JSON: {"title": string}. No prose outside JSON, no markdown fences.`
+
 const SYSTEM_RESOURCES = `You are a study coach recommending additional resources after a focus session.
 You receive the session goal and the URLs the user visited.
 Recommend 3 to 5 ADDITIONAL resources (not already in their visited list) that fill gaps or deepen the topic. Aim for at least 3 — if you can only find 3 high-confidence resources, that is fine.
@@ -382,6 +388,34 @@ export const generateTopic = async (
     return match ?? "Other"
   } catch (err) {
     console.warn("[llm] generateTopic failed:", err)
+    return null
+  }
+}
+
+export const generateSessionTitle = async (input: {
+  topic: string | null
+  urls: Array<{ url: string; category: string | null; title: string | null }>
+}): Promise<string | null> => {
+  if (input.urls.length === 0) return null
+  try {
+    const text = await generate({
+      system: SYSTEM_TITLE,
+      user: JSON.stringify({
+        topic: input.topic ?? "(uncategorized)",
+        urls: input.urls.slice(0, 30),
+      }),
+      maxTokens: 40,
+      tier: "fast",
+      expectJson: true,
+    })
+    if (!text) return null
+    const parsed = JSON.parse(stripFences(text)) as { title?: unknown }
+    if (typeof parsed.title !== "string") return null
+    const trimmed = parsed.title.trim().replace(/^["']|["']$/g, "").replace(/\.$/, "")
+    if (!trimmed) return null
+    return trimmed.slice(0, 80)
+  } catch (err) {
+    console.warn("[llm] generateSessionTitle failed:", err)
     return null
   }
 }

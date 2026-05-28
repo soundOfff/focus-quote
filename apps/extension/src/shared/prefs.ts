@@ -30,6 +30,7 @@ export const Prefs = Schema.Struct({
   recallDepth: RecallDepth,
   recallAutoGenerate: Schema.Boolean,
   aiMasterEnabled: Schema.Boolean,
+  autoTitleEnabled: Schema.Boolean,
 })
 export type Prefs = Schema.Schema.Type<typeof Prefs>
 
@@ -44,6 +45,7 @@ export const defaultPrefs: Prefs = {
   recallDepth: "standard",
   recallAutoGenerate: true,
   aiMasterEnabled: true,
+  autoTitleEnabled: false,
 }
 
 const clampInt = (value: unknown, min: number, max: number, fallback: number) => {
@@ -112,6 +114,10 @@ const normalizePrefs = (raw: unknown): Prefs => {
       input.aiMasterEnabled,
       defaultPrefs.aiMasterEnabled,
     ),
+    autoTitleEnabled: parseBool(
+      input.autoTitleEnabled,
+      defaultPrefs.autoTitleEnabled,
+    ),
   }
 }
 
@@ -176,6 +182,7 @@ const settingsPayload = (prefs: Prefs, extras: PrefsRemoteExtras = {}) => ({
   recallDepth: prefs.recallDepth,
   recallAutoGenerate: prefs.recallAutoGenerate,
   aiMasterEnabled: prefs.aiMasterEnabled,
+  autoTitleEnabled: prefs.autoTitleEnabled,
   ...(extras.todayGoal !== undefined ? { todayGoal: extras.todayGoal } : {}),
   ...(extras.debugOverlayEnabled !== undefined
     ? { debugOverlayEnabled: extras.debugOverlayEnabled }
@@ -211,6 +218,7 @@ export const pullPrefsFromRemote = (
       recallAutoGenerate: (s as { recallAutoGenerate?: unknown })
         .recallAutoGenerate,
       aiMasterEnabled: (s as { aiMasterEnabled?: unknown }).aiMasterEnabled,
+      autoTitleEnabled: (s as { autoTitleEnabled?: unknown }).autoTitleEnabled,
     })
     yield* savePrefs(storage, next)
     return next
