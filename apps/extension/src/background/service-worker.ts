@@ -13,6 +13,7 @@ import {
   isCaptureVisibleTabMessage,
   isRuntimeMessage,
   isSpaNavMessage,
+  isSyncConversationMessage,
   type ApiProxyResponse,
   type ActionEventMessage,
   type CaptureVisibleTabMessage,
@@ -21,7 +22,12 @@ import {
   type RuntimeResponse,
   type SaveQuoteMessage,
   type SpaNavMessage,
+  type SyncConversationMessage,
 } from "../shared/messages"
+import {
+  buildConversationSyncJobs,
+  conversationThreadId,
+} from "../services/conversation-sync"
 import { AUTH_TOKEN_KEY } from "../shared/auth-storage"
 import type { SessionId } from "@focus-quote/shared"
 import { emitDebug } from "../shared/debug"
@@ -523,6 +529,39 @@ chrome.runtime.onMessage.addListener(
     return true
   },
 )
+
+/**
+ * Enqueue one Conversation turn into the offline sync queue, then drain. The
+ * thread id is derived deterministically from the article URL so every device
+ * converges on a single ai_chat_thread; the message id is minted once here, so
+ * a re-drain is idempotent server-side.
+ */
+const handleSyncConversation = (msg: SyncConversationMessage) =>
+  Effect.gen(function* () {
+    const threadId = yield* Effect.promise(() => conversationThreadId(msg.url))
+    const now = new Date().toISOString()
+    const messageId = crypto.randomUUID()
+    const jobs = buildConversationSyncJobs({
+      threadId,
+      sourceUrl: msg.url,
+      passage: msg.passage,
+      turns: [{ id: messageId, role: msg.role, content: msg.content, createdAt: now }],
+      now,
+    })
+    const sync = yield* SyncService
+    for (const job of jobs) {
+      yield* sync.enqueue(job).pipe(Effect.either)
+    }
+    yield* sync.drain.pipe(Effect.either)
+  })
+
+chrome.runtime.onMessage.addListener((msg: unknown) => {
+  if (!isSyncConversationMessage(msg)) return false
+  void runWithServices(handleSyncConversation(msg)).catch((err) =>
+    console.warn("[FocusQuote] conversation sync failed:", err),
+  )
+  return false
+})
 
 /**
  * Viewport-only screenshot. Forwards to `chrome.tabs.captureVisibleTab` —

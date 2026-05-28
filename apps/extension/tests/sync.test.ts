@@ -134,6 +134,35 @@ describe("SyncService", () => {
     expect(calls).toBe(0)
   })
 
+  it("drains conversation chat jobs through the offline queue", async () => {
+    const program = Effect.gen(function* () {
+      const sync = yield* SyncService
+      yield* sync.enqueue({
+        kind: "upsertChatThread",
+        id: "conv_x",
+        sourceUrl: "https://example.com/p",
+        passage: "ctx",
+        createdAt: "2026-05-28T00:00:00Z",
+        updatedAt: "2026-05-28T00:00:00Z",
+      })
+      yield* sync.enqueue({
+        kind: "appendChatMessage",
+        id: "m1",
+        threadId: "conv_x",
+        role: "user",
+        content: "hi",
+        createdAt: "2026-05-28T00:00:01Z",
+      })
+      const result = yield* sync.drain
+      const remaining = yield* sync.queueSize
+      return { result, remaining }
+    }).pipe(Effect.provide(TestLayer))
+
+    const r = await Effect.runPromise(program)
+    expect(r.result.applied).toBe(2)
+    expect(r.remaining).toBe(0)
+  })
+
   it("keeps individual failed items in the queue, drops successes", async () => {
     mode = "fail-second"
     const program = Effect.gen(function* () {

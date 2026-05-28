@@ -322,5 +322,24 @@ export const SyncJob = Schema.Union(
     payload: Schema.String,
     at: Schema.String,
   }),
+  // A persistent Quote+AI Conversation, drained into ai_chat_threads. The id is
+  // derived deterministically from the article URL so every device converges on
+  // one thread per article. `passage` carries the latest highlight as context.
+  Schema.Struct({
+    kind: Schema.Literal("upsertChatThread"),
+    id: Schema.String,
+    sourceUrl: Schema.String,
+    passage: NullableString,
+    createdAt: Schema.String,
+    updatedAt: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("appendChatMessage"),
+    id: Schema.String,
+    threadId: Schema.String,
+    role: AiChatRole,
+    content: Schema.String,
+    createdAt: Schema.String,
+  }),
 )
 export type SyncJob = Schema.Schema.Type<typeof SyncJob>
