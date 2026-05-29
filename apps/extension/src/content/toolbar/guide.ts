@@ -10,6 +10,8 @@ import {
 import { apiPost, ApiCallError } from "./api"
 import { aiFeatureEnabled } from "./ai-gate"
 import { toolbarStore } from "../store"
+import { capturePageContext } from "./page-context"
+import { resolveGuidePoint, labelMatchesStep } from "./guide-geometry"
 import type { GuideStep, GuideStepsResponse } from "@focus-quote/shared"
 
 // Local persistence for the "Recent" section under Guide-me prompts. Stored
@@ -47,13 +49,17 @@ const pushRecent = (goal: string) => {
 /**
  * Ghost Cursor Guide Me — Part 4.
  *
- * The user types a goal. We send it to /api/ai/guide-steps which returns an
- * ordered list of `{instruction, x, y, description}` waypoints in normalized
- * viewport coordinates. We then render an animated semi-transparent cursor
- * that walks through them with playback controls.
+ * The user types a goal. Before sending it we snapshot the page's real
+ * interactive elements (see `page-context.ts`) and send that catalog alongside
+ * the goal to /api/ai/guide-steps. The model returns an ordered list of
+ * `{instruction, x, y, description, ref}` waypoints, where `ref` points at one
+ * of the captured elements. During playback we re-measure each referenced
+ * element's *live* position so the ghost cursor lands on the actual button /
+ * menu, scrolling it into view and following it on scroll/resize.
  *
- * Coordinates are normalized so window resizes during playback don't break.
- * Everything is dismissed by any click outside the cursor / control surface.
+ * The stored normalized x/y are a fallback used only when a step has no live
+ * element (no match, the element was removed, or playback resumed after a
+ * reload). Everything is dismissed by any click outside the cursor / controls.
  */
 
 interface GuideController {
@@ -88,7 +94,7 @@ document.addEventListener(
 
 const renderGuideUI = (
   shell: ToolbarShell,
-  opts: { resume?: boolean } = {},
+  opts: { resume?: boolean; liveElements?: (Element | null)[] } = {},
 ): GuideController => {
   // The cursor is two stacked elements:
   //   - outer (`cursor`): driven by `offset-path` (or `left/top` fallback).
@@ -255,6 +261,67 @@ const renderGuideUI = (
   let lastPoint = { x: window.innerWidth * 0.5, y: window.innerHeight * 0.5 }
   const getState = () => toolbarStore.getState().guide
 
+  // Live DOM element backing each step, by step index. Prefer these over the
+  // stored normalized coords so the cursor lands on the REAL control. Populated
+  // below from the capture (fresh run) or by re-matching labels (resume).
+  let stepEls: (Element | null)[] = []
+
+  const viewport = () => ({ w: window.innerWidth, h: window.innerHeight })
+
+  const liveRectFor = (i: number): DOMRect | null => {
+    const el = stepEls[i]
+    if (!el || !el.isConnected) return null
+    const rect = el.getBoundingClientRect()
+    if (rect.width < 1 || rect.height < 1) return null
+    return rect
+  }
+
+  /** Absolute viewport point (px) for a step: live element if we have one,
+   *  else the stored normalized fallback. */
+  const pointForIndex = (i: number): { x: number; y: number } => {
+    const step = getState().steps[i]
+    if (!step) return lastPoint
+    return resolveGuidePoint(step, liveRectFor(i), viewport())
+  }
+
+  /** Scroll a step's live element into view when its center is off-screen, so
+   *  the rect we measure next is on-screen. Done synchronously right before
+   *  animating; harmless when the element is already visible or absent. */
+  const ensureInView = (i: number): void => {
+    const el = stepEls[i]
+    if (!el || !el.isConnected) return
+    const r = el.getBoundingClientRect()
+    if (r.width < 1 || r.height < 1) return
+    const cx = r.left + r.width / 2
+    const cy = r.top + r.height / 2
+    const { w, h } = viewport()
+    if (cx < 0 || cx > w || cy < 0 || cy > h) {
+      try {
+        // "instant" so the scroll completes synchronously in this task: the
+        // rect we measure next is accurate, and the resulting scroll event lands
+        // while the motion is running (repositionCurrent skips it). With smooth
+        // scrolling this would race the cursor animation.
+        el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" })
+      } catch {
+        /* scrollIntoView options unsupported on very old engines — ignore */
+      }
+    }
+  }
+
+  /** Place the cursor statically at a point. Clears any offset-path animation
+   *  first: offset-path overrides left/top, so writing left/top while it is set
+   *  is a silent no-op — the original source of "cursor stuck where it was". */
+  const placeCursorAt = (p: { x: number; y: number }): void => {
+    motion?.cancel()
+    motion = null
+    cursor.style.transition = "none"
+    cursor.style.offsetPath = "none"
+    cursor.style.offsetDistance = "0%"
+    cursor.style.left = `${p.x}px`
+    cursor.style.top = `${p.y}px`
+    lastPoint = p
+  }
+
   const setPlayPauseUI = () => {
     const status = getState().status
     if (status === "playing") {
@@ -275,11 +342,13 @@ const renderGuideUI = (
     descriptionLine.textContent = step.description
   }
 
-  const positionTooltip = (step: GuideStep) => {
+  const positionTooltip = (point: { x: number; y: number }, description: string) => {
     const w = window.innerWidth
     const h = window.innerHeight
-    const x = Math.round(step.x * w)
-    const y = Math.round(step.y * h)
+    const { x, y } = point
+    // Set the text BEFORE measuring — otherwise we lay out against the previous
+    // step's (or, on the first step, an empty) box and mis-place the tooltip.
+    tooltip.textContent = description
     const tr = tooltip.getBoundingClientRect()
     const tw = tr.width
     const th = tr.height
@@ -292,14 +361,8 @@ const renderGuideUI = (
     tx = Math.max(edge, Math.min(w - tw - edge, tx))
     ty = Math.max(edge, Math.min(h - th - edge, ty))
     tooltip.style.transform = `translate(${tx}px, ${ty}px)`
-    tooltip.textContent = step.description
     tooltip.style.opacity = "1"
   }
-
-  const toPx = (step: GuideStep) => ({
-    x: Math.round(step.x * window.innerWidth),
-    y: Math.round(step.y * window.innerHeight),
-  })
 
   const animateCursorTo = (from: { x: number; y: number }, to: { x: number; y: number }) => {
     motion?.cancel()
@@ -344,10 +407,11 @@ const renderGuideUI = (
     }
     const step = state.steps[state.index]!
     renderStepText()
-    const target = toPx(step)
+    ensureInView(state.index)
+    const target = pointForIndex(state.index)
     animateCursorTo(lastPoint, target)
     lastPoint = target
-    positionTooltip(step)
+    positionTooltip(target, step.description)
 
     if (state.status === "stepping") {
       return
@@ -384,10 +448,10 @@ const renderGuideUI = (
     if (waypointTimer) window.clearTimeout(waypointTimer)
     const first = getState().steps[0]
     if (first) {
-      const px = toPx(first)
-      lastPoint = { x: px.x, y: Math.max(0, px.y - 32) }
-      cursor.style.left = `${lastPoint.x}px`
-      cursor.style.top = `${lastPoint.y}px`
+      ensureInView(0)
+      const px = pointForIndex(0)
+      // Start a touch above the first target for a natural drop-in motion.
+      placeCursorAt({ x: px.x, y: Math.max(0, px.y - 32) })
     }
     setPlayPauseUI()
     advance()
@@ -406,18 +470,31 @@ const renderGuideUI = (
   stepBtn.addEventListener("click", enterStepMode)
   exitBtn.addEventListener("click", () => destroy())
 
-  const onResize = () => {
+  // Keep the cursor glued to its target as the page scrolls or resizes. We skip
+  // this while a step transition is animating (offset-path drives the cursor
+  // then); the re-anchor happens once the cursor settles into its hold.
+  const repositionCurrent = () => {
+    if (motion && motion.playState === "running") return
     const state = getState()
     const step = state.steps[state.index]
-    if (step) {
-      const p = toPx(step)
-      cursor.style.left = `${p.x}px`
-      cursor.style.top = `${p.y}px`
-      lastPoint = p
-      positionTooltip(step)
-    }
+    if (!step) return
+    const p = pointForIndex(state.index)
+    placeCursorAt(p)
+    positionTooltip(p, step.description)
+  }
+  const onResize = () => repositionCurrent()
+  let scrollRaf = 0
+  const onScroll = () => {
+    if (scrollRaf) return
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = 0
+      repositionCurrent()
+    })
   }
   window.addEventListener("resize", onResize, { passive: true })
+  // capture: true so we also catch scrolls in nested scroll containers (scroll
+  // events don't bubble, but they do propagate during the capture phase).
+  window.addEventListener("scroll", onScroll, { passive: true, capture: true })
 
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
@@ -436,27 +513,55 @@ const renderGuideUI = (
     if (destroyed) return
     destroyed = true
     if (waypointTimer) window.clearTimeout(waypointTimer)
+    if (scrollRaf) cancelAnimationFrame(scrollRaf)
     motion?.cancel()
     window.removeEventListener("resize", onResize)
+    window.removeEventListener("scroll", onScroll, { capture: true })
     document.removeEventListener("keydown", onKey)
     for (const el of elements) el.remove()
     toolbarStore.getState().closeGuide()
   }
 
+  // Resume runs after a page reload, so the original live elements are gone.
+  // Re-capture the current page and re-acquire an element per step by matching
+  // its label against the step text — best-effort; unmatched steps fall back to
+  // the stored (real-element-derived) coordinates.
+  const rematchOnResume = (steps: GuideStep[], goal: string): (Element | null)[] => {
+    try {
+      const fresh = capturePageContext(goal)
+      // Each live element may back at most one step — otherwise a short, common
+      // label ("OK", "Menu") would bind the same control to several steps.
+      const used = new Set<Element>()
+      return steps.map((step) => {
+        for (let i = 0; i < fresh.context.elements.length; i++) {
+          const cand = fresh.context.elements[i]
+          const el = fresh.elements[i]
+          if (cand && el && !used.has(el) && labelMatchesStep(cand.label, step)) {
+            used.add(el)
+            return el
+          }
+        }
+        return null
+      })
+    } catch {
+      return steps.map(() => null)
+    }
+  }
+
   if (opts.resume) {
     const state = getState()
     if (state.steps.length > 0) {
+      stepEls = rematchOnResume(state.steps, state.goal)
       const index = Math.max(0, Math.min(state.index, state.steps.length - 1))
       if (index !== state.index) {
         toolbarStore.getState().patchGuide({ index })
       }
       const step = getState().steps[index]
       if (step) {
-        lastPoint = toPx(step)
-        cursor.style.left = `${lastPoint.x}px`
-        cursor.style.top = `${lastPoint.y}px`
+        const p = pointForIndex(index)
+        placeCursorAt(p)
         renderStepText()
-        positionTooltip(step)
+        positionTooltip(p, step.description)
       }
       setPlayPauseUI()
       if (getState().status === "playing") {
@@ -464,6 +569,11 @@ const renderGuideUI = (
       }
     }
   } else {
+    // Fresh run: live elements were captured at submit time, keyed by step.ref.
+    const liveByRef = opts.liveElements ?? []
+    stepEls = getState().steps.map((s) =>
+      s.ref != null ? (liveByRef[s.ref] ?? null) : null,
+    )
     restart()
   }
 
@@ -670,9 +780,19 @@ export const installGuideButton = (shell: ToolbarShell): (() => void) => {
     currentAbort?.abort()
     currentAbort = new AbortController()
     try {
+      // Snapshot the page's real interactive elements *now* (the layout the user
+      // is looking at) so the model can target them and playback can re-measure
+      // their live positions. Empty catalog → server falls back to estimates.
+      const captured = capturePageContext(goal)
       const res = await apiPost<GuideStepsResponse>(
         "/api/ai/guide-steps",
-        { goal, sourceUrl: location.href },
+        {
+          goal,
+          sourceUrl: location.href,
+          ...(captured.context.elements.length > 0
+            ? { pageContext: captured.context }
+            : {}),
+        },
         currentAbort.signal,
       )
       if (!Array.isArray(res.steps) || res.steps.length === 0) {
@@ -685,7 +805,7 @@ export const installGuideButton = (shell: ToolbarShell): (() => void) => {
       currentPopover?.close()
       currentPopover = null
       currentController?.destroy()
-      currentController = renderGuideUI(shell)
+      currentController = renderGuideUI(shell, { liveElements: captured.elements })
     } catch (err) {
       if ((err as Error).name === "AbortError") return
       const message =
