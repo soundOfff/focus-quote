@@ -298,7 +298,7 @@ export const generateStudyTips = async (
 }
 
 export interface RecallOptions {
-  count?: 3 | 5 | 7
+  count?: number
   depth?: "easy" | "standard" | "challenging"
 }
 

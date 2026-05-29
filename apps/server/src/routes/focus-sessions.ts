@@ -249,7 +249,9 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
       .limit(1)
     if (!row) return c.json({ error: "Not found", code: "NOT_FOUND" }, 404)
     if (row.completed && !row.recallQuestions) {
-      void maybeGenerateRecallQuestions(userId, id)
+      // Opening the detail page is an explicit request to study, so generate
+      // even when "auto-generate at session end" is off.
+      void maybeGenerateRecallQuestions(userId, id, { onDemand: true })
     }
     return c.json({ questions: parseRecallQuestions(row.recallQuestions) })
   })

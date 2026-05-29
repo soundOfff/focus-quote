@@ -16,7 +16,11 @@ const PREFS_REMOTE_MIGRATED_KEY = REMOTE_MIGRATION_FLAGS.prefs
 export const RecallDepth = Schema.Literal("easy", "standard", "challenging")
 export type RecallDepth = Schema.Schema.Type<typeof RecallDepth>
 
-export const RecallQuestionCount = Schema.Literal(3, 5, 7)
+export const RECALL_QUESTION_COUNT_MIN = 1
+export const RECALL_QUESTION_COUNT_MAX = 15
+export const RecallQuestionCount = Schema.Int.pipe(
+  Schema.between(RECALL_QUESTION_COUNT_MIN, RECALL_QUESTION_COUNT_MAX),
+)
 export type RecallQuestionCount = Schema.Schema.Type<typeof RecallQuestionCount>
 
 export const Prefs = Schema.Struct({
@@ -77,8 +81,13 @@ const parseTranslateTo = (value: unknown): string =>
 
 const parseRecallCount = (value: unknown): RecallQuestionCount => {
   const n = typeof value === "number" ? value : Number(value)
-  if (n === 3 || n === 5 || n === 7) return n
-  return defaultPrefs.recallQuestionCount
+  if (!Number.isFinite(n)) return defaultPrefs.recallQuestionCount
+  return clampInt(
+    n,
+    RECALL_QUESTION_COUNT_MIN,
+    RECALL_QUESTION_COUNT_MAX,
+    defaultPrefs.recallQuestionCount,
+  )
 }
 
 const parseRecallDepth = (value: unknown): RecallDepth =>

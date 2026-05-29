@@ -179,9 +179,7 @@ const ThemeInput = z.enum(["dark", "light"])
 export const RecallDepthInput = z.enum(["easy", "standard", "challenging"])
 export type RecallDepthInput = z.infer<typeof RecallDepthInput>
 
-export const RecallQuestionCountInput = z
-  .union([z.literal(3), z.literal(5), z.literal(7)])
-  .or(z.coerce.number().int().min(3).max(7))
+export const RecallQuestionCountInput = z.coerce.number().int().min(1).max(15)
 
 export const UserSettingsInput = z.object({
   theme: ThemeInput,

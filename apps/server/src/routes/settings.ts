@@ -31,12 +31,9 @@ const toDTO = (row: SettingsRow) => ({
   updatedAt: row.updatedAt,
 })
 
-const clampRecallCount = (n: number | undefined): 3 | 5 | 7 => {
-  if (n === 3 || n === 5 || n === 7) return n
-  if (typeof n !== "number") return 5
-  if (n <= 3) return 3
-  if (n >= 7) return 7
-  return 5
+const clampRecallCount = (n: number | undefined): number => {
+  if (typeof n !== "number" || !Number.isFinite(n)) return 5
+  return Math.max(1, Math.min(15, Math.floor(n)))
 }
 
 const loadOrSeed = async (userId: string): Promise<SettingsRow> => {
