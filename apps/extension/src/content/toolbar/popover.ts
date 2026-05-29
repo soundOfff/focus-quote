@@ -1,6 +1,7 @@
 import { tokens } from "./tokens"
 import { icons } from "./icons"
 import type { ToolbarShell, ToolbarSide } from "./shell"
+import { computePopoverPosition } from "./popover-position"
 
 /**
  * Lightweight popover panel anchored next to a toolbar button. Single,
@@ -156,21 +157,19 @@ export const openPopover = (opts: OpenOptions): PopoverHandle => {
 
   const position = (side: ToolbarSide) => {
     const r = opts.anchor()
-    const margin = 8
-    const edge = 8
     const measured = panel.getBoundingClientRect()
-    const top = Math.max(
-      edge,
-      Math.min(window.innerHeight - measured.height - edge, r.top),
-    )
+    const { top, left } = computePopoverPosition({
+      anchor: { top: r.top, left: r.left, right: r.right },
+      // Fall back to the fixed 320px width before the panel has laid out.
+      panel: { width: measured.width || 320, height: measured.height },
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      side,
+      margin: 8,
+      edge: 8,
+    })
     panel.style.top = `${top}px`
-    if (side === "right") {
-      panel.style.right = `${window.innerWidth - r.left + margin}px`
-      panel.style.left = "auto"
-    } else {
-      panel.style.left = `${r.right + margin}px`
-      panel.style.right = "auto"
-    }
+    panel.style.left = `${left}px`
+    panel.style.right = "auto"
   }
   position(opts.shell.getSide())
   requestAnimationFrame(() => position(opts.shell.getSide()))
