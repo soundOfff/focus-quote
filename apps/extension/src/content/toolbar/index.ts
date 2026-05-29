@@ -3,6 +3,7 @@ import { installNotificationsButton } from "./notifications"
 import { installAnnotateButton } from "./annotate"
 import { installQuoteAiButton } from "./quoteAi"
 import { installGuideButton } from "./guide"
+import { installVaultLinkButton } from "./vault-link"
 import { closeOpenPopover } from "./popover"
 
 /**
@@ -39,12 +40,13 @@ const setup = (): void => {
   const shell = mountToolbar()
   const disposers: Array<() => void> = []
 
-  // Install order = visual order. Bell, pencil, quote, wand.
+  // Install order = visual order. Bell, pencil, quote, wand, bookmark.
   // (Translate lives inline next to the Save Quote button — see content.ts.)
   disposers.push(installNotificationsButton(shell))
   disposers.push(installAnnotateButton(shell))
   disposers.push(installQuoteAiButton(shell))
   disposers.push(installGuideButton(shell))
+  disposers.push(installVaultLinkButton(shell))
 
   controller = { shell, disposers }
 }
