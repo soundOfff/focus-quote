@@ -166,7 +166,7 @@ export function SessionPanel({
         <Button
           variant="primary"
           onClick={handleStart}
-          class="h-9 flex-1 min-h-9 px-3.5 text-[13px]"
+          class="h-9 inline-flex whitespace-nowrap min-h-8 px-3.5 text-xs w-full"
         >
           <Play size={13} strokeWidth={1.8} />
           Start {duration}-min session
