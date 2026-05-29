@@ -17,12 +17,15 @@ describe("/api/quotes", () => {
         text: "Stay hungry, stay foolish.",
         sourceUrl: "https://example.com",
         sourceTitle: "Stanford 2005",
-        tag: "jobs",
       }),
     })
     expect(created.status).toBe(201)
-    const createdBody = (await created.json()) as { quote: { id: string; text: string } }
+    const createdBody = (await created.json()) as {
+      quote: { id: string; text: string; categorizationStatus: string }
+    }
     expect(createdBody.quote.text).toBe("Stay hungry, stay foolish.")
+    // New quotes start pending until the Tag-graph categorizer files them.
+    expect(createdBody.quote.categorizationStatus).toBe("pending")
 
     const list = await fetch("/api/quotes")
     expect(list.status).toBe(200)
@@ -34,8 +37,8 @@ describe("/api/quotes", () => {
   it("isolates quotes by user", async () => {
     const a = await createTestUser("a@example.com")
     const b = await createTestUser("b@example.com")
-    await authedFetch(a.token)("/api/quotes", { ...json({ text: "A's quote", sourceUrl: null, sourceTitle: null, tag: null }) })
-    await authedFetch(b.token)("/api/quotes", { ...json({ text: "B's quote", sourceUrl: null, sourceTitle: null, tag: null }) })
+    await authedFetch(a.token)("/api/quotes", { ...json({ text: "A's quote", sourceUrl: null, sourceTitle: null }) })
+    await authedFetch(b.token)("/api/quotes", { ...json({ text: "B's quote", sourceUrl: null, sourceTitle: null }) })
 
     const aList = await authedFetch(a.token)("/api/quotes")
     const aBody = (await aList.json()) as { quotes: Array<{ text: string }> }
@@ -46,24 +49,24 @@ describe("/api/quotes", () => {
     expect(bBody.quotes.map((q) => q.text)).toEqual(["B's quote"])
   })
 
-  it("filters by ?q on text and tag", async () => {
+  it("filters by ?q on text", async () => {
     const { token } = await createTestUser()
     const fetch = authedFetch(token)
-    await fetch("/api/quotes", { ...json({ text: "shortest paths", sourceUrl: null, sourceTitle: null, tag: "graphs" }) })
-    await fetch("/api/quotes", { ...json({ text: "memoize", sourceUrl: null, sourceTitle: null, tag: "tricks" }) })
+    await fetch("/api/quotes", { ...json({ text: "shortest paths", sourceUrl: null, sourceTitle: null }) })
+    await fetch("/api/quotes", { ...json({ text: "memoize tricks", sourceUrl: null, sourceTitle: null }) })
 
     const byText = await fetch("/api/quotes?q=shortest")
     expect(((await byText.json()) as { quotes: unknown[] }).quotes).toHaveLength(1)
 
-    const byTag = await fetch("/api/quotes?q=tricks")
-    expect(((await byTag.json()) as { quotes: unknown[] }).quotes).toHaveLength(1)
+    const byOther = await fetch("/api/quotes?q=tricks")
+    expect(((await byOther.json()) as { quotes: unknown[] }).quotes).toHaveLength(1)
   })
 
   it("deletes a quote (and 404s for someone else's)", async () => {
     const a = await createTestUser("a2@example.com")
     const b = await createTestUser("b2@example.com")
     const created = await authedFetch(a.token)("/api/quotes", {
-      ...json({ text: "owned by a", sourceUrl: null, sourceTitle: null, tag: null }),
+      ...json({ text: "owned by a", sourceUrl: null, sourceTitle: null }),
     })
     const { quote } = (await created.json()) as { quote: { id: string } }
 

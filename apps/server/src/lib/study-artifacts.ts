@@ -11,10 +11,9 @@ import {
   type ResourceRecommendation,
 } from "./llm"
 
-const loadRecallOptions = async (userId: string): Promise<RecallOptions & { enabled: boolean; auto: boolean }> => {
+const loadRecallOptions = async (userId: string): Promise<RecallOptions & { auto: boolean }> => {
   const [row] = await db
     .select({
-      recallEnabled: userSettings.recallEnabled,
       recallQuestionCount: userSettings.recallQuestionCount,
       recallDepth: userSettings.recallDepth,
       recallAutoGenerate: userSettings.recallAutoGenerate,
@@ -22,17 +21,17 @@ const loadRecallOptions = async (userId: string): Promise<RecallOptions & { enab
     .from(userSettings)
     .where(eq(userSettings.userId, userId))
     .limit(1)
-  if (!row) return { enabled: true, auto: true, count: 5, depth: "standard" }
+  if (!row) return { auto: true, count: 5, depth: "standard" }
   const count =
-    row.recallQuestionCount === 3 || row.recallQuestionCount === 5 || row.recallQuestionCount === 7
-      ? (row.recallQuestionCount as 3 | 5 | 7)
+    typeof row.recallQuestionCount === "number" &&
+    Number.isFinite(row.recallQuestionCount)
+      ? Math.max(1, Math.min(15, Math.floor(row.recallQuestionCount)))
       : 5
   const depth =
     row.recallDepth === "easy" || row.recallDepth === "challenging"
       ? row.recallDepth
       : "standard"
   return {
-    enabled: row.recallEnabled,
     auto: row.recallAutoGenerate,
     count,
     depth,
@@ -117,7 +116,7 @@ const maybeGenerate = async (
   userId: string,
   sessionId: string,
   artifact: Artifact,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; onDemand?: boolean } = {},
 ): Promise<void> => {
   try {
     // Master AI gate (ADR 0002): never spend tokens for a disabled feature,
@@ -134,10 +133,11 @@ const maybeGenerate = async (
       result = await generateStudyTips(input)
     } else if (artifact === "recallQuestions") {
       const recall = await loadRecallOptions(userId)
-      // Skip auto-generation entirely if user disabled recall or auto-gen,
-      // unless this is an explicit force-regenerate.
-      if (!opts.force && (!recall.enabled || !recall.auto)) return
-      if (opts.force && !recall.enabled) return
+      // The per-feature "Recall questions" gate (checked above) is the single
+      // on/off switch. `auto` only governs *when* we spend tokens: on, we
+      // generate at session end; off, we defer until the user opens the
+      // session-detail page (onDemand) or hits Regenerate (force).
+      if (!opts.force && !opts.onDemand && !recall.auto) return
       result = await generateRecallQuestions(input, {
         count: recall.count,
         depth: recall.depth,
@@ -166,7 +166,8 @@ export const maybeGenerateStudyTips = (userId: string, sessionId: string) =>
 export const maybeGenerateRecallQuestions = (
   userId: string,
   sessionId: string,
-) => maybeGenerate(userId, sessionId, "recallQuestions")
+  opts: { onDemand?: boolean } = {},
+) => maybeGenerate(userId, sessionId, "recallQuestions", opts)
 
 export const maybeGenerateResourceRecommendations = (
   userId: string,

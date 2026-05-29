@@ -16,7 +16,7 @@ import { ApiService } from "../../services/api"
 import type { Session, SessionUrl } from "@focus-quote/shared"
 import { runP } from "../runtime"
 import { navigateTo } from "../router"
-import { Badge, Button, EmptyState, ListRow, SectionHeader } from "../../ui/primitives"
+import { Badge, EmptyState, SectionHeader } from "../../ui/primitives"
 
 interface UrlRow {
   id: string
@@ -202,67 +202,84 @@ export function SessionCard({ session }: CardProps) {
     )
   }
 
+  const openFullReport = (e: Event) => {
+    e.stopPropagation()
+    e.preventDefault()
+    navigateTo(`/session/${session.id}`)
+  }
+
   return (
     <div class="rounded-md border border-hairline bg-surface">
-      <button
-        type="button"
-        onClick={handleToggle}
-        class="flex w-full items-start gap-3 rounded-md p-4 text-left transition-colors hover:bg-surface-doc focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
-        aria-expanded={expanded}
-      >
-        <span class="mt-1 shrink-0 text-mute">
-          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </span>
-        <div class="flex-1 min-w-0">
-          <div class="mb-1.5 flex flex-wrap items-center gap-2">
-            <span class="truncate text-sm font-semibold text-ink">
-              {session.goal || session.title || (
-                <span class="text-mute">No goal</span>
-              )}
-            </span>
-            {statusBadge()}
-          </div>
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-mute">
-            <span class="inline-flex items-center gap-1">
-              <Timer size={11} />
-              <span class="tabular-nums">{fmtMinutes(d.plannedMs)}</span>
-              {d.actualMs !== null && (
-                <>
-                  <span class="text-mute">planned ·</span>
-                  <span class="tabular-nums">{fmtMinutes(d.actualMs)}</span>
-                  <span class="text-mute">actual</span>
-                </>
-              )}
-              {d.actualMs === null && (
-                <span class="text-mute">planned</span>
-              )}
-            </span>
-            <span>
-              {fmtTime(session.startedAt)}
-              {session.endedAt && ` → ${fmtTime(session.endedAt)}`}
-            </span>
+      <div class="rounded-md p-3.5 transition-colors hover:bg-surface-doc">
+        <div class="flex items-start gap-2.5">
+          <button
+            type="button"
+            onClick={handleToggle}
+            class="my-auto shrink-0 text-mute focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
+            aria-expanded={expanded}
+            aria-label={expanded ? "Collapse session" : "Expand session"}
+          >
+            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={handleToggle}
+                class="min-w-0 truncate text-left text-sm font-semibold leading-snug text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
+              >
+                {session.goal || session.title || (
+                  <span class="text-mute">No goal</span>
+                )}
+              </button>
+              <div class="flex items-center gap-2">
+                {statusBadge()}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggle}
+              class="mt-1 flex w-auto flex-wrap items-center gap-x-4 gap-y-1 text-left text-xs text-mute focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
+            >
+              <span class="inline-flex items-center gap-1">
+                <Timer size={11} />
+                <span class="tabular-nums">{fmtMinutes(d.plannedMs)}</span>
+                {d.actualMs !== null && (
+                  <>
+                    <span class="text-mute">planned ·</span>
+                    <span class="tabular-nums">{fmtMinutes(d.actualMs)}</span>
+                    <span class="text-mute">actual</span>
+                  </>
+                )}
+                {d.actualMs === null && (
+                  <span class="text-mute">planned</span>
+                )}
+              </span>
+              <span>
+                {fmtTime(session.startedAt)}
+                {session.endedAt && ` → ${fmtTime(session.endedAt)}`}
+              </span>
+            </button>
           </div>
         </div>
-      </button>
+      </div>
 
       {expanded && (
         <div class="border-t border-hairline-soft px-4 pb-4 pt-3">
-          <div class="mb-3 flex justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation()
-                navigateTo(`/session/${session.id}`)
-              }}
-            >
-              Open full report <ArrowUpRight size={11} />
-            </Button>
-          </div>
           {d.status === "completed" && (
             <div class="mb-3 rounded-md bg-accent-blue-soft p-3">
-              <div class="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-link-blue">
+              <div class="mb-1 flex items-center justify-between gap-1.5 text-[11px] uppercase tracking-wide text-link-blue">
+                <span class="inline-flex items-center gap-1">
                 <Sparkles size={11} /> AI summary
+                </span>
+                <button
+                  type="button"
+                  onClick={openFullReport}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  class="inline-flex items-center gap-0.5 whitespace-nowrap text-[11px] font-medium text-link-blue transition-colors hover:text-link-blue/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
+                >
+                  Full report <ArrowUpRight size={10} />
+                </button>
               </div>
               {summary ? (
                 <p class="text-xs leading-relaxed text-body">{summary}</p>
@@ -317,10 +334,12 @@ export function SessionCard({ session }: CardProps) {
                 ))}
               </div>
 
-              <ul class="space-y-1.5">
+              <ul class="divide-y divide-hairline-soft">
                 {urls.map((u) => (
-                  <li key={u.id}>
-                    <ListRow class="text-xs">
+                  <li
+                    key={u.id}
+                    class="flex items-start gap-2 py-2 text-xs first:pt-0 last:pb-0"
+                  >
                     <Globe
                       size={12}
                       class="mt-0.5 shrink-0 text-mute"
@@ -347,7 +366,6 @@ export function SessionCard({ session }: CardProps) {
                         </div>
                       )}
                     </div>
-                    </ListRow>
                   </li>
                 ))}
               </ul>
@@ -414,7 +432,6 @@ export function SessionsSection() {
 
   return (
     <section class="flex flex-col gap-5">
-      <SectionHeader title="Recent sessions" />
       {renderGroup("today")}
       {renderGroup("yesterday")}
       {renderGroup("week")}

@@ -345,9 +345,6 @@ function AppInner() {
                       <DailyQuote quote={randomQuote} />
                       <section>
                         <div class="mb-3 flex items-baseline justify-between gap-2">
-                          <h2 class="text-[10px] font-semibold uppercase tracking-[0.14em] text-mute">
-                            Recent sessions
-                          </h2>
                           <button
                             type="button"
                             onClick={() => setHomeTabPersist("history")}

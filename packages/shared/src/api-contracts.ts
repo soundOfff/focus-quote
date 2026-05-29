@@ -21,6 +21,9 @@ import type {
   RecallAttempt,
   RecallVerdict,
   ToolbarRuntimeState,
+  Tag,
+  TagEdge,
+  QuoteTag,
 } from "./schema"
 import type { AiFeature } from "./ai-features"
 
@@ -43,6 +46,27 @@ export interface SaveQuoteResponse {
 
 export interface DeleteQuoteResponse {
   ok: true
+}
+
+// ---- Tag graph (ADR 0003) ----
+
+/** The full Tag-graph read-model for the signed-in user. */
+export interface TagGraphResponse {
+  tags: ReadonlyArray<Tag>
+  edges: ReadonlyArray<TagEdge>
+  memberships: ReadonlyArray<QuoteTag>
+}
+
+/** Summary of what a single Consolidation ("Tidy now") pass changed. */
+export interface ConsolidateTagsResponse {
+  ok: boolean
+  changes: {
+    merged: number
+    renamed: number
+    reparented: number
+    deleted: number
+    requotesRefiled: number
+  }
 }
 
 // ---- Sessions ----

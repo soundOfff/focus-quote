@@ -8,7 +8,6 @@ export const NewQuoteInput = z.object({
   text: z.string().min(1),
   sourceUrl: NullableString,
   sourceTitle: NullableString,
-  tag: NullableString,
 })
 export type NewQuoteInput = z.infer<typeof NewQuoteInput>
 
@@ -111,7 +110,6 @@ export const SyncJobInput = z.discriminatedUnion("kind", [
     text: z.string().min(1),
     sourceUrl: z.string().nullable(),
     sourceTitle: z.string().nullable(),
-    tag: z.string().nullable(),
     contentHash: z.string().length(64),
     createdAt: ISO,
     updatedAt: ISO,
@@ -119,6 +117,29 @@ export const SyncJobInput = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("deleteQuote"),
     id: z.string().min(1),
+  }),
+  // ---- Tag graph mutations (ADR 0003) ----
+  z.object({
+    kind: z.literal("upsertTag"),
+    id: z.string().min(1).max(120),
+    name: z.string().min(1).max(60),
+    createdAt: ISO,
+    updatedAt: ISO,
+  }),
+  z.object({
+    kind: z.literal("deleteTag"),
+    id: z.string().min(1).max(120),
+  }),
+  z.object({
+    kind: z.literal("attachQuoteTag"),
+    quoteId: z.string().min(1),
+    tagId: z.string().min(1).max(120),
+    createdAt: ISO,
+  }),
+  z.object({
+    kind: z.literal("detachQuoteTag"),
+    quoteId: z.string().min(1),
+    tagId: z.string().min(1).max(120),
   }),
   z.object({
     kind: z.literal("upsertSession"),
@@ -179,9 +200,7 @@ const ThemeInput = z.enum(["dark", "light"])
 export const RecallDepthInput = z.enum(["easy", "standard", "challenging"])
 export type RecallDepthInput = z.infer<typeof RecallDepthInput>
 
-export const RecallQuestionCountInput = z
-  .union([z.literal(3), z.literal(5), z.literal(7)])
-  .or(z.coerce.number().int().min(3).max(7))
+export const RecallQuestionCountInput = z.coerce.number().int().min(1).max(15)
 
 export const UserSettingsInput = z.object({
   theme: ThemeInput,

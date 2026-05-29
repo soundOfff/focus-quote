@@ -9,6 +9,7 @@ import { streamRoutes } from "./routes/stream"
 import { syncRoutes } from "./routes/sync"
 import { authBridgeRoutes } from "./routes/auth-bridge"
 import { topicsRoutes } from "./routes/topics"
+import { tagsRoutes } from "./routes/tags"
 import { aiToolbarRoutes } from "./routes/ai-toolbar"
 import { sessionActionsRoutes } from "./routes/session-actions"
 import { mediaRoutes } from "./routes/media"
@@ -46,6 +47,7 @@ app.route("/api/session-urls", sessionUrlsRoutes)
 app.route("/api/session-actions", sessionActionsRoutes)
 app.route("/api/media", mediaRoutes)
 app.route("/api/topics", topicsRoutes)
+app.route("/api/tags", tagsRoutes)
 app.route("/api/ai", aiToolbarRoutes)
 app.route("/api/ai-history", aiHistoryRoutes)
 app.route("/api/sync", syncRoutes)

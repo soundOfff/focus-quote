@@ -22,14 +22,13 @@ const TestLayer = QuotesService.DefaultWithoutDependencies.pipe(
 describe("QuotesService", () => {
   beforeEach(resetChromeStorage)
 
-  it("saves and lists a quote", async () => {
+  it("saves a quote as pending and lists it", async () => {
     const program = Effect.gen(function* () {
       const quotes = yield* QuotesService
       const saved = yield* quotes.save({
         text: "first quote",
         sourceUrl: "https://example.com",
         sourceTitle: "Example",
-        tag: "wisdom",
       })
       const listed = yield* quotes.list()
       return { saved, listed }
@@ -37,6 +36,8 @@ describe("QuotesService", () => {
 
     const r = await Effect.runPromise(program)
     expect(r.saved.text).toBe("first quote")
+    // Offline-first capture: a fresh quote is pending until the server files it.
+    expect(r.saved.categorizationStatus).toBe("pending")
     expect(r.listed).toHaveLength(1)
     expect(r.listed[0]!.id).toBe(r.saved.id)
   })
@@ -48,75 +49,34 @@ describe("QuotesService", () => {
         text: "",
         sourceUrl: null,
         sourceTitle: null,
-        tag: null,
       })
     }).pipe(Effect.provide(TestLayer))
 
     await expect(Effect.runPromise(program)).rejects.toBeDefined()
   })
 
-  it("searches by text and tag, case-insensitive", async () => {
+  it("searches by text, case-insensitive", async () => {
     const program = Effect.gen(function* () {
       const quotes = yield* QuotesService
       yield* quotes.save({
         text: "Stay hungry",
         sourceUrl: null,
         sourceTitle: null,
-        tag: "jobs",
       })
       yield* quotes.save({
         text: "The unexamined life",
         sourceUrl: null,
         sourceTitle: null,
-        tag: "philosophy",
       })
-      const byText = yield* quotes.search("hungry")
-      const byTag = yield* quotes.search("PHILOSOPHY")
+      const byText = yield* quotes.search("HUNGRY")
       const empty = yield* quotes.search("")
-      return { byText, byTag, empty }
+      return { byText, empty }
     }).pipe(Effect.provide(TestLayer))
 
     const r = await Effect.runPromise(program)
     expect(r.byText).toHaveLength(1)
     expect(r.byText[0]!.text).toMatch(/hungry/i)
-    expect(r.byTag).toHaveLength(1)
-    expect(r.byTag[0]!.tag).toBe("philosophy")
     expect(r.empty).toHaveLength(2)
-  })
-
-  it("moves a quote into a folder and enqueues an upsert", async () => {
-    const program = Effect.gen(function* () {
-      const quotes = yield* QuotesService
-      const saved = yield* quotes.save({
-        text: "movable",
-        sourceUrl: null,
-        sourceTitle: null,
-        tag: "a",
-      })
-      const moved = yield* quotes.setFolder(saved.id, " b ")
-      const unfiled = yield* quotes.setFolder(saved.id, "")
-      const listed = yield* quotes.list()
-      return { moved, unfiled, listed }
-    }).pipe(Effect.provide(TestLayer))
-
-    const r = await Effect.runPromise(program)
-    expect(r.moved?.tag).toBe("b")
-    expect(r.unfiled?.tag).toBeNull()
-    expect(r.listed[0]!.tag).toBeNull()
-  })
-
-  it("setFolder returns null for an unknown quote", async () => {
-    const program = Effect.gen(function* () {
-      const quotes = yield* QuotesService
-      return yield* quotes.setFolder(
-        "does-not-exist" as Parameters<
-          (typeof quotes)["setFolder"]
-        >[0],
-        "x",
-      )
-    }).pipe(Effect.provide(TestLayer))
-
-    expect(await Effect.runPromise(program)).toBeNull()
   })
 
   it("removes a quote and enqueues a delete sync job", async () => {
@@ -127,7 +87,6 @@ describe("QuotesService", () => {
         text: "to delete",
         sourceUrl: null,
         sourceTitle: null,
-        tag: null,
       })
       const beforeQueueSize = yield* sync.queueSize
       yield* quotes.remove(saved.id)

@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { zValidator } from "@hono/zod-validator"
-import { and, desc, eq, like, or, sql } from "drizzle-orm"
+import { and, desc, eq, like, sql } from "drizzle-orm"
 import { createHash, randomUUID } from "node:crypto"
 import { db } from "../db/client"
 import { quotes } from "../db/schema"
@@ -29,10 +29,7 @@ export const quotesRoutes = new Hono<{ Variables: RequireUserVariables }>()
     const userId = c.get("user").id
     const { limit = 50, q } = c.req.valid("query")
     const filters = q
-      ? and(
-          eq(quotes.userId, userId),
-          or(like(quotes.text, `%${q}%`), like(quotes.tag, `%${q}%`)),
-        )
+      ? and(eq(quotes.userId, userId), like(quotes.text, `%${q}%`))
       : eq(quotes.userId, userId)
     const rows = await db
       .select()
@@ -55,7 +52,6 @@ export const quotesRoutes = new Hono<{ Variables: RequireUserVariables }>()
         text: body.text,
         sourceUrl: body.sourceUrl,
         sourceTitle: body.sourceTitle,
-        tag: body.tag,
         contentHash,
         createdAt: now,
         updatedAt: now,
@@ -92,7 +88,7 @@ const toQuoteDTO = (row: typeof quotes.$inferSelect) => ({
   text: row.text,
   sourceUrl: row.sourceUrl,
   sourceTitle: row.sourceTitle,
-  tag: row.tag,
+  categorizationStatus: row.categorizationStatus,
   // Backfilled by migrate.ts; fall back to a fresh hash if a row somehow
   // slipped through (shouldn't happen in practice, but keeps the wire type honest).
   contentHash: row.contentHash ?? hashQuoteText(row.text),

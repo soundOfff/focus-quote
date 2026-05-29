@@ -97,7 +97,12 @@ export const quotes = sqliteTable(
     text: text("text").notNull(),
     sourceUrl: text("source_url"),
     sourceTitle: text("source_title"),
-    tag: text("tag"),
+    // Filing-state flag for the AI Tag graph (ADR 0003). New quotes are
+    // "pending" until the server-side Haiku pass files them. The flat `tag`
+    // folder column was removed; membership now lives in `quote_tags`.
+    categorizationStatus: text("categorization_status")
+      .notNull()
+      .default("pending"),
     contentHash: text("content_hash"),
     createdAt: text("created_at")
       .notNull()
@@ -111,10 +116,97 @@ export const quotes = sqliteTable(
       t.userId,
       t.createdAt,
     ),
-    userTagIdx: index("quotes_user_tag_idx").on(t.userId, t.tag),
+    userStatusIdx: index("quotes_user_status_idx").on(
+      t.userId,
+      t.categorizationStatus,
+    ),
     userHashUq: uniqueIndex("quotes_user_content_hash_uq")
       .on(t.userId, t.contentHash)
       .where(sql`${t.contentHash} IS NOT NULL`),
+  }),
+)
+
+// ---------------- AI-maintained Tag graph (ADR 0003) ----------------
+// Tags form a directed acyclic graph (a Tag may have several parent Tags via
+// tag_edges; a Quote may carry several Tags via quote_tags). The server owns
+// the graph because the Anthropic key is server-side and the curator needs the
+// whole graph in context. `userEdited` pins a Tag / edge / membership so the
+// autonomous curator never overrides it. There is deliberately NO unique
+// constraint on (userId, name): near-duplicate Tags are tolerated and merged
+// by Consolidation rather than colliding on insert.
+
+export const tags = sqliteTable(
+  "tags",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    userEdited: integer("user_edited", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    userIdx: index("tags_user_idx").on(t.userId),
+  }),
+)
+
+export const tagEdges = sqliteTable(
+  "tag_edges",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    parentId: text("parent_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+    childId: text("child_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+    userEdited: integer("user_edited", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.parentId, t.childId] }),
+    userIdx: index("tag_edges_user_idx").on(t.userId),
+    childIdx: index("tag_edges_child_idx").on(t.childId),
+  }),
+)
+
+export const quoteTags = sqliteTable(
+  "quote_tags",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    quoteId: text("quote_id")
+      .notNull()
+      .references(() => quotes.id, { onDelete: "cascade" }),
+    tagId: text("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+    userEdited: integer("user_edited", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.quoteId, t.tagId] }),
+    userIdx: index("quote_tags_user_idx").on(t.userId),
+    tagIdx: index("quote_tags_tag_idx").on(t.tagId),
   }),
 )
 

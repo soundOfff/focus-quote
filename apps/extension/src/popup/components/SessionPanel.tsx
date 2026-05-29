@@ -20,22 +20,22 @@ const formatRemaining = (expectedEndAt: string) => {
   return `${m}:${s.toString().padStart(2, "0")}`
 }
 
-// Direction A's focus-session segmented control offers three preset
-// durations. Any value outside this set (e.g. a 30-min custom default set
-// via the options page Stepper) still loads cleanly — we just leave the
-// segmented selection un-highlighted in that case.
+// The focus-session segmented control offers a few common preset durations,
+// plus whatever default duration the user configured on the Options page — so
+// the popup always reflects (and pre-selects) that saved default instead of
+// ignoring it.
 const DURATION_PRESETS = [15, 25, 45] as const
-type DurationPreset = (typeof DURATION_PRESETS)[number]
 
-const segmentedItems: ReadonlyArray<SegmentedItem<DurationPreset>> =
-  DURATION_PRESETS.map((m) => ({ value: m, label: String(m) }))
+const clampDuration = (n: number): number =>
+  Math.max(1, Math.min(180, Math.floor(n)))
 
-const snapDuration = (
-  prefDuration: number,
-  selected: number | null,
-): number => {
-  if (selected !== null) return selected
-  return prefDuration
+const buildDurationItems = (
+  defaultDuration: number,
+): ReadonlyArray<SegmentedItem<number>> => {
+  const values = Array.from(
+    new Set<number>([...DURATION_PRESETS, clampDuration(defaultDuration)]),
+  ).sort((a, b) => a - b)
+  return values.map((m) => ({ value: m, label: String(m) }))
 }
 
 interface Props {
@@ -51,22 +51,18 @@ export function SessionPanel({
 }: Props) {
   const [active, setActive] = useState<ActiveSession | null>(null)
   const [goal, setGoal] = useState("")
-  const [selected, setSelected] = useState<DurationPreset | null>(null)
+  const [selected, setSelected] = useState<number | null>(null)
   const [remaining, setRemaining] = useState("")
 
-  const duration = useMemo(
-    () => snapDuration(defaultDurationMinutes, selected),
-    [defaultDurationMinutes, selected],
+  const durationItems = useMemo(
+    () => buildDurationItems(defaultDurationMinutes),
+    [defaultDurationMinutes],
   )
 
-  // Mark the segmented active state only when one of the three preset
-  // values matches the resolved duration — otherwise it stays neutral.
-  const activeSegment = useMemo<DurationPreset | null>(() => {
-    for (const preset of DURATION_PRESETS) {
-      if (preset === duration) return preset
-    }
-    return null
-  }, [duration])
+  // Default to the configured Options duration; switch to whatever preset the
+  // user picks in the popup. Both are always present in `durationItems`, so the
+  // segmented control is always highlighted.
+  const duration = selected ?? clampDuration(defaultDurationMinutes)
 
   const refresh = () =>
     runP(
@@ -161,8 +157,8 @@ export function SessionPanel({
       />
       <div class="flex items-stretch gap-2">
         <Segmented
-          items={segmentedItems}
-          value={activeSegment ?? DURATION_PRESETS[1]}
+          items={durationItems}
+          value={duration}
           onChange={(next) => setSelected(next)}
           size="sm"
           class="h-9 font-mono text-[12px]"

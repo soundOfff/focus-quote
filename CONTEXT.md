@@ -28,9 +28,13 @@ _Avoid_: Attachment, resource
 A page the extension recorded automatically during a session for distraction analysis (`SessionUrl`). Telemetry, not curated knowledge — promoting one into the Vault turns it into a Vault item.
 _Avoid_: Visit, history entry, session URL
 
-**Folder**:
-The grouping a Quote belongs to; every Quote lives in exactly one Folder (an unfiled Quote sits in "Unfiled"). Backed by the Quote's single tag value.
-_Avoid_: Tag, label, collection
+**Tag**:
+A subject a Quote is filed under. Tags form a graph: a Tag may have several parent Tags, and a Quote may carry several Tags. The AI assigns and maintains them; a Tag a user creates or edits is pinned and the AI leaves it alone. A Tag has a stable identity independent of its name.
+_Avoid_: Folder, category, label, node
+
+**Consolidation**:
+The user-triggered pass ("Tidy now") in which the AI restructures the Tag graph — merging duplicates, renaming, re-parenting, splitting — and re-files only the Quotes those changes touch. Distinct from the lightweight tagging that happens automatically when a Quote is saved, which only attaches a Quote and creates Tags.
+_Avoid_: Cleanup, reorg, sync
 
 **Conversation**:
 A persistent Quote+AI chat scoped to a single article (page URL). Highlighted passages are added as context to individual turns; they don't start separate chats. Persists locally and syncs when signed in.

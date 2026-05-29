@@ -2,6 +2,7 @@ import { Effect, Layer, ManagedRuntime } from "effect"
 import { StorageService } from "../services/storage"
 import { SyncService } from "../services/sync"
 import { QuotesService } from "../services/quotes"
+import { TagsService } from "../services/tags"
 import { ApiService } from "../services/api"
 import { SessionsService } from "../services/sessions"
 import { AuthService } from "../services/auth"
@@ -11,6 +12,7 @@ const Services = Layer.mergeAll(
   ApiService.Default,
   SyncService.Default,
   QuotesService.Default,
+  TagsService.Default,
   SessionsService.Default,
   AuthService.Default,
 )

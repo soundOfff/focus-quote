@@ -52,7 +52,6 @@ import { PrivacySection } from "./components/PrivacySection"
 import {
   Button,
   MonoLabel,
-  NativeSelect,
   SectionHeader,
   SkeletonCard,
   Stepper,
@@ -61,6 +60,7 @@ import {
   Tabs,
   Toggle,
 } from "../ui/primitives"
+import { Dropdown, type DropdownOption } from "../ui/Dropdown"
 import { AppShell } from "../ui/AppShell"
 import { ToastProvider, useToast } from "../ui/Toast"
 import type { RecallDepth, RecallQuestionCount } from "../shared/prefs"
@@ -89,11 +89,6 @@ const AI_FEATURE_CONTROLS: ReadonlyArray<{
     description: "Suggests follow-up actions based on a session's topic.",
   },
   {
-    feature: "recallQuestions",
-    label: "Recall questions",
-    description: "Writes quiz questions from the material you captured.",
-  },
-  {
     feature: "resourceRecommendations",
     label: "Resource recommendations",
     description: "Recommends further reading related to a session's topic.",
@@ -108,11 +103,12 @@ const AI_FEATURE_CONTROLS: ReadonlyArray<{
     label: "Guide Me",
     description: "Walks you through next steps from the capture toolbar.",
   },
-  {
-    feature: "recallGrading",
-    label: "Recall grading",
-    description: "Grades your answers to recall questions.",
-  },
+]
+
+const DIFFICULTY_OPTIONS: ReadonlyArray<DropdownOption<RecallDepth>> = [
+  { value: "easy", label: "Easy" },
+  { value: "standard", label: "Standard" },
+  { value: "challenging", label: "Challenging" },
 ]
 
 const loadInitial = Effect.gen(function* () {
@@ -258,6 +254,11 @@ function AppInner() {
   const accountImageSrc = resolveAccountImageSrc(profile.photoDataUrl, user?.image)
   const accountEmail = user?.email?.trim() || "No account email available"
   const accountInitial = accountEmail.slice(0, 1).toUpperCase() || "?"
+  const recallEnabled =
+    prefs.aiFeatureOverrides.recallQuestions ??
+    aiFeatureDefault("recallQuestions")
+  const recallGradingEnabled =
+    prefs.aiFeatureOverrides.recallGrading ?? aiFeatureDefault("recallGrading")
 
   useEffect(() => {
     runP(loadInitial)
@@ -422,18 +423,6 @@ function AppInner() {
     debouncedPrefsPersist(next)
   }
 
-  const setRecallEnabled = (enabled: boolean) => {
-    const next: Prefs = { ...prefs, recallEnabled: enabled }
-    setPrefs(next)
-    debouncedPrefsPersist(next)
-  }
-
-  const setRecallAutoGenerate = (enabled: boolean) => {
-    const next: Prefs = { ...prefs, recallAutoGenerate: enabled }
-    setPrefs(next)
-    debouncedPrefsPersist(next)
-  }
-
   const setRecallQuestionCount = (count: RecallQuestionCount) => {
     const next: Prefs = { ...prefs, recallQuestionCount: count }
     setPrefs(next)
@@ -574,7 +563,7 @@ function AppInner() {
                           Sign out
                         </Button>
                       </div>
-                      <div class="mt-4 grid gap-3 rounded-lg border border-hairline-soft bg-surface-doc p-3">
+                      <div class="mt-4 grid gap-3">
                         <div class="flex items-center gap-3">
                           {accountImageSrc ? (
                             <img
@@ -642,7 +631,7 @@ function AppInner() {
               <TabPanel active={activeTab === "session"}>
                 <Surface>
                   <SectionHeader
-                    title="Session defaults"
+                    title="Session default"
                     icon={<TimerIcon size={14} class="text-primary" />}
                   />
                   <div class="grid grid-cols-2 gap-2">
@@ -684,19 +673,16 @@ function AppInner() {
                   <SectionHeader
                     title="AI assistance"
                     subtitle="Master switch for every AI feature. When off, nothing spends tokens — distraction detection, summaries, Quote + AI and Guide Me all pause."
+                    action={
+                      <Toggle
+                        enabled={prefs.aiMasterEnabled}
+                        onToggle={() =>
+                          setAiMasterEnabled(!prefs.aiMasterEnabled)
+                        }
+                        ariaLabel="Toggle AI assistance"
+                      />
+                    }
                   />
-                  <div class="flex items-center justify-between">
-                    <span class="text-[13px] text-ink-2">
-                      {prefs.aiMasterEnabled
-                        ? "AI assistance enabled"
-                        : "AI assistance disabled"}
-                    </span>
-                    <Toggle
-                      enabled={prefs.aiMasterEnabled}
-                      onToggle={() => setAiMasterEnabled(!prefs.aiMasterEnabled)}
-                      ariaLabel="Toggle AI assistance"
-                    />
-                  </div>
                 </Surface>
 
                 <Surface>
@@ -742,26 +728,81 @@ function AppInner() {
                   <SectionHeader
                     title="Auto-title sessions"
                     subtitle="When you start a session without a goal, FocusQuote can name it for you from its topic and the pages you visited. Off by default — it spends a few tokens per session."
+                    action={
+                      <Toggle
+                        enabled={prefs.autoTitleEnabled}
+                        onToggle={() =>
+                          setAutoTitleEnabled(!prefs.autoTitleEnabled)
+                        }
+                        ariaLabel="Toggle auto-title"
+                      />
+                    }
                   />
-                  <div class="flex items-center justify-between">
-                    <span class="text-[13px] text-ink-2">
-                      {prefs.autoTitleEnabled
-                        ? "Auto-title enabled"
-                        : "Auto-title disabled"}
-                    </span>
-                    <Toggle
-                      enabled={prefs.autoTitleEnabled}
-                      onToggle={() =>
-                        setAutoTitleEnabled(!prefs.autoTitleEnabled)
-                      }
-                      ariaLabel="Toggle auto-title"
-                    />
-                  </div>
                   {!prefs.aiMasterEnabled && (
                     <p class="mt-2 text-[11px] text-muted">
                       Turn on AI assistance above for this to take effect.
                     </p>
                   )}
+                </Surface>
+
+                <Surface>
+                  <SectionHeader
+                    title="Recall questions"
+                    subtitle="After a session, generate quiz questions from the material you captured — and optionally grade your answers."
+                  />
+                  <div class="mb-3 flex flex-col gap-3">
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <p class="text-[13px] text-ink-2">Recall questions</p>
+                        <p class="text-[11px] text-muted">
+                          Writes quiz questions from the material you captured.
+                        </p>
+                      </div>
+                      <Toggle
+                        enabled={recallEnabled}
+                        onToggle={() =>
+                          setFeatureOverride("recallQuestions", !recallEnabled)
+                        }
+                        ariaLabel="Toggle recall questions"
+                      />
+                    </div>
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <p class="text-[13px] text-ink-2">Recall grading</p>
+                        <p class="text-[11px] text-muted">
+                          Grades your answers to recall questions.
+                        </p>
+                      </div>
+                      <Toggle
+                        enabled={recallGradingEnabled}
+                        onToggle={() =>
+                          setFeatureOverride("recallGrading", !recallGradingEnabled)
+                        }
+                        ariaLabel="Toggle recall grading"
+                      />
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <NumberField
+                      label="Question count (max 15)"
+                      value={prefs.recallQuestionCount}
+                      min={1}
+                      max={15}
+                      onCommit={setRecallQuestionCount}
+                    />
+                    <div class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
+                      <MonoLabel as="span" class="text-[9.5px]">
+                        Difficulty
+                      </MonoLabel>
+                      <Dropdown<RecallDepth>
+                        value={prefs.recallDepth}
+                        onChange={setRecallDepth}
+                        ariaLabel="Difficulty"
+                        triggerClass="h-9 rounded-control border border-rule-2 bg-paper px-[11px] text-[12.5px] text-ink aria-expanded:border-amber-deep"
+                        options={DIFFICULTY_OPTIONS}
+                      />
+                    </div>
+                  </div>
                 </Surface>
 
                 <Surface>
@@ -818,86 +859,6 @@ function AppInner() {
                   </p>
                 </Surface>
 
-                <Surface>
-                  <SectionHeader
-                    title="Active recall"
-                    subtitle="After each session, FocusQuote can generate short questions so you actively recall what you read."
-                  />
-
-                  <div class="mb-3 flex items-center justify-between">
-                    <span class="text-[13px] text-ink-2">
-                      {prefs.recallEnabled
-                        ? "Active recall enabled"
-                        : "Active recall disabled"}
-                    </span>
-                    <Toggle
-                      enabled={prefs.recallEnabled}
-                      onToggle={() => setRecallEnabled(!prefs.recallEnabled)}
-                      ariaLabel="Toggle active recall"
-                    />
-                  </div>
-
-                  <div class="mb-3 flex items-center justify-between rounded-card border border-rule bg-paper-2 px-3 py-2.5">
-                    <div class="min-w-0 pr-3">
-                      <div class="text-[12.5px] font-medium text-ink">
-                        Auto-generate when a session ends
-                      </div>
-                      <div class="text-[11px] leading-relaxed text-muted">
-                        Off: only generate when you open the session-detail
-                        page.
-                      </div>
-                    </div>
-                    <Toggle
-                      enabled={prefs.recallAutoGenerate}
-                      onToggle={() =>
-                        setRecallAutoGenerate(!prefs.recallAutoGenerate)
-                      }
-                      ariaLabel="Toggle auto-generate"
-                    />
-                  </div>
-
-                  <div class="grid grid-cols-2 gap-2">
-                    <label class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
-                      <MonoLabel as="span" class="text-[9.5px]">
-                        Question count
-                      </MonoLabel>
-                      <NativeSelect
-                        value={String(prefs.recallQuestionCount)}
-                        onInput={(e) =>
-                          setRecallQuestionCount(
-                            Number(
-                              (e.currentTarget as HTMLSelectElement).value,
-                            ) as RecallQuestionCount,
-                          )
-                        }
-                        class="!h-9 !border-rule-2 !bg-paper !text-[12.5px] !text-ink focus:!border-amber-deep"
-                      >
-                        <option value="3">3</option>
-                        <option value="5">5</option>
-                        <option value="7">7</option>
-                      </NativeSelect>
-                    </label>
-                    <label class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
-                      <MonoLabel as="span" class="text-[9.5px]">
-                        Difficulty
-                      </MonoLabel>
-                      <NativeSelect
-                        value={prefs.recallDepth}
-                        onInput={(e) =>
-                          setRecallDepth(
-                            (e.currentTarget as HTMLSelectElement)
-                              .value as RecallDepth,
-                          )
-                        }
-                        class="!h-9 !border-rule-2 !bg-paper !text-[12.5px] !text-ink focus:!border-amber-deep"
-                      >
-                        <option value="easy">Easy</option>
-                        <option value="standard">Standard</option>
-                        <option value="challenging">Challenging</option>
-                      </NativeSelect>
-                    </label>
-                  </div>
-                </Surface>
               </TabPanel>
 
               <TabPanel active={activeTab === "privacy"}>
@@ -967,6 +928,63 @@ function InputField({
   )
 }
 
+function NumberField({
+  label,
+  value,
+  min,
+  max,
+  onCommit,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  onCommit: (next: number) => void
+}) {
+  // Local text buffer so the user can freely clear/retype; we validate and
+  // clamp to [min, max] on blur or Enter, then snap the display to the
+  // committed value.
+  const [text, setText] = useState(String(value))
+  useEffect(() => {
+    setText(String(value))
+  }, [value])
+
+  const commit = () => {
+    const n = Number(text)
+    if (text.trim() === "" || !Number.isFinite(n)) {
+      setText(String(value))
+      return
+    }
+    const clamped = Math.max(min, Math.min(max, Math.floor(n)))
+    setText(String(clamped))
+    if (clamped !== value) onCommit(clamped)
+  }
+
+  return (
+    <label class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
+      <MonoLabel as="span" class="text-[9.5px]">
+        {label}
+      </MonoLabel>
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step={1}
+        value={text}
+        onInput={(e) => setText((e.currentTarget as HTMLInputElement).value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault()
+            commit()
+          }
+        }}
+        class="!h-9 rounded-control border border-rule-2 bg-paper px-[11px] text-[12.5px] text-ink outline-none focus:border-amber-deep focus:ring-[3px] focus:ring-amber/15"
+      />
+    </label>
+  )
+}
+
 function SelectField({
   label,
   value,
@@ -978,24 +996,23 @@ function SelectField({
   onChange: (value: string) => void
   includeAuto?: boolean
 }) {
+  const options: ReadonlyArray<DropdownOption<string>> = [
+    ...(includeAuto ? [{ value: "auto", label: "Auto detect" }] : []),
+    ...TRANSLATE_LANGUAGES.map((lang) => ({ value: lang.code, label: lang.label })),
+  ]
   return (
-    <label class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
+    <div class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
       <MonoLabel as="span" class="text-[9.5px]">
         {label}
       </MonoLabel>
-      <NativeSelect
+      <Dropdown
         value={value}
-        onInput={(e) => onChange((e.currentTarget as HTMLSelectElement).value)}
-        class="!h-9 !border-rule-2 !bg-paper !text-[12.5px] !text-ink focus:!border-amber-deep"
-      >
-        {includeAuto && <option value="auto">Auto detect</option>}
-        {TRANSLATE_LANGUAGES.map((lang) => (
-          <option key={lang.code} value={lang.code}>
-            {lang.label}
-          </option>
-        ))}
-      </NativeSelect>
-    </label>
+        onChange={onChange}
+        ariaLabel={label}
+        options={options}
+        triggerClass="h-9 rounded-control border border-rule-2 bg-paper px-[11px] text-[12.5px] text-ink aria-expanded:border-amber-deep"
+      />
+    </div>
   )
 }
 
