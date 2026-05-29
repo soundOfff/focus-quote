@@ -14,3 +14,7 @@ This balances out-of-box value against cost/privacy control while honoring the s
 
 - New per-feature toggles plus a master switch are added to user settings.
 - "AI features are opt-in" in CLAUDE.md should be read as this tiered policy, not blanket-off.
+
+## Carve-out: auto-tagging defaults ON
+
+Auto-tagging of saved Quotes (see [ADR 0003](./0003-quote-tag-graph.md)) fires a token-spending call on essentially every Save, which by the rule above would default OFF. We deliberately default it **ON**, treating it as core to the quotes feature the way distraction detection is core to sessions — a Quote captured into no structure is barely worth capturing. It still has its own toggle and still obeys the master AI switch; only the default differs.

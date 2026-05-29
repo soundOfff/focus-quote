@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { zValidator } from "@hono/zod-validator"
-import { and, eq } from "drizzle-orm"
+import { and, desc, eq } from "drizzle-orm"
 import { db } from "../db/client"
 import {
   quotes,
@@ -19,6 +19,13 @@ import {
   maybeGenerateStudyTips,
 } from "../lib/study-artifacts"
 import { maybeGenerateTitle, maybeGenerateTopic } from "../lib/topic"
+import {
+  attachQuoteTag,
+  deleteTag,
+  detachQuoteTag,
+  maybeCategorizeQuote,
+  upsertManualTag,
+} from "../lib/tags"
 
 type Result = { ok: true; deduped?: true } | { ok: false; error: string }
 
@@ -74,6 +81,30 @@ export const syncRoutes = new Hono<{ Variables: RequireUserVariables }>()
       void maybeGenerateTitle(userId, id)
     }
 
+    // File pending quotes into the Tag graph (ADR 0003). We sweep the user's
+    // pending quotes rather than only the just-upserted ids, so a quote the
+    // per-Save rate-limit or a transient model outage left pending gets retried
+    // on a later sync tick (drains run periodically). Each call is self-gated +
+    // rate-limited and serialized per user, so this is bounded and safe to
+    // fire-and-forget. We only bother when this batch actually touched quotes.
+    const sawQuoteUpsert = jobs.some(
+      (j, i) => j.kind === "upsertQuote" && results[i]?.ok,
+    )
+    if (sawQuoteUpsert) {
+      const pending = await db
+        .select({ id: quotes.id })
+        .from(quotes)
+        .where(
+          and(
+            eq(quotes.userId, userId),
+            eq(quotes.categorizationStatus, "pending"),
+          ),
+        )
+        .orderBy(desc(quotes.createdAt))
+        .limit(25)
+      for (const row of pending) void maybeCategorizeQuote(userId, row.id)
+    }
+
     return c.json({ results })
   })
 
@@ -98,7 +129,10 @@ async function applyJob(
             text: job.text,
             sourceUrl: job.sourceUrl,
             sourceTitle: job.sourceTitle,
-            tag: job.tag,
+            // New quotes start "pending" (ADR 0003); the per-Save Haiku pass
+            // kicked after the batch files them into the Tag graph. On a
+            // re-upsert we deliberately don't reset the status (see set below).
+            categorizationStatus: "pending",
             contentHash: job.contentHash,
             createdAt: job.createdAt,
             updatedAt: job.updatedAt,
@@ -109,7 +143,6 @@ async function applyJob(
               text: job.text,
               sourceUrl: job.sourceUrl,
               sourceTitle: job.sourceTitle,
-              tag: job.tag,
               contentHash: job.contentHash,
               updatedAt: job.updatedAt,
             },
@@ -118,6 +151,34 @@ async function applyJob(
         if (isUniqueConstraintViolation(err)) return { deduped: true }
         throw err
       }
+      return
+    }
+    case "upsertTag": {
+      await upsertManualTag(userId, {
+        id: job.id,
+        name: job.name,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
+      })
+      return
+    }
+    case "deleteTag": {
+      await deleteTag(userId, job.id)
+      return
+    }
+    case "attachQuoteTag": {
+      await attachQuoteTag(userId, {
+        quoteId: job.quoteId,
+        tagId: job.tagId,
+        createdAt: job.createdAt,
+      })
+      return
+    }
+    case "detachQuoteTag": {
+      await detachQuoteTag(userId, {
+        quoteId: job.quoteId,
+        tagId: job.tagId,
+      })
       return
     }
     case "deleteQuote": {

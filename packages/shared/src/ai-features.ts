@@ -15,6 +15,10 @@ export type AiFeature =
   | "guideMe"
   | "recallGrading"
   | "autoTitle"
+  // ADR 0003: per-Save Haiku that files a captured Quote into the Tag graph.
+  | "quoteTagging"
+  // ADR 0003: the manual "Tidy now" Consolidation pass (merge/rename/re-parent).
+  | "tagConsolidation"
 
 /**
  * - `core`: on by default; the product's baseline value.
@@ -33,6 +37,11 @@ export const AI_FEATURE_TIERS: Record<AiFeature, AiTier> = {
   guideMe: "onDemand",
   recallGrading: "onDemand",
   autoTitle: "auto",
+  // Default-ON so capture auto-files into the graph (ADR 0003). Bursty, so the
+  // server rate-limits it per the AI-call guidance in CLAUDE.md.
+  quoteTagging: "core",
+  // Only ever runs when the user clicks "Tidy now".
+  tagConsolidation: "onDemand",
 }
 
 /** Whether a feature is enabled by default, derived from its tier alone. */

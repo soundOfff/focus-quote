@@ -9,6 +9,9 @@ export type SessionId = Schema.Schema.Type<typeof SessionId>
 export const TopicId = Schema.String.pipe(Schema.brand("TopicId"))
 export type TopicId = Schema.Schema.Type<typeof TopicId>
 
+export const TagId = Schema.String.pipe(Schema.brand("TagId"))
+export type TagId = Schema.Schema.Type<typeof TagId>
+
 export const SessionUrlId = Schema.String.pipe(Schema.brand("SessionUrlId"))
 export type SessionUrlId = Schema.Schema.Type<typeof SessionUrlId>
 
@@ -25,13 +28,26 @@ const NullableString = Schema.NullOr(Schema.String)
 
 const ContentHash = Schema.String.pipe(Schema.length(64))
 
+/**
+ * A Quote's place in the AI-maintained Tag graph (ADR 0003). "pending" means
+ * the server-side categorizer hasn't filed it yet (offline-first capture is
+ * always pending until the per-Save Haiku pass runs); "categorized" means it
+ * carries at least one Tag. Membership lives in the Tag graph read-model
+ * (`QuoteTag`), never on the Quote — this is just the filing-state flag.
+ */
+export const CategorizationStatus = Schema.Literal("pending", "categorized")
+export type CategorizationStatus = Schema.Schema.Type<typeof CategorizationStatus>
+
 export const Quote = Schema.Struct({
   id: QuoteId,
   text: Schema.String.pipe(Schema.minLength(1)),
   sourceUrl: NullableString,
   sourceTitle: NullableString,
-  tag: NullableString,
   contentHash: ContentHash,
+  // Optional-with-default so older locally-stored records (no field) decode.
+  categorizationStatus: Schema.optionalWith(CategorizationStatus, {
+    default: () => "pending" as const,
+  }),
   createdAt: Schema.String,
   updatedAt: Schema.String,
 })
@@ -41,9 +57,48 @@ export const NewQuote = Schema.Struct({
   text: Schema.String.pipe(Schema.minLength(1)),
   sourceUrl: NullableString,
   sourceTitle: NullableString,
-  tag: NullableString,
 })
 export type NewQuote = Schema.Schema.Type<typeof NewQuote>
+
+// ---- Tag graph (ADR 0003) ----
+// Tags are subjects in a directed acyclic graph: a Tag may have several parent
+// Tags (via TagEdge) and a Quote may carry several Tags (via QuoteTag). Identity
+// is the stable `id`; `name` is a mutable attribute the AI may rename or merge.
+// `userEdited` pins a Tag / edge / membership so the autonomous curator never
+// overrides it.
+
+export const Tag = Schema.Struct({
+  id: TagId,
+  name: Schema.String.pipe(Schema.minLength(1)),
+  userEdited: Schema.Boolean,
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+})
+export type Tag = Schema.Schema.Type<typeof Tag>
+
+/** A directed parent → child edge between two Tags. */
+export const TagEdge = Schema.Struct({
+  parentId: TagId,
+  childId: TagId,
+  userEdited: Schema.Boolean,
+})
+export type TagEdge = Schema.Schema.Type<typeof TagEdge>
+
+/** A Quote's membership in a Tag. `userEdited` = pinned by manual tagging. */
+export const QuoteTag = Schema.Struct({
+  quoteId: QuoteId,
+  tagId: TagId,
+  userEdited: Schema.Boolean,
+})
+export type QuoteTag = Schema.Schema.Type<typeof QuoteTag>
+
+/** The whole synced read-model the extension keeps so the tree renders offline. */
+export const TagGraph = Schema.Struct({
+  tags: Schema.Array(Tag),
+  edges: Schema.Array(TagEdge),
+  memberships: Schema.Array(QuoteTag),
+})
+export type TagGraph = Schema.Schema.Type<typeof TagGraph>
 
 export const Session = Schema.Struct({
   id: SessionId,
@@ -285,7 +340,6 @@ export const SyncJob = Schema.Union(
     text: Schema.String,
     sourceUrl: NullableString,
     sourceTitle: NullableString,
-    tag: NullableString,
     contentHash: ContentHash,
     createdAt: Schema.String,
     updatedAt: Schema.String,
@@ -293,6 +347,33 @@ export const SyncJob = Schema.Union(
   Schema.Struct({
     kind: Schema.Literal("deleteQuote"),
     id: QuoteId,
+  }),
+  // ---- Tag graph mutations (ADR 0003) ----
+  // Manual tag ops are pinned (userEdited) server-side so the autonomous
+  // curator never overrides them. Tag ids are client-generated (like quote /
+  // session ids); the tags table has no unique(name) constraint, so near-dupes
+  // are tolerated and reconciled by Consolidation rather than colliding.
+  Schema.Struct({
+    kind: Schema.Literal("upsertTag"),
+    id: TagId,
+    name: Schema.String,
+    createdAt: Schema.String,
+    updatedAt: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("deleteTag"),
+    id: TagId,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("attachQuoteTag"),
+    quoteId: QuoteId,
+    tagId: TagId,
+    createdAt: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("detachQuoteTag"),
+    quoteId: QuoteId,
+    tagId: TagId,
   }),
   Schema.Struct({
     kind: Schema.Literal("upsertSession"),

@@ -29,6 +29,8 @@ import type {
   RecallGradeResponse,
   ListTopicsResponse,
   RenameTopicResponse,
+  TagGraphResponse,
+  ConsolidateTagsResponse,
   ListVaultItemsResponse,
   CreateVaultItemRequest,
   CreateVaultItemResponse,
@@ -293,6 +295,13 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
         sessionId?: string
         limit?: number
       }) => request<ListMediaResponse>("/api/media", { query }),
+
+      // Tag graph (ADR 0003)
+      getTagGraph: () => request<TagGraphResponse>("/api/tags/graph"),
+      consolidateTags: () =>
+        request<ConsolidateTagsResponse>("/api/tags/consolidate", {
+          method: "POST",
+        }),
 
       // Sync
       syncBatch: (body: SyncBatchRequest) =>

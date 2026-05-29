@@ -8,6 +8,7 @@ import {
   Target as TargetIcon,
 } from "lucide-preact"
 import { QuotesService } from "../services/quotes"
+import { TagsService } from "../services/tags"
 import { SessionsService } from "../services/sessions"
 import { StorageService } from "../services/storage"
 import { AuthService } from "../services/auth"
@@ -48,6 +49,23 @@ const loadQuotes = (query: string) =>
       : yield* quotes.list(10)
     return list as ReadonlyArray<Quote>
   })
+
+// Build a quoteId -> tag names lookup from the synced Tag-graph read-model
+// (ADR 0003) so the quote list can show each quote's Tags.
+const loadTagsByQuote = Effect.gen(function* () {
+  const tagsSvc = yield* TagsService
+  const graph = yield* tagsSvc.getGraph
+  const nameById = new Map(graph.tags.map((t) => [t.id as string, t.name]))
+  const map = new Map<string, string[]>()
+  for (const m of graph.memberships) {
+    const name = nameById.get(m.tagId)
+    if (!name) continue
+    const arr = map.get(m.quoteId)
+    if (arr) arr.push(name)
+    else map.set(m.quoteId, [name])
+  }
+  return map as ReadonlyMap<string, string[]>
+})
 
 const loadCachedPrefs = Effect.gen(function* () {
   const storage = yield* StorageService
@@ -143,18 +161,25 @@ function AppInner() {
   const [streak, setStreak] = useState(0)
   const [todayCount, setTodayCount] = useState(0)
   const [totalQuotes, setTotalQuotes] = useState(0)
+  const [tagsByQuote, setTagsByQuote] = useState<
+    ReadonlyMap<string, string[]>
+  >(new Map())
 
   // AnalysisPanel collapsed into a hook — its insight line piggy-backs on
   // the Today's Intent band so the popup keeps just four primary regions.
   const analysis = useAnalysisInsight()
 
-  const refresh = (q: string) =>
+  const refresh = (q: string) => {
     runP(loadQuotes(q))
       .then((next) => {
         setQuotes(next)
         setTotalQuotes(next.length)
       })
       .catch((e) => console.error("[FocusQuote] load quotes:", e))
+    runP(loadTagsByQuote)
+      .then(setTagsByQuote)
+      .catch(() => {})
+  }
 
   const refreshAuth = () =>
     runP(loadCurrentUser)
@@ -408,7 +433,11 @@ function AppInner() {
           <SearchBar value={query} onInput={setQuery} />
         </div>
         <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3 pt-2">
-          <QuoteList quotes={quotes} onDelete={handleDelete} />
+          <QuoteList
+            quotes={quotes}
+            tagsByQuote={tagsByQuote}
+            onDelete={handleDelete}
+          />
         </div>
       </section>
     </div>

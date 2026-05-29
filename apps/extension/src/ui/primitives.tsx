@@ -15,21 +15,6 @@ interface ButtonProps extends preact.JSX.HTMLAttributes<HTMLButtonElement> {
   disabled?: boolean
 }
 
-interface NativeSelectProps
-  extends preact.JSX.SelectHTMLAttributes<HTMLSelectElement> {}
-
-export function NativeSelect({ class: className, ...props }: NativeSelectProps) {
-  return (
-    <select
-      class={cx(
-        "h-9 w-full appearance-auto rounded-md border border-hairline-soft bg-canvas px-2 text-sm leading-5 text-ink align-middle outline-none focus:ring-1 focus:ring-focus-ring/70",
-        typeof className === "string" ? className : undefined,
-      )}
-      {...props}
-    />
-  )
-}
-
 export function Button({
   variant = "secondary",
   size = "md",

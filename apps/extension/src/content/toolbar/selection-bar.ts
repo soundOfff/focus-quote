@@ -26,13 +26,17 @@ export interface SelectionBar {
 
 export interface SelectionBarOptions {
   onSave: (text: string) => void
+  /**
+   * Translate hook. Kept as the sole secondary action — capture-time manual
+   * tagging was removed in ADR 0003 (the AI files quotes; manual tagging lives
+   * in the Tag tree browser).
+   */
   onTranslate: (
     text: string,
     from: string,
     to: string,
     signal: AbortSignal,
   ) => Promise<string>
-  onTag: (text: string) => void
   onLanguageChange: (from: string, to: string) => void
   initialFromLang: string
   initialToLang: string
@@ -300,34 +304,6 @@ const createGlobeButton = (onClick: () => void): HTMLButtonElement => {
   return btn
 }
 
-const createTagButton = (onClick: () => void): HTMLButtonElement => {
-  const btn = document.createElement("button")
-  btn.type = "button"
-  btn.setAttribute("aria-label", "Add tag")
-  btn.title = "Add tag"
-  btn.style.cssText = [
-    "all:unset",
-    "box-sizing:border-box",
-    "display:inline-flex",
-    "align-items:center",
-    `border-radius:${tokens.radius}`,
-    "padding:0 8px",
-    "cursor:pointer",
-    `color:${tokens.muted}`,
-    "background:transparent",
-    "border:none",
-    "transition:background-color 120ms ease",
-  ].join(";")
-  btn.innerHTML = icons.tag(13, 1.7)
-  btn.addEventListener("click", onClick)
-  btn.addEventListener("mouseenter", () => {
-    btn.style.background = tokens.paper2
-  })
-  btn.addEventListener("mouseleave", () => {
-    btn.style.background = "transparent"
-  })
-  return btn
-}
 
 // ---------------------------------------------------------------------------
 // Caret (the little arrow pointing toward the selection)
@@ -416,7 +392,6 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
   const {
     onSave,
     onTranslate,
-    onTag,
     onLanguageChange,
     initialFromLang,
     initialToLang,
@@ -523,11 +498,6 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
     handleTranslate()
   })
 
-  const tagBtn = createTagButton(() => {
-    if (!pendingText) return
-    onTag(pendingText)
-  })
-
   const arrowCap = createArrowCap()
 
   frame.appendChild(saveButton.el)
@@ -537,7 +507,6 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
   frame.appendChild(toChip.el)
   frame.appendChild(createHairline())
   frame.appendChild(globeBtn)
-  frame.appendChild(tagBtn)
 
   // ---- Caret ----
   const caret = createCaret()

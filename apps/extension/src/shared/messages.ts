@@ -23,7 +23,6 @@ export interface SaveQuoteMessage {
   text: string
   sourceUrl: string | null
   sourceTitle: string | null
-  tag: string | null
 }
 
 /**

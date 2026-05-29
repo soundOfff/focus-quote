@@ -24,6 +24,7 @@ import {
   Stepper,
   type SegmentedItem,
 } from "../../ui/primitives"
+import { Dropdown } from "../../ui/Dropdown"
 import { runP } from "../runtime"
 
 const loadStats = Effect.gen(function* () {
@@ -248,9 +249,9 @@ export function SettingsView({
           </div>
         </section>
 
-        {/* Translation — chip cards opening native selects underneath. The
-            actual <select> floats invisibly over the chip so the click hands
-            off to the browser-native picker (best a11y for a popup). */}
+        {/* Translation — chip-styled Dropdown triggers. Each chip is the
+            trigger button for a custom listbox that opens *below* it, rather
+            than the OS pop-up menu (which on macOS overlays the control). */}
         <section class="flex flex-col gap-2">
           <MonoLabel as="h3">Translation</MonoLabel>
           <div class="grid grid-cols-2 gap-2">
@@ -333,41 +334,43 @@ function LangChip({
   onChange,
   includeAuto = false,
 }: LangChipProps) {
+  const options = [
+    ...(includeAuto ? [{ value: "auto", label: "Auto" }] : []),
+    ...TRANSLATE_LANGUAGES.map((lang) => ({ value: lang.code, label: lang.label })),
+  ]
   return (
-    <label class="relative block rounded-card border border-rule bg-paper-2 px-[11px] py-[7px] transition-colors focus-within:border-amber-deep focus-within:bg-paper">
-      <MonoLabel as="div" class="mb-[1px] text-[9.5px]">
-        {label}
-      </MonoLabel>
-      <div class="flex items-center justify-between gap-2 text-[12.5px] font-medium text-ink">
-        <span class="truncate">{value}</span>
-        <svg
-          width={11}
-          height={11}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width={1.8}
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden
-          class="shrink-0 text-muted"
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </div>
-      <select
-        value={selectValue}
-        onChange={(e) => onChange((e.currentTarget as HTMLSelectElement).value)}
-        aria-label={label}
-        class="absolute inset-0 cursor-pointer opacity-0"
-      >
-        {includeAuto && <option value="auto">Auto</option>}
-        {TRANSLATE_LANGUAGES.map((lang) => (
-          <option key={lang.code} value={lang.code}>
-            {lang.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <Dropdown
+      value={selectValue}
+      options={options}
+      onChange={onChange}
+      ariaLabel={label}
+      triggerClass="block w-full rounded-card border border-rule bg-paper-2 px-[11px] py-[7px] text-left transition-colors aria-expanded:border-amber-deep aria-expanded:bg-paper"
+      renderTrigger={({ open }) => (
+        <>
+          <MonoLabel as="div" class="mb-[1px] text-[9.5px]">
+            {label}
+          </MonoLabel>
+          <div class="flex items-center justify-between gap-2 text-[12.5px] font-medium text-ink">
+            <span class="truncate">{value}</span>
+            <svg
+              width={11}
+              height={11}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width={1.8}
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden
+              class={`shrink-0 text-muted transition-transform duration-150 ${
+                open ? "rotate-180" : ""
+              }`}
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </div>
+        </>
+      )}
+    />
   )
 }

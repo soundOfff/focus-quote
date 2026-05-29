@@ -32,7 +32,7 @@ export function DailyQuote({ quote }: Props) {
       <blockquote class="font-serif text-balance text-xl font-bold leading-snug tracking-tight text-ink md:text-2xl">
         {quote.text}
       </blockquote>
-      {(quote.sourceTitle || quote.sourceUrl || quote.tag) && (
+      {(quote.sourceTitle || quote.sourceUrl) && (
         <figcaption class="mt-5 font-sans text-[10px] font-semibold leading-relaxed tracking-[0.12em] text-mute">
           {quote.sourceUrl ? (
             <a
@@ -41,16 +41,10 @@ export function DailyQuote({ quote }: Props) {
               rel="noopener noreferrer"
               class="inline-flex items-center gap-x-1 gap-y-0.5 text-link-blue transition-colors hover:text-ink"
             >
-              <span class="uppercase">
-                {[quote.tag, quote.sourceTitle ?? quote.sourceUrl]
-                  .filter(Boolean)
-                  .join(" — ")}
-              </span>
+              <span class="uppercase">{quote.sourceTitle ?? quote.sourceUrl}</span>
             </a>
           ) : (
-            <span class="uppercase">
-              {[quote.tag, quote.sourceTitle].filter(Boolean).join(" — ")}
-            </span>
+            <span class="uppercase">{quote.sourceTitle}</span>
           )}
         </figcaption>
       )}

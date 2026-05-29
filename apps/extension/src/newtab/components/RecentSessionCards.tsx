@@ -70,7 +70,7 @@ export function RecentSessionCards({
                   {fmtMinutesShort(d.plannedMs)}
                 </span>
               </div>
-              <div class="flex min-w-0 flex-1 flex-col gap-1 px-3 py-3 pr-2">
+              <div class="flex min-w-0 flex-1 flex-col gap-1 p-2">
                 <span class="truncate text-sm font-semibold text-ink">
                   {session.goal || session.title || "Session without a goal"}
                 </span>

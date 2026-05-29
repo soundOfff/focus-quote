@@ -329,7 +329,6 @@ const ensureBar = (): SelectionBar => {
         text,
         sourceUrl: location.href,
         sourceTitle: document.title || null,
-        tag: null,
       }
       chrome.runtime.sendMessage(payload).catch(() => {
         showToast("Couldn't save — extension reloaded?", "error")
@@ -337,23 +336,6 @@ const ensureBar = (): SelectionBar => {
       })
     },
     onTranslate: fetchTranslation,
-    onTag: (text) => {
-      const raw = window.prompt("Add a tag for this quote:")
-      if (raw === null) return
-      const tag = raw.trim().slice(0, 60) || null
-      const payload = {
-        type: "focusquote.saveQuote" as const,
-        text,
-        sourceUrl: location.href,
-        sourceTitle: document.title || null,
-        tag,
-      }
-      chrome.runtime.sendMessage(payload).catch(() => {
-        showToast("Couldn't save — extension reloaded?", "error")
-      })
-      selectionBar?.hide()
-      window.getSelection()?.removeAllRanges()
-    },
     onLanguageChange: persistTranslatePrefs,
     initialFromLang: initial.from,
     initialToLang: initial.to,

@@ -3,6 +3,7 @@ import { StorageService } from "../services/storage"
 import { ApiService } from "../services/api"
 import { SyncService } from "../services/sync"
 import { QuotesService } from "../services/quotes"
+import { TagsService } from "../services/tags"
 import { SessionsService } from "../services/sessions"
 import { UrlTrackerService } from "../services/urlTracker"
 import { ActionLoggerService } from "../services/actionLogger"
@@ -46,6 +47,7 @@ const ServicesLayer = Layer.mergeAll(
   ApiService.Default,
   SyncService.Default,
   QuotesService.Default,
+  TagsService.Default,
   SessionsService.Default,
   UrlTrackerService.Default,
   ActionLoggerService.Default,
@@ -57,6 +59,7 @@ type AllServices =
   | ApiService
   | SyncService
   | QuotesService
+  | TagsService
   | SessionsService
   | UrlTrackerService
   | ActionLoggerService
@@ -88,6 +91,11 @@ const tickSync = Effect.gen(function* () {
   if (result.applied > 0 || result.failed > 0) {
     console.log("[FocusQuote] sync drain", result)
   }
+  // Refresh the synced Tag-graph read-model so the tree browser stays current
+  // (the server's per-Save categorizer ran for any quotes we just drained).
+  // ADR 0003. Best-effort: never let a graph-pull failure break the tick.
+  const tags = yield* TagsService
+  yield* tags.pullGraph.pipe(Effect.either)
 })
 
 // ---- session ----
@@ -337,14 +345,13 @@ const saveAndNotify = (
   text: string,
   sourceUrl: string | null,
   sourceTitle: string | null,
-  tag: string | null,
   tabId: number | undefined,
 ) =>
   Effect.gen(function* () {
     if (!text.trim()) return
     const quotes = yield* QuotesService
     const result = yield* quotes
-      .save({ text, sourceUrl, sourceTitle, tag })
+      .save({ text, sourceUrl, sourceTitle })
       .pipe(Effect.either)
     if (result._tag === "Left") {
       if (result.left._tag === "DuplicateQuoteError") {
@@ -369,7 +376,6 @@ const handleSaveSelection = (
     info.selectionText ?? "",
     tab?.url ?? null,
     tab?.title ?? null,
-    null,
     tab?.id,
   )
 
@@ -377,13 +383,7 @@ const handleSaveQuoteMessage = (
   msg: SaveQuoteMessage,
   sender: chrome.runtime.MessageSender,
 ) =>
-  saveAndNotify(
-    msg.text,
-    msg.sourceUrl,
-    msg.sourceTitle,
-    msg.tag,
-    sender.tab?.id,
-  )
+  saveAndNotify(msg.text, msg.sourceUrl, msg.sourceTitle, sender.tab?.id)
 
 const registerContextMenu = () => {
   chrome.contextMenus.removeAll(() => {

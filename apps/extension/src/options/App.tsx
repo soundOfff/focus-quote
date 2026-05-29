@@ -52,7 +52,6 @@ import { PrivacySection } from "./components/PrivacySection"
 import {
   Button,
   MonoLabel,
-  NativeSelect,
   SectionHeader,
   SkeletonCard,
   Stepper,
@@ -61,6 +60,7 @@ import {
   Tabs,
   Toggle,
 } from "../ui/primitives"
+import { Dropdown, type DropdownOption } from "../ui/Dropdown"
 import { AppShell } from "../ui/AppShell"
 import { ToastProvider, useToast } from "../ui/Toast"
 import type { RecallDepth, RecallQuestionCount } from "../shared/prefs"
@@ -103,6 +103,12 @@ const AI_FEATURE_CONTROLS: ReadonlyArray<{
     label: "Guide Me",
     description: "Walks you through next steps from the capture toolbar.",
   },
+]
+
+const DIFFICULTY_OPTIONS: ReadonlyArray<DropdownOption<RecallDepth>> = [
+  { value: "easy", label: "Easy" },
+  { value: "standard", label: "Standard" },
+  { value: "challenging", label: "Challenging" },
 ]
 
 const loadInitial = Effect.gen(function* () {
@@ -557,7 +563,7 @@ function AppInner() {
                           Sign out
                         </Button>
                       </div>
-                      <div class="mt-4 grid gap-3 rounded-lg border border-hairline-soft bg-surface-doc p-3">
+                      <div class="mt-4 grid gap-3">
                         <div class="flex items-center gap-3">
                           {accountImageSrc ? (
                             <img
@@ -625,7 +631,7 @@ function AppInner() {
               <TabPanel active={activeTab === "session"}>
                 <Surface>
                   <SectionHeader
-                    title="Session defaults"
+                    title="Session default"
                     icon={<TimerIcon size={14} class="text-primary" />}
                   />
                   <div class="grid grid-cols-2 gap-2">
@@ -784,25 +790,18 @@ function AppInner() {
                       max={15}
                       onCommit={setRecallQuestionCount}
                     />
-                    <label class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
+                    <div class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
                       <MonoLabel as="span" class="text-[9.5px]">
                         Difficulty
                       </MonoLabel>
-                      <NativeSelect
+                      <Dropdown<RecallDepth>
                         value={prefs.recallDepth}
-                        onInput={(e) =>
-                          setRecallDepth(
-                            (e.currentTarget as HTMLSelectElement)
-                              .value as RecallDepth,
-                          )
-                        }
-                        class="!h-9 !border-rule-2 !bg-paper !text-[12.5px] !text-ink focus:!border-amber-deep"
-                      >
-                        <option value="easy">Easy</option>
-                        <option value="standard">Standard</option>
-                        <option value="challenging">Challenging</option>
-                      </NativeSelect>
-                    </label>
+                        onChange={setRecallDepth}
+                        ariaLabel="Difficulty"
+                        triggerClass="h-9 rounded-control border border-rule-2 bg-paper px-[11px] text-[12.5px] text-ink aria-expanded:border-amber-deep"
+                        options={DIFFICULTY_OPTIONS}
+                      />
+                    </div>
                   </div>
                 </Surface>
 
@@ -997,24 +996,23 @@ function SelectField({
   onChange: (value: string) => void
   includeAuto?: boolean
 }) {
+  const options: ReadonlyArray<DropdownOption<string>> = [
+    ...(includeAuto ? [{ value: "auto", label: "Auto detect" }] : []),
+    ...TRANSLATE_LANGUAGES.map((lang) => ({ value: lang.code, label: lang.label })),
+  ]
   return (
-    <label class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
+    <div class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
       <MonoLabel as="span" class="text-[9.5px]">
         {label}
       </MonoLabel>
-      <NativeSelect
+      <Dropdown
         value={value}
-        onInput={(e) => onChange((e.currentTarget as HTMLSelectElement).value)}
-        class="!h-9 !border-rule-2 !bg-paper !text-[12.5px] !text-ink focus:!border-amber-deep"
-      >
-        {includeAuto && <option value="auto">Auto detect</option>}
-        {TRANSLATE_LANGUAGES.map((lang) => (
-          <option key={lang.code} value={lang.code}>
-            {lang.label}
-          </option>
-        ))}
-      </NativeSelect>
-    </label>
+        onChange={onChange}
+        ariaLabel={label}
+        options={options}
+        triggerClass="h-9 rounded-control border border-rule-2 bg-paper px-[11px] text-[12.5px] text-ink aria-expanded:border-amber-deep"
+      />
+    </div>
   )
 }
 

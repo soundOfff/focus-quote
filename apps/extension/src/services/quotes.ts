@@ -55,7 +55,10 @@ export class QuotesService extends Effect.Service<QuotesService>()(
             text,
             sourceUrl: (entry.sourceUrl as string | null) ?? null,
             sourceTitle: (entry.sourceTitle as string | null) ?? null,
-            tag: (entry.tag as string | null) ?? null,
+            categorizationStatus:
+              entry.categorizationStatus === "categorized"
+                ? "categorized"
+                : "pending",
             contentHash: hadValidHash ? (entry.contentHash as string) : hash,
             createdAt:
               typeof entry.createdAt === "string"
@@ -91,11 +94,7 @@ export class QuotesService extends Effect.Service<QuotesService>()(
           const all = yield* list()
           const q = query.toLowerCase().trim()
           if (!q) return all
-          return all.filter(
-            (it) =>
-              it.text.toLowerCase().includes(q) ||
-              (it.tag?.toLowerCase().includes(q) ?? false),
-          )
+          return all.filter((it) => it.text.toLowerCase().includes(q))
         })
 
       const save = (input: NewQuote) =>
@@ -135,7 +134,9 @@ export class QuotesService extends Effect.Service<QuotesService>()(
             text: validated.text,
             sourceUrl: validated.sourceUrl,
             sourceTitle: validated.sourceTitle,
-            tag: validated.tag,
+            // Offline-first capture: the quote is "pending" until the
+            // server-side Haiku pass files it into the Tag graph (ADR 0003).
+            categorizationStatus: "pending",
             contentHash,
             createdAt: now,
             updatedAt: now,
@@ -147,7 +148,6 @@ export class QuotesService extends Effect.Service<QuotesService>()(
             text: quote.text,
             sourceUrl: quote.sourceUrl,
             sourceTitle: quote.sourceTitle,
-            tag: quote.tag,
             contentHash: quote.contentHash,
             createdAt: quote.createdAt,
             updatedAt: quote.updatedAt,
@@ -166,37 +166,10 @@ export class QuotesService extends Effect.Service<QuotesService>()(
           yield* sync.enqueue({ kind: "deleteQuote", id })
         })
 
-      // Moves a quote into a Folder. A blank/null folder clears the tag,
-      // dropping the quote into the Unfiled bucket. Re-enqueues an upsert so
-      // the change syncs.
-      const setFolder = (id: QuoteId, folder: string | null) =>
-        Effect.gen(function* () {
-          const all = yield* readAll
-          const existing = all[id]
-          if (!existing) return null
-          const trimmed = folder?.trim()
-          const tag = trimmed ? trimmed : null
-          const updated: Quote = {
-            ...existing,
-            tag,
-            updatedAt: new Date().toISOString(),
-          }
-          yield* writeAll({ ...all, [id]: updated })
-          yield* sync.enqueue({
-            kind: "upsertQuote",
-            id: updated.id,
-            text: updated.text,
-            sourceUrl: updated.sourceUrl,
-            sourceTitle: updated.sourceTitle,
-            tag: updated.tag,
-            contentHash: updated.contentHash,
-            createdAt: updated.createdAt,
-            updatedAt: updated.updatedAt,
-          })
-          return updated
-        })
+      // Tag membership lives in the Tag graph read-model (TagsService), not on
+      // the Quote — manual tagging goes through TagsService.manualTag (ADR 0003).
 
-      return { list, search, save, remove, setFolder }
+      return { list, search, save, remove }
     }),
     dependencies: [StorageService.Default, SyncService.Default],
   },

@@ -606,6 +606,128 @@ export const summarizeSession = async (input: {
 const stripFences = (s: string): string =>
   s.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim()
 
+// ---------------- Tag graph curation (ADR 0003) ----------------
+
+const SYSTEM_QUOTE_TAGS = `You are a librarian filing a captured quote into a user's tag graph.
+You receive the quote text and the list of existing tags (each with an id and name).
+Choose the existing tag ids whose subject genuinely fits the quote (zero, one, or a few). If NONE fit well, propose ONE concise new tag name (1-3 words, Title Case) naming the quote's subject.
+Strongly prefer reusing an existing tag over inventing a near-duplicate of one already present.
+Reply with strict JSON: {"attachTagIds": string[], "newTag": string | null}.
+- When existing tags fit: list their ids in attachTagIds and set newTag to null.
+- When nothing fits: use an empty attachTagIds array and set newTag to the new name.
+Only use ids from the provided list. No prose, no markdown fences.`
+
+export interface QuoteTagClassification {
+  attachTagIds: string[]
+  newTag: string | null
+}
+
+/**
+ * The per-Save Haiku pass (ADR 0003): attach a captured quote to existing Tags
+ * or, if nothing fits, name one new Tag. Restructuring is out of scope here —
+ * that is the deliberate, inspectable Consolidation pass. Fail-soft: returns
+ * null on any error so capture is never blocked.
+ */
+export const classifyQuoteIntoTags = async (input: {
+  text: string
+  tags: ReadonlyArray<{ id: string; name: string }>
+}): Promise<QuoteTagClassification | null> => {
+  try {
+    const text = await generate({
+      system: SYSTEM_QUOTE_TAGS,
+      user: JSON.stringify({
+        quote: input.text.slice(0, 2000),
+        tags: input.tags.slice(0, 300),
+      }),
+      maxTokens: 200,
+      tier: "fast",
+      expectJson: true,
+    })
+    if (!text) return null
+    const parsed = JSON.parse(stripFences(text)) as {
+      attachTagIds?: unknown
+      newTag?: unknown
+    }
+    const attachTagIds = Array.isArray(parsed.attachTagIds)
+      ? parsed.attachTagIds.filter((t): t is string => typeof t === "string")
+      : []
+    const newTag =
+      typeof parsed.newTag === "string" && parsed.newTag.trim()
+        ? parsed.newTag.trim()
+        : null
+    return { attachTagIds, newTag }
+  } catch (err) {
+    console.warn("[llm] classifyQuoteIntoTags failed:", err)
+    return null
+  }
+}
+
+const SYSTEM_TAG_CONSOLIDATION = `You are a librarian tidying a user's tag graph — a directed acyclic graph of subjects where a tag may have several parents and a quote may carry several tags.
+You receive every tag (id, name, quoteCount) and every parent->child edge.
+Propose a MINIMAL set of restructuring operations to cut duplication and add useful hierarchy:
+- merges: fold a near-duplicate or redundant tag (fromId) into a better one (intoId). The fromId tag's quotes move to intoId and the fromId tag is deleted.
+- renames: give a tag a clearer, canonical name.
+- parents: add a parent->child edge so a specific tag sits under a broader subject.
+Rules: only reference ids from the input. Never merge a tag into itself. Never create a cycle (a tag must not become its own ancestor). Be conservative — only propose changes you are confident improve the graph. Prefer fewer, high-confidence operations. If the graph is already tidy, return empty arrays.
+Reply with strict JSON: {"merges":[{"fromId":string,"intoId":string}],"renames":[{"id":string,"name":string}],"parents":[{"childId":string,"parentId":string}]}. No prose, no markdown fences.`
+
+export interface TagConsolidationPlan {
+  merges: Array<{ fromId: string; intoId: string }>
+  renames: Array<{ id: string; name: string }>
+  parents: Array<{ childId: string; parentId: string }>
+}
+
+/**
+ * The Consolidation ("Tidy now") pass (ADR 0003). Haiku per the ADR; the
+ * intended lever if its restructuring proves sloppy is to escalate THIS call
+ * (only this one) to "smart"/Sonnet. The caller validates and applies every op
+ * defensively (ownership, cycle, pinned-tag checks).
+ */
+export const proposeTagConsolidation = async (input: {
+  tags: ReadonlyArray<{ id: string; name: string; quoteCount: number }>
+  edges: ReadonlyArray<{ parentId: string; childId: string }>
+}): Promise<TagConsolidationPlan | null> => {
+  try {
+    const text = await generate({
+      system: SYSTEM_TAG_CONSOLIDATION,
+      user: JSON.stringify({
+        tags: input.tags.slice(0, 400),
+        edges: input.edges.slice(0, 800),
+      }),
+      maxTokens: 1500,
+      tier: "fast",
+      expectJson: true,
+    })
+    if (!text) return null
+    const parsed = JSON.parse(stripFences(text)) as Record<string, unknown>
+    const asPairs = <K extends string>(
+      v: unknown,
+      a: K,
+      b: K,
+    ): Array<Record<K, string>> => {
+      if (!Array.isArray(v)) return []
+      return v.flatMap((o): Array<Record<K, string>> => {
+        if (typeof o !== "object" || o === null) return []
+        const r = o as Record<string, unknown>
+        if (typeof r[a] !== "string" || typeof r[b] !== "string") return []
+        return [{ [a]: r[a], [b]: r[b] } as Record<K, string>]
+      })
+    }
+    return {
+      merges: asPairs<"fromId" | "intoId">(parsed.merges, "fromId", "intoId"),
+      renames: asPairs<"id" | "name">(parsed.renames, "id", "name"),
+      parents: asPairs<"childId" | "parentId">(
+        parsed.parents,
+        "childId",
+        "parentId",
+      ),
+    }
+  } catch (err) {
+    console.warn("[llm] proposeTagConsolidation failed:", err)
+    return null
+  }
+}
+
 // ---------------- Embeddings ----------------
 //
 // Goal-aware distraction scoring. We embed the session's goal/topic anchor

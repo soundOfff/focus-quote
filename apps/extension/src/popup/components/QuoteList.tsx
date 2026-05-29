@@ -4,6 +4,8 @@ import { Chip } from "../../ui/primitives"
 
 interface Props {
   quotes: ReadonlyArray<Quote>
+  /** quoteId -> Tag names from the synced Tag-graph read-model (ADR 0003). */
+  tagsByQuote?: ReadonlyMap<string, string[]>
   onDelete: (id: Quote["id"]) => void
 }
 
@@ -61,7 +63,7 @@ const hostFromUrl = (url: string | null | undefined): string | null => {
   }
 }
 
-export function QuoteList({ quotes, onDelete }: Props) {
+export function QuoteList({ quotes, tagsByQuote, onDelete }: Props) {
   if (quotes.length === 0) {
     return (
       <div class="rounded-card border border-rule bg-paper p-6 text-center text-[12px] leading-relaxed text-muted">
@@ -80,14 +82,23 @@ export function QuoteList({ quotes, onDelete }: Props) {
             ? `— ${[q.sourceTitle, host].filter(Boolean).join(" · ")}`
             : null
         const when = formatWhen(q.createdAt)
+        const quoteTags = tagsByQuote?.get(q.id) ?? []
         return (
           <li
             key={q.id}
             class="group rounded-card border border-rule bg-paper px-3 py-[11px] transition-colors hover:bg-paper-2"
           >
             <div class="mb-[5px] flex items-center justify-between gap-2">
-              {q.tag ? (
-                <Chip>{q.tag}</Chip>
+              {quoteTags.length > 0 ? (
+                <span class="flex min-w-0 flex-wrap items-center gap-1">
+                  {quoteTags.slice(0, 3).map((name) => (
+                    <Chip key={name}>{name}</Chip>
+                  ))}
+                </span>
+              ) : q.categorizationStatus === "pending" ? (
+                <span class="font-mono text-[9.5px] uppercase tracking-mono-tight text-muted-2">
+                  Filing…
+                </span>
               ) : (
                 <span class="text-[10.5px] text-muted-2">·</span>
               )}
