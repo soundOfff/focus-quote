@@ -10,6 +10,7 @@ import {
   generateQuoteAssistantReply,
 } from "../lib/llm"
 import { aiFeatureEnabledForUser } from "../lib/ai-gate"
+import { tryConsume } from "../lib/rate-limit"
 
 /**
  * Server-proxied AI endpoints powering the in-page focus toolbar
@@ -32,9 +33,30 @@ const QuoteAssistantInput = z.object({
   userMessage: z.string().max(2000).optional(),
 })
 
+// One real interactive element captured from the user's page. `label`/`role`
+// are untrusted page text; lengths are capped so a hostile page can't bloat the
+// LLM prompt. `value` is intentionally absent — the client never sends it.
+const GuidePageElementInput = z.object({
+  ref: z.number().int().min(0).max(10_000),
+  role: z.string().max(40),
+  label: z.string().max(200),
+  x: z.number().finite(),
+  y: z.number().finite(),
+})
+
 const GuideStepsInput = z.object({
   goal: z.string().min(1).max(500),
   sourceUrl: z.string().max(2048).nullable().optional(),
+  pageContext: z
+    .object({
+      title: z.string().max(300),
+      viewport: z.object({
+        w: z.number().finite(),
+        h: z.number().finite(),
+      }),
+      elements: z.array(GuidePageElementInput).max(150),
+    })
+    .optional(),
 })
 
 export const aiToolbarRoutes = new Hono<{ Variables: RequireUserVariables }>()
@@ -62,13 +84,21 @@ export const aiToolbarRoutes = new Hono<{ Variables: RequireUserVariables }>()
     return c.json({ reply })
   })
   .post("/guide-steps", zValidator("json", GuideStepsInput), async (c) => {
-    if (!(await aiFeatureEnabledForUser(c.get("user").id, "guideMe"))) {
+    const userId = c.get("user").id
+    if (!(await aiFeatureEnabledForUser(userId, "guideMe"))) {
       return c.json({ error: "AI is turned off", code: "AI_DISABLED" }, 403)
+    }
+    // Guide Me is one of the most expensive routes (smart-tier model + a page
+    // catalog in the prompt). Throttle per user so a stale client or stolen
+    // token can't spin it. See `apps/server/src/lib/rate-limit.ts`.
+    if (!tryConsume(userId)) {
+      return c.json({ error: "Too many requests", code: "RATE_LIMITED" }, 429)
     }
     const body = c.req.valid("json")
     const steps = await generateGuideSteps({
       goal: body.goal,
       sourceUrl: body.sourceUrl ?? null,
+      pageContext: body.pageContext ?? null,
     })
     if (!steps) {
       return c.json(

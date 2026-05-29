@@ -307,20 +307,62 @@ export interface QuoteAssistantResponse {
   reply: string
 }
 
+/**
+ * A single interactive control discovered on the current page, captured by the
+ * extension and sent to the guide-steps endpoint so the model targets the REAL
+ * elements on the page instead of guessing "typical web app" positions.
+ *
+ * Privacy: `label` is built only from accessible text (aria-label, visible text,
+ * placeholder, title, alt). It never contains an element's *value*, and
+ * password / hidden inputs are excluded entirely at capture time.
+ */
+export interface GuidePageElement {
+  /** Dense index into the capture (0..n-1). The model echoes it as GuideStep.ref. */
+  ref: number
+  /** Accessible role or tag, e.g. "button", "link", "input:email". */
+  role: string
+  /** Accessible label, whitespace-collapsed and truncated. Never the value. */
+  label: string
+  /** Normalized viewport-fraction center at capture time. May fall outside
+   *  0..1 when the element is off-screen (it is only a positional hint; the
+   *  client re-measures the live element during playback). */
+  x: number
+  y: number
+}
+
+export interface GuidePageContext {
+  /** document.title at capture time. */
+  title: string
+  /** Viewport size at capture time, in CSS px. */
+  viewport: { w: number; h: number }
+  /** Interactive elements discovered on the page, ranked by goal relevance. */
+  elements: ReadonlyArray<GuidePageElement>
+}
+
 export interface GuideStepsRequest {
   /** Natural-language description of what the user wants to accomplish. */
   goal: string
   /** Current page URL (helps the model anchor its hints, optional). */
   sourceUrl?: string | null
+  /** Snapshot of the page's real interactive elements (optional — when present
+   *  the model points steps at actual controls; when absent it falls back to
+   *  positional estimates). */
+  pageContext?: GuidePageContext
 }
 
 export interface GuideStep {
   instruction: string
-  /** Normalized viewport fraction (0..1). */
+  /** Normalized viewport fraction (0..1). When `ref` is set this is the real
+   *  element's center; otherwise it is the model's positional estimate. */
   x: number
   /** Normalized viewport fraction (0..1). */
   y: number
   description: string
+  /** Index of the `GuidePageElement` this step points to, or null when the
+   *  target is not among the captured elements. The extension re-measures this
+   *  element's live position during playback. Optional for backwards
+   *  compatibility with steps captured before this field existed. */
+  ref?: number | null
 }
 
 export interface GuideStepsResponse {
