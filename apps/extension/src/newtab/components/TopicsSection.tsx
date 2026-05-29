@@ -3,6 +3,7 @@ import { Effect } from "effect"
 import {
   ImagePlus,
   Layers,
+  Link2,
   Loader2,
   Pencil,
   Plus,
@@ -12,6 +13,7 @@ import {
 } from "lucide-preact"
 import { ApiService } from "../../services/api"
 import { runP } from "../runtime"
+import { normalizeVaultUrl } from "../../shared/url"
 import type { Topic, VaultItem } from "@focus-quote/shared"
 import { Button, SectionHeader, Surface } from "../../ui/primitives"
 import { useToast } from "../../ui/Toast"
@@ -94,6 +96,12 @@ const addVaultNote = (topicId: string, body: string) =>
     return yield* api.addTopicVaultItem(topicId, { kind: "note", body })
   })
 
+const addVaultLink = (topicId: string, url: string) =>
+  Effect.gen(function* () {
+    const api = yield* ApiService
+    return yield* api.addTopicVaultItem(topicId, { kind: "url", body: url })
+  })
+
 const deleteVaultItem = (topicId: string, itemId: string) =>
   Effect.gen(function* () {
     const api = yield* ApiService
@@ -137,6 +145,8 @@ export function TopicsSection() {
   const [notes, setNotes] = useState<ReadonlyArray<VaultItem>>([])
   const [noteDraft, setNoteDraft] = useState("")
   const [addingNote, setAddingNote] = useState(false)
+  const [linkDraft, setLinkDraft] = useState("")
+  const [addingLink, setAddingLink] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
@@ -156,6 +166,7 @@ export function TopicsSection() {
     setMedia([])
     setNotes([])
     setNoteDraft("")
+    setLinkDraft("")
     setMediaLoading(true)
     runP(loadTopicMedia(topic.name))
       .then((items) => setMedia(items))
@@ -172,6 +183,7 @@ export function TopicsSection() {
     setMedia([])
     setNotes([])
     setNoteDraft("")
+    setLinkDraft("")
   }
 
   const onPick = (e: Event) => {
@@ -250,6 +262,30 @@ export function TopicsSection() {
         toast.error("Couldn't save note.")
       })
       .finally(() => setAddingNote(false))
+  }
+
+  const handleAddLink = () => {
+    const topicId = openTopicId
+    if (!topicId || addingLink) return
+    const url = normalizeVaultUrl(linkDraft)
+    if (!url) {
+      toast.error("Enter a valid link, like example.com/page.")
+      return
+    }
+    setAddingLink(true)
+    runP(addVaultLink(topicId, url))
+      .then(() => {
+        setLinkDraft("")
+        return runP(loadVault(topicId))
+      })
+      .then((items) => {
+        if (items) setNotes(items)
+      })
+      .catch((err) => {
+        console.error("[FocusQuote] add vault link:", err)
+        toast.error("Couldn't save link.")
+      })
+      .finally(() => setAddingLink(false))
   }
 
   const handleDeleteNote = (itemId: string) => {
@@ -369,7 +405,7 @@ export function TopicsSection() {
 
           <div class="mt-4 border-t border-hairline-soft pt-3">
             <h4 class="mb-2 text-xs font-semibold uppercase tracking-wide text-mute">
-              Notes
+              Notes &amp; links
             </h4>
             <div class="flex flex-col gap-1.5">
               {notes.length === 0 ? (
@@ -432,6 +468,34 @@ export function TopicsSection() {
                 class="gap-1"
               >
                 <Plus size={12} /> Add
+              </Button>
+            </div>
+            <div class="mt-2 flex items-center gap-2">
+              <Link2 size={12} class="shrink-0 text-mute" />
+              <input
+                type="url"
+                value={linkDraft}
+                placeholder="Save a link to this topic's vault…"
+                onInput={(e) =>
+                  setLinkDraft((e.currentTarget as HTMLInputElement).value)
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    handleAddLink()
+                  }
+                }}
+                class="min-w-0 flex-1 rounded-md border border-hairline-soft bg-canvas px-2 py-1.5 text-xs text-ink outline-none focus:ring-1 focus:ring-focus-ring/70"
+              />
+              <Button
+                onClick={handleAddLink}
+                variant="ghost"
+                size="sm"
+                disabled={addingLink || !linkDraft.trim()}
+                aria-label="Add link"
+                class="gap-1"
+              >
+                <Plus size={12} /> Link
               </Button>
             </div>
           </div>

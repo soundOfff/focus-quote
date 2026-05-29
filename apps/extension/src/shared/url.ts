@@ -14,6 +14,29 @@ export function normalizeDomainEntry(raw: string): string {
     .replace(/\/+$/, "")
 }
 
+/**
+ * Normalize a user-typed link for a `url` Vault item. Trims, assumes `https://`
+ * when no scheme is given, and returns the canonical href — or `null` when the
+ * input is empty, unparseable, or uses a non-http(s) scheme (e.g. `javascript:`,
+ * `ftp://`). A dotted token before a colon (`example.com:8080`) is treated as a
+ * bare host, not a scheme.
+ */
+export function normalizeVaultUrl(raw: string): string | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  const hasHttpScheme = /^https?:\/\//i.test(trimmed)
+  const hasForeignScheme = !hasHttpScheme && /^[a-z][a-z0-9+-]*:/i.test(trimmed)
+  if (hasForeignScheme) return null
+  const candidate = hasHttpScheme ? trimmed : `https://${trimmed}`
+  try {
+    const u = new URL(candidate)
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null
+    return u.href
+  } catch {
+    return null
+  }
+}
+
 export function validateDomainEntry(raw: string): DomainValidationResult {
   const value = normalizeDomainEntry(raw)
   if (!value) {
