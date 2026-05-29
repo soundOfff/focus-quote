@@ -9,6 +9,7 @@ import {
   generateGuideSteps,
   generateQuoteAssistantReply,
 } from "../lib/llm"
+import { aiFeatureEnabledForUser } from "../lib/ai-gate"
 
 /**
  * Server-proxied AI endpoints powering the in-page focus toolbar
@@ -39,6 +40,12 @@ const GuideStepsInput = z.object({
 export const aiToolbarRoutes = new Hono<{ Variables: RequireUserVariables }>()
   .use("*", requireUser)
   .post("/quote-assistant", zValidator("json", QuoteAssistantInput), async (c) => {
+    // Server-side AI gate (ADR 0002): the toolbar pre-gates client-side, but
+    // we re-check here so a disabled feature never spends tokens even if a
+    // request reaches us (stale prefs, a direct call, etc.).
+    if (!(await aiFeatureEnabledForUser(c.get("user").id, "quoteAssistant"))) {
+      return c.json({ error: "AI is turned off", code: "AI_DISABLED" }, 403)
+    }
     const body = c.req.valid("json")
     const reply = await generateQuoteAssistantReply({
       passage: body.passage,
@@ -55,6 +62,9 @@ export const aiToolbarRoutes = new Hono<{ Variables: RequireUserVariables }>()
     return c.json({ reply })
   })
   .post("/guide-steps", zValidator("json", GuideStepsInput), async (c) => {
+    if (!(await aiFeatureEnabledForUser(c.get("user").id, "guideMe"))) {
+      return c.json({ error: "AI is turned off", code: "AI_DISABLED" }, 403)
+    }
     const body = c.req.valid("json")
     const steps = await generateGuideSteps({
       goal: body.goal,

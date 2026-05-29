@@ -23,6 +23,7 @@ import {
 } from "../lib/llm"
 import { tryConsume } from "../lib/rate-limit"
 import { publish } from "../lib/session-bus"
+import { aiFeatureEnabledForUser } from "../lib/ai-gate"
 
 export const sessionUrlsRoutes = new Hono<{
   Variables: RequireUserVariables
@@ -121,7 +122,7 @@ const toDTO = (row: typeof sessionUrls.$inferSelect) => ({
  * the LLM-derived score (for new hostnames) or the heuristic-by-category
  * score (for cached hostnames) — the same behavior we had before.
  */
-const classifyBatch = async (
+export const classifyBatch = async (
   userId: string,
   urls: ReadonlyArray<{
     id: string
@@ -131,6 +132,12 @@ const classifyBatch = async (
     title: string | null
   }>,
 ) => {
+  // Server-side AI gate (ADR 0002): distraction detection is a core feature
+  // (default-on) but still honors the master switch and per-feature override.
+  // Both the embedding and the LLM classifier spend tokens, so when the
+  // feature is gated off we skip the whole batch rather than score it.
+  if (!(await aiFeatureEnabledForUser(userId, "distractionDetection"))) return
+
   // Resolve and embed each session's anchor exactly once for this batch.
   // The anchor is the user-typed goal when present, otherwise the
   // LLM-derived topic (assigned at session-end). We don't fall back further
