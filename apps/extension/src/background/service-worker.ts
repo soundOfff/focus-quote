@@ -117,11 +117,14 @@ const handleSessionStart = (msg: RuntimeMessage) =>
   Effect.gen(function* () {
     if (msg.type !== "focusquote.session.start") return
     const sessions = yield* SessionsService
-    const { session, active } = yield* sessions.start({
-      goal: msg.goal,
-      durationMinutes: msg.durationMinutes,
-      breakMinutes: msg.breakMinutes,
-    })
+    const { session, active } = yield* sessions.start(
+      {
+        goal: msg.goal,
+        durationMinutes: msg.durationMinutes,
+        breakMinutes: msg.breakMinutes,
+      },
+      { mode: msg.mode ?? "focus" },
+    )
     chrome.alarms.create(SESSION_END_ALARM, {
       when: new Date(active.expectedEndAt).getTime(),
     })

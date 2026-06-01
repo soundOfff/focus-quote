@@ -3,11 +3,20 @@
  * via chrome.runtime.sendMessage.
  */
 
+/**
+ * How a focus session was started. "job" marks a Job Application Session (see
+ * CONTEXT.md), which unlocks answer-drafting features. Local-only for now — the
+ * mode is not synced to the server (docs/adr/0004-local-only-job-application-data.md).
+ */
+export type SessionMode = "focus" | "job"
+
 export interface SessionStartMessage {
   type: "focusquote.session.start"
   durationMinutes: number
   breakMinutes: number
   goal: string | null
+  /** Defaults to "focus" when omitted (older senders). */
+  mode?: SessionMode
 }
 
 export interface SessionCancelMessage {

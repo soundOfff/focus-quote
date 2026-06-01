@@ -4,6 +4,7 @@ import { SyncService } from "./sync"
 import { ApiService } from "./api"
 import { Session, NewSession, type SessionId } from "@focus-quote/shared"
 import { ValidationError } from "../shared/errors"
+import type { SessionMode } from "../shared/messages"
 
 const SESSIONS_KEY = "focusquote.sessions"
 const ACTIVE_SESSION_KEY = "focusquote.activeSession"
@@ -18,6 +19,9 @@ const ActiveSession = Schema.Struct({
   breakMinutes: Schema.Number,
   startedAt: Schema.String,
   expectedEndAt: Schema.String,
+  // "job" = a Job Application Session. Optional so active sessions persisted
+  // before this field existed still decode; treat missing as "focus".
+  mode: Schema.optional(Schema.Literal("focus", "job")),
 })
 export type ActiveSession = Schema.Schema.Type<typeof ActiveSession>
 
@@ -83,7 +87,7 @@ export class SessionsService extends Effect.Service<SessionsService>()(
           )
         })
 
-      const start = (input: NewSession) =>
+      const start = (input: NewSession, opts?: { mode?: SessionMode }) =>
         Effect.gen(function* () {
           const validated = yield* Schema.decodeUnknown(NewSession)(input).pipe(
             Effect.mapError(
@@ -106,6 +110,8 @@ export class SessionsService extends Effect.Service<SessionsService>()(
           }
           const all = yield* readAll
           yield* writeAll({ ...all, [session.id]: session })
+          // The session mode is local-only (not part of the synced Session row):
+          // it rides on the ActiveSession so in-session job features can detect it.
           const active: ActiveSession = {
             sessionId: session.id,
             goal: session.goal,
@@ -113,6 +119,7 @@ export class SessionsService extends Effect.Service<SessionsService>()(
             breakMinutes: session.breakMinutes,
             startedAt: session.startedAt,
             expectedEndAt: expectedEnd.toISOString(),
+            mode: opts?.mode ?? "focus",
           }
           yield* storage.set(ACTIVE_SESSION_KEY, active)
           yield* enqueueSession(sync, session)
