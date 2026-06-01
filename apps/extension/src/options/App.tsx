@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks"
 import { Effect } from "effect"
 import {
+  Briefcase,
   Database,
   Download,
   ImageUp,
@@ -49,6 +50,7 @@ import type { Theme, User, AiFeature } from "@focus-quote/shared"
 import { aiFeatureDefault } from "@focus-quote/shared"
 import { runP } from "./runtime"
 import { PrivacySection } from "./components/PrivacySection"
+import { JobApplicationSection } from "./components/JobApplicationSection"
 import {
   Button,
   MonoLabel,
@@ -205,7 +207,7 @@ const exportAll = Effect.gen(function* () {
   }
 })
 
-type OptionsTab = "account" | "session" | "ai" | "privacy" | "data"
+type OptionsTab = "account" | "session" | "ai" | "privacy" | "data" | "jobs"
 const ACTIVE_TAB_KEY = "focusquote.options.activeTab"
 
 const isOptionsTab = (v: unknown): v is OptionsTab =>
@@ -213,7 +215,8 @@ const isOptionsTab = (v: unknown): v is OptionsTab =>
   v === "session" ||
   v === "ai" ||
   v === "privacy" ||
-  v === "data"
+  v === "data" ||
+  v === "jobs"
 
 export function App() {
   return (
@@ -524,6 +527,7 @@ function AppInner() {
             { value: "ai", label: "AI", icon: <Sparkles size={12} /> },
             { value: "privacy", label: "Privacy", icon: <Shield size={12} /> },
             { value: "data", label: "Data", icon: <Database size={12} /> },
+            { value: "jobs", label: "Jobs", icon: <Briefcase size={12} /> },
           ]}
         />
 
@@ -875,6 +879,10 @@ function AppInner() {
                     <Download size={14} /> Export JSON
                   </Button>
                 </Surface>
+              </TabPanel>
+
+              <TabPanel active={activeTab === "jobs"}>
+                <JobApplicationSection />
               </TabPanel>
             </>
           )}
