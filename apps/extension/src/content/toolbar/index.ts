@@ -3,6 +3,7 @@ import { installNotificationsButton } from "./notifications"
 import { installAnnotateButton } from "./annotate"
 import { installQuoteAiButton } from "./quoteAi"
 import { installGuideButton } from "./guide"
+import { installDraftAnswerButton } from "./draftAnswer"
 import { installVaultLinkButton } from "./vault-link"
 import { closeOpenPopover } from "./popover"
 
@@ -46,6 +47,8 @@ const setup = (): void => {
   disposers.push(installAnnotateButton(shell))
   disposers.push(installQuoteAiButton(shell))
   disposers.push(installGuideButton(shell))
+  // Job Application Sessions only — the button hides itself unless mode === "job".
+  disposers.push(installDraftAnswerButton(shell))
   disposers.push(installVaultLinkButton(shell))
 
   controller = { shell, disposers }

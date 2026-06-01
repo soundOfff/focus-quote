@@ -105,6 +105,12 @@ const AI_FEATURE_CONTROLS: ReadonlyArray<{
     label: "Guide Me",
     description: "Walks you through next steps from the capture toolbar.",
   },
+  {
+    feature: "jobAnswer",
+    label: "Draft answer",
+    description:
+      "Drafts an answer to a selected question from your CV and Answer Bank during a Job application session.",
+  },
 ]
 
 const DIFFICULTY_OPTIONS: ReadonlyArray<DropdownOption<RecallDepth>> = [
