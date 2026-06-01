@@ -353,6 +353,43 @@ export interface QuoteAssistantResponse {
 }
 
 /**
+ * One answered question from the user's Answer Bank, sent as context for
+ * drafting. Only the question + answer (and optional category) are forwarded —
+ * the server is a stateless passthrough and never persists this
+ * (docs/adr/0004-local-only-job-application-data.md).
+ */
+export interface JobAnswerContext {
+  question: string
+  answer: string
+  category?: string
+}
+
+/**
+ * Draft an answer to a job-application question selected on a page. The CV and
+ * Answer Bank are read from the extension's LOCAL storage and sent per-request;
+ * they are never stored server-side.
+ */
+export interface GenerateJobAnswerRequest {
+  /** The application/interview question the user selected on the page. */
+  question: string
+  /** The applicant's CV as plain text (may be empty). */
+  cv: string
+  /** The user's previously-written answers, used to match their voice/facts. */
+  answerBank: ReadonlyArray<JobAnswerContext>
+  /** Detected company for company-specific questions, if any. */
+  company?: string | null
+  /** Source page URL (context only, optional). */
+  sourceUrl?: string | null
+}
+
+export interface GenerateJobAnswerResponse {
+  /** The drafted answer, ready to edit and copy. */
+  answer: string
+  /** Whether the model treated the question as company/role-specific. */
+  contextual: boolean
+}
+
+/**
  * A single interactive control discovered on the current page, captured by the
  * extension and sent to the guide-steps endpoint so the model targets the REAL
  * elements on the page instead of guessing "typical web app" positions.

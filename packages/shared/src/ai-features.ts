@@ -19,6 +19,9 @@ export type AiFeature =
   | "quoteTagging"
   // ADR 0003: the manual "Tidy now" Consolidation pass (merge/rename/re-parent).
   | "tagConsolidation"
+  // Drafts an answer to a selected application question from the user's local
+  // CV + Answer Bank during a Job Application Session (ADR 0004).
+  | "jobAnswer"
 
 /**
  * - `core`: on by default; the product's baseline value.
@@ -42,6 +45,8 @@ export const AI_FEATURE_TIERS: Record<AiFeature, AiTier> = {
   quoteTagging: "core",
   // Only ever runs when the user clicks "Tidy now".
   tagConsolidation: "onDemand",
+  // Only ever runs when the user clicks "Draft answer" on a selection.
+  jobAnswer: "onDemand",
 }
 
 /** Whether a feature is enabled by default, derived from its tier alone. */
