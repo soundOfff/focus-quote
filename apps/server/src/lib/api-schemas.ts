@@ -284,3 +284,25 @@ export const PutToolbarStateInput = z.object({
   payload: z.string().min(0).max(200_000),
 })
 export type PutToolbarStateInput = z.infer<typeof PutToolbarStateInput>
+
+// Job Application answer drafting (ADR 0004). The CV + answer bank arrive
+// per-request from the extension's local storage; this endpoint never persists
+// them. Caps bound the LLM prompt regardless of client behaviour.
+export const GenerateJobAnswerInput = z.object({
+  question: z.string().min(1).max(2000),
+  cv: z.string().max(100_000).optional().default(""),
+  answerBank: z
+    .array(
+      z.object({
+        question: z.string().max(2000),
+        answer: z.string().max(20_000),
+        category: z.string().max(40).optional(),
+      }),
+    )
+    .max(100)
+    .optional()
+    .default([]),
+  company: z.string().max(200).nullable().optional(),
+  sourceUrl: z.string().max(2048).nullable().optional(),
+})
+export type GenerateJobAnswerInput = z.infer<typeof GenerateJobAnswerInput>

@@ -20,6 +20,7 @@ import { secretsRoutes } from "./routes/secrets"
 import { aiHistoryRoutes } from "./routes/ai-history"
 import { recallRoutes } from "./routes/recall"
 import { toolbarStateRoutes } from "./routes/toolbar-state"
+import { jobsRoutes } from "./routes/jobs"
 
 export const app = new Hono()
 
@@ -57,6 +58,7 @@ app.route("/api/profile", profileRoutes)
 app.route("/api/privacy", privacyRoutes)
 app.route("/api/secrets", secretsRoutes)
 app.route("/api/recall", recallRoutes)
+app.route("/api/jobs", jobsRoutes)
 app.route("/api/toolbar-state", toolbarStateRoutes)
 
 app.get("/health", (c) =>
