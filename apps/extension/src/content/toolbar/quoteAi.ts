@@ -10,11 +10,17 @@ import { apiPost, ApiCallError } from "./api"
 import { aiFeatureEnabled } from "./ai-gate"
 import { toolbarStore } from "../store"
 import { getConversation } from "../store/conversations"
+import { extractPageContent } from "../pageContent"
 import type {
   QuoteAssistantRequest,
   QuoteAssistantResponse,
+  QuoteAssistantSource,
   QuoteAssistantTurn,
 } from "@focus-quote/shared"
+
+// Whole-page mode (no highlight) forwards this many chars of page text — large
+// enough for a full article, bounded to match the server's prompt cap.
+const PAGE_CONTENT_LIMIT = 16000
 
 /**
  * Quote + AI panel — Direction A.
@@ -166,9 +172,78 @@ const buildPassageCard = (passage: string, sourceUrl: string) => {
   return wrap
 }
 
+/**
+ * Whole-page mode context card (shown instead of the passage card when the user
+ * opened Quote+AI without highlighting). Same chrome as the passage card, but a
+ * "Whole page" meta line and the page title as the body.
+ */
+const buildPageCard = (sourceUrl: string) => {
+  const wrap = document.createElement("div")
+  wrap.style.cssText = "padding:12px 14px 4px"
+
+  const card = document.createElement("div")
+  card.style.cssText = [
+    `background:${tokens.paper}`,
+    `border:1px solid ${tokens.rule}`,
+    "border-radius:9px",
+    "padding:10px 12px 10px 14px",
+    "position:relative",
+  ].join(";")
+
+  const rail = document.createElement("div")
+  rail.style.cssText = [
+    "position:absolute",
+    "left:0",
+    "top:8px",
+    "bottom:8px",
+    "width:3px",
+    `background:${tokens.amber}`,
+    "border-radius:99px",
+  ].join(";")
+
+  let host = "this page"
+  if (sourceUrl) {
+    try {
+      host = new URL(sourceUrl).hostname.replace(/^www\./, "")
+    } catch {
+      /* malformed URL — fall back to "this page" */
+    }
+  }
+
+  const meta = document.createElement("div")
+  meta.style.cssText = [
+    `font:${tokens.fontMono}`,
+    "font-size:9px",
+    "font-weight:500",
+    "letter-spacing:0.12em",
+    "text-transform:uppercase",
+    `color:${tokens.muted}`,
+    "margin-bottom:5px",
+  ].join(";")
+  meta.textContent = `Whole page · ${host}`
+
+  const body = document.createElement("div")
+  body.style.cssText = [
+    `font:${tokens.fontSerif}`,
+    "font-style:italic",
+    "font-size:13px",
+    "line-height:1.45",
+    `color:${tokens.ink}`,
+    "letter-spacing:-0.005em",
+    "white-space:pre-wrap",
+    "word-break:break-word",
+  ].join(";")
+  body.textContent = document.title?.trim() || "Answering from this page"
+
+  card.append(rail, meta, body)
+  wrap.appendChild(card)
+  return wrap
+}
+
 const buildSummaryBlock = (
   initialState: "loading" | "text",
   initialText: string,
+  loadingText: string,
 ) => {
   const wrap = document.createElement("div")
   wrap.style.cssText = "padding:10px 14px 4px"
@@ -205,7 +280,7 @@ const buildSummaryBlock = (
   if (initialState === "loading") {
     body.style.color = tokens.muted
     body.style.fontStyle = "italic"
-    body.textContent = "Reading the passage…"
+    body.textContent = loadingText
   } else {
     body.textContent = initialText
   }
@@ -295,6 +370,104 @@ const buildFollowUpButton = (
   return btn
 }
 
+const buildSourcesList = () => {
+  const wrap = document.createElement("div")
+  wrap.style.cssText = "padding:0 14px 2px"
+
+  const label = document.createElement("div")
+  label.style.cssText = [
+    `font:${tokens.fontMono}`,
+    "font-size:9.5px",
+    "font-weight:500",
+    "letter-spacing:0.12em",
+    "text-transform:uppercase",
+    `color:${tokens.sageInk}`,
+    "display:flex",
+    "align-items:center",
+    "gap:5px",
+    "margin-top:10px",
+    "margin-bottom:4px",
+  ].join(";")
+  const globe = document.createElement("span")
+  globe.style.cssText = "display:inline-flex;align-items:center"
+  globe.innerHTML = icons.globe(11)
+  const labelText = document.createElement("span")
+  labelText.textContent = "Sources to visit"
+  label.append(globe, labelText)
+
+  const list = document.createElement("div")
+  list.style.cssText = "display:grid;gap:4px"
+
+  wrap.append(label, list)
+  wrap.style.display = "none"
+  return { wrap, list }
+}
+
+/**
+ * A single suggested source, rendered as a real anchor so middle-click /
+ * ⌘-click open it too. Opens in a new tab; `noopener` keeps the opened page
+ * from reaching back into the host page via `window.opener`.
+ */
+const buildSourceLink = (source: QuoteAssistantSource): HTMLAnchorElement => {
+  const a = document.createElement("a")
+  a.href = source.url
+  a.target = "_blank"
+  a.rel = "noopener noreferrer"
+  a.style.cssText = [
+    "all:unset",
+    "box-sizing:border-box",
+    "display:block",
+    "width:100%",
+    "cursor:pointer",
+    `background:${tokens.paper2}`,
+    `border:1px solid ${tokens.rule}`,
+    "border-radius:7px",
+    "padding:7px 9px",
+    "transition:background-color 120ms ease,border-color 120ms ease",
+  ].join(";")
+  a.addEventListener("mouseenter", () => {
+    a.style.backgroundColor = tokens.paper
+    a.style.borderColor = tokens.popupBorder
+  })
+  a.addEventListener("mouseleave", () => {
+    a.style.backgroundColor = tokens.paper2
+    a.style.borderColor = tokens.rule
+  })
+
+  const titleRow = document.createElement("div")
+  titleRow.style.cssText = [
+    "display:flex",
+    "align-items:center",
+    "gap:6px",
+    "font-size:12px",
+    "font-weight:600",
+    `color:${tokens.ink}`,
+    "line-height:1.3",
+  ].join(";")
+  const titleText = document.createElement("span")
+  titleText.textContent = source.title
+  titleText.style.cssText = "min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+  const arrow = document.createElement("span")
+  arrow.style.cssText = `display:inline-flex;flex-shrink:0;color:${tokens.muted2}`
+  arrow.innerHTML = icons.arrowRight(11, 1.6)
+  titleRow.append(titleText, arrow)
+  a.appendChild(titleRow)
+
+  if (source.snippet) {
+    const snippet = document.createElement("div")
+    snippet.textContent = source.snippet
+    snippet.style.cssText = [
+      "font-size:11px",
+      "line-height:1.4",
+      `color:${tokens.muted}`,
+      "margin-top:2px",
+    ].join(";")
+    a.appendChild(snippet)
+  }
+
+  return a
+}
+
 // ----- Public API -----------------------------------------------------------
 
 export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
@@ -319,15 +492,23 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
       url,
     )
     const passage = grabSelection()
-    // A brand-new conversation needs a highlighted passage to seed it; an
-    // existing one can be reopened (a new highlight, if any, adds context).
-    if ((!existing || existing.history.length === 0) && !passage) {
-      openMessage(
-        "Highlight some text on the page first, then click Quote+AI to ask the assistant about it.",
-      )
-      return
+    const existingHasHistory = !!existing && existing.history.length > 0
+
+    // Whole-page mode (#25): with no highlight, fall back to the full page text
+    // so the assistant can answer about the page directly instead of refusing
+    // for lack of context. The highlight-to-ask flow above is unchanged; this
+    // only adds a path when nothing is selected.
+    let pageContent: string | null = null
+    if (!passage) {
+      pageContent = extractPageContent(PAGE_CONTENT_LIMIT).content
+      if (!existingHasHistory && !pageContent) {
+        openMessage(
+          "This page doesn't have readable text yet. Highlight a passage to ask the assistant about it.",
+        )
+        return
+      }
     }
-    toolbarStore.getState().openChat(passage, url)
+    toolbarStore.getState().openChat(passage, url, pageContent)
     openChat()
   }
 
@@ -360,23 +541,29 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
       },
     })
 
-    // Body layout: passage → summary → follow-ups → composer.
+    // Body layout: context → summary → sources → follow-ups → composer.
     const root = document.createElement("div")
     root.style.cssText = "display:flex;flex-direction:column"
 
     const initialChat = toolbarStore.getState().chat
-    const passageNode = buildPassageCard(
-      initialChat.passage,
-      initialChat.sourceUrl,
-    )
+    // Whole-page mode (#25): no highlighted passage, but page text to answer
+    // from. Show the "Whole page" card instead of the passage card, and word
+    // the loading copy to match.
+    const wholePage = !initialChat.passage && !!initialChat.pageContent
+    const readingLabel = wholePage ? "Reading the page…" : "Reading the passage…"
+    const contextNode = wholePage
+      ? buildPageCard(initialChat.sourceUrl)
+      : buildPassageCard(initialChat.passage, initialChat.sourceUrl)
 
     const lastAssistant = lastAssistantText(initialChat.history)
     const parsedInitial = parseReply(lastAssistant ?? "")
     const summaryBlock = buildSummaryBlock(
       lastAssistant ? "text" : "loading",
       parsedInitial.summary,
+      readingLabel,
     )
 
+    const sources = buildSourcesList()
     const followUps = buildFollowUpsList()
     const composer = popoverComposer({
       placeholder: "Ask a follow-up — or leave blank to star ★",
@@ -385,8 +572,24 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
       onSubmit: (value) => sendTurn(value),
     })
 
-    root.append(passageNode, summaryBlock.wrap, followUps.wrap, composer.root)
+    root.append(
+      contextNode,
+      summaryBlock.wrap,
+      sources.wrap,
+      followUps.wrap,
+      composer.root,
+    )
     currentPopover.setBody(root)
+
+    const renderSources = (list: ReadonlyArray<QuoteAssistantSource>) => {
+      sources.list.replaceChildren()
+      if (list.length === 0) {
+        sources.wrap.style.display = "none"
+        return
+      }
+      sources.wrap.style.display = ""
+      for (const s of list) sources.list.appendChild(buildSourceLink(s))
+    }
 
     const renderFromStore = () => {
       const chat = toolbarStore.getState().chat
@@ -394,7 +597,7 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
       if (!lastReply) {
         summaryBlock.body.style.color = tokens.muted
         summaryBlock.body.style.fontStyle = "italic"
-        summaryBlock.body.textContent = "Reading the passage…"
+        summaryBlock.body.textContent = readingLabel
         followUps.wrap.style.display = "none"
         return
       }
@@ -422,7 +625,17 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
     }
 
     renderFromStore()
-    unsubStore = toolbarStore.subscribe(() => renderFromStore())
+    // Re-render only when the chat slice actually changes. The store also fires
+    // on unrelated writes — notably actionCapture's per-event `appendAction`
+    // during a focus session. Those rebuilt the follow-up buttons via
+    // `replaceChildren()`: a follow-up button gains focus on mousedown, which
+    // triggers an action write, which swapped the button out before mouseup —
+    // so the click never landed (#24). Zustand keeps `chat` reference-stable
+    // when only another slice changes, so this guard skips that churn.
+    unsubStore = toolbarStore.subscribe((state, prev) => {
+      if (state.chat === prev.chat) return
+      renderFromStore()
+    })
 
     // Drain a turn into the structured offline sync queue (ai_chat_threads).
     // Fire-and-forget; the SW noops for guests (drain needs a bearer token).
@@ -457,8 +670,10 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
       summaryBlock.body.style.fontStyle = "italic"
       summaryBlock.body.textContent = trimmed
         ? `Thinking about "${trimmed.slice(0, 60)}${trimmed.length > 60 ? "…" : ""}"…`
-        : "Reading the passage…"
+        : readingLabel
       followUps.wrap.style.display = "none"
+      // Sources belong to the previous answer — clear them while we fetch.
+      renderSources([])
 
       currentAbort?.abort()
       currentAbort = new AbortController()
@@ -470,6 +685,7 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
       try {
         const body: QuoteAssistantRequest = {
           passage: chat.passage,
+          pageContent: chat.pageContent ?? null,
           sourceUrl: chat.sourceUrl,
           history: historyForRequest,
           userMessage: trimmed,
@@ -483,6 +699,7 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
           .getState()
           .appendChatTurn({ role: "assistant", content: res.reply })
         syncTurn("assistant", res.reply)
+        renderSources(res.sources ?? [])
       } catch (err) {
         if ((err as Error).name === "AbortError") return
         const message =

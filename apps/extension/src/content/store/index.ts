@@ -25,6 +25,12 @@ interface ChatSlice {
   passage: string
   sourceUrl: string
   history: QuoteAssistantTurn[]
+  /**
+   * Whole-page context for the active chat when the user opened Quote+AI
+   * without highlighting. Transient (re-captured on each open) and never
+   * persisted — see `partialize`. Empty in passage mode.
+   */
+  pageContent: string | null
   /** Every article's Conversation, keyed by normalized URL. */
   conversations: ConversationMap
 }
@@ -45,7 +51,11 @@ export interface ToolbarState {
   chat: ChatSlice
   guide: GuideSlice
   actions: ActionsSlice
-  openChat: (passage: string, sourceUrl: string) => void
+  openChat: (
+    passage: string,
+    sourceUrl: string,
+    pageContent?: string | null,
+  ) => void
   closeChat: () => void
   appendChatTurn: (turn: QuoteAssistantTurn) => void
   openGuide: (goal: string, steps: GuideStep[]) => void
@@ -61,6 +71,7 @@ const initialChat = (): ChatSlice => ({
   passage: "",
   sourceUrl: "",
   history: [],
+  pageContent: null,
   conversations: {},
 })
 
@@ -82,7 +93,7 @@ export const toolbarStore = createStore<ToolbarState>()(
       chat: initialChat(),
       guide: initialGuide(),
       actions: initialActions(),
-      openChat: (passage, sourceUrl) =>
+      openChat: (passage, sourceUrl, pageContent = null) =>
         set((s) => {
           const conversations = openConversation(
             s.chat.conversations,
@@ -98,6 +109,7 @@ export const toolbarStore = createStore<ToolbarState>()(
               sourceUrl: key,
               passage: active.passage,
               history: active.history,
+              pageContent,
               conversations,
             },
           }
@@ -150,8 +162,10 @@ export const toolbarStore = createStore<ToolbarState>()(
         return prev
       },
       storage: createJSONStorage(() => dualSessionStorage),
+      // Never persist captured page text — it's transient context, re-captured
+      // on each open. Keeps arbitrary page content out of session storage.
       partialize: (s) => ({
-        chat: s.chat,
+        chat: { ...s.chat, pageContent: null },
         guide: s.guide,
         actions: s.actions,
       }),

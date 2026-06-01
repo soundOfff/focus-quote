@@ -13,6 +13,7 @@ describe("toolbarStore", () => {
         passage: "",
         sourceUrl: "",
         history: [],
+        pageContent: null,
         conversations: {},
       },
       guide: { isOpen: false, steps: [], index: 0, status: "paused", goal: "" },
@@ -45,6 +46,47 @@ describe("toolbarStore", () => {
     expect(chat.history).toHaveLength(1)
     expect(chat.history[0]!.content).toBe("on a")
     expect(chat.passage).toBe("p-a")
+  })
+
+  // Regression for #24: the Quote+AI panel subscribes to the store and rebuilds
+  // its follow-up buttons whenever the *chat* changes. Action-capture writes a
+  // burst of `appendAction` events during a focus session; if those changed the
+  // chat reference, the panel would rebuild the buttons mid-click and the click
+  // would never land. Zustand must keep `chat` reference-stable across writes to
+  // other slices so the panel can cheaply skip those re-renders.
+  it("keeps the chat reference stable when only the action buffer changes", () => {
+    toolbarStore.getState().openChat("p", "https://example.com")
+    const before = toolbarStore.getState().chat
+    toolbarStore.getState().appendAction({
+      id: "a1",
+      sessionId: "s1",
+      actionKind: "focus",
+      payload: "{}",
+      at: new Date().toISOString(),
+    })
+    expect(toolbarStore.getState().chat).toBe(before)
+  })
+
+  it("changes the chat reference when a chat turn is appended", () => {
+    toolbarStore.getState().openChat("p", "https://example.com")
+    const before = toolbarStore.getState().chat
+    toolbarStore.getState().appendChatTurn({ role: "user", content: "hi" })
+    expect(toolbarStore.getState().chat).not.toBe(before)
+  })
+
+  // #25: whole-page mode threads captured page text through openChat as a
+  // transient field (re-captured each open, never persisted).
+  it("carries pageContent for whole-page mode and preserves it across turns", () => {
+    toolbarStore.getState().openChat("", "https://example.com", "full page text")
+    expect(toolbarStore.getState().chat.passage).toBe("")
+    expect(toolbarStore.getState().chat.pageContent).toBe("full page text")
+    toolbarStore.getState().appendChatTurn({ role: "assistant", content: "ok" })
+    expect(toolbarStore.getState().chat.pageContent).toBe("full page text")
+  })
+
+  it("defaults pageContent to null in passage mode", () => {
+    toolbarStore.getState().openChat("p", "https://example.com")
+    expect(toolbarStore.getState().chat.pageContent).toBeNull()
   })
 
   it("tracks guide status and action buffer", () => {
