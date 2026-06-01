@@ -37,12 +37,15 @@ const EnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
 
   // OpenRouter (OpenAI-compatible gateway, supports free models for testing).
-  // Model defaults to a free Llama instruct model; override with OPENROUTER_MODEL.
+  // Default is a current low-cost Gemini flash model; override with
+  // OPENROUTER_MODEL. Slugs are retired over time (the previous default,
+  // google/gemini-2.0-flash-001, now 404s as "No endpoints found") — verify a
+  // current id at https://openrouter.ai/models when this breaks.
   OPENROUTER_API_KEY: z.string().optional(),
   OPENROUTER_MODEL: z
     .string()
     .min(1)
-    .default("google/gemini-2.0-flash-001"),
+    .default("google/gemini-3.5-flash-20260519"),
 
   // Symmetric key (base64) used to encrypt user-provided secrets at rest in
   // the `user_secrets` table. Must be 32 raw bytes (`openssl rand -base64 32`).
