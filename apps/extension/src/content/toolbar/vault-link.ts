@@ -45,11 +45,15 @@ export const attachCurrentPageToVault = async (
   }
   const { url, title } = deps.getPage()
   try {
-    await deps.post(`/api/focus-sessions/${sessionId}/vault-link`, {
+    const res = (await deps.post(`/api/focus-sessions/${sessionId}/vault-link`, {
       url,
       title,
-    })
-    deps.notify("Saved to topic vault.")
+    })) as { item?: { alreadyExisted?: boolean } } | null
+    deps.notify(
+      res?.item?.alreadyExisted
+        ? "Already in this topic's vault."
+        : "Saved to topic vault.",
+    )
     return { status: "saved" }
   } catch (err) {
     deps.notify("Couldn't save this page to the vault.", "error")

@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact"
 import { Home, Moon, Plus, Settings as SettingsIcon, Sun } from "lucide-preact"
 import type { Theme } from "@focus-quote/shared"
-import { Button } from "./primitives"
+import { BrandMark, Button } from "./primitives"
 import { requestOpenExtensionPopup } from "../shared/open-popup"
 
 const cx = (...parts: Array<string | false | null | undefined>) =>
@@ -43,7 +43,7 @@ export function AppShell({
   showNewSession = true,
 }: AppShellProps) {
   return (
-    <div class="flex h-screen w-screen flex-col overflow-hidden bg-canvas text-body">
+    <div class="flex h-screen w-screen flex-col overflow-hidden bg-page text-body">
       <AppNavBar
         page={page}
         theme={theme}
@@ -74,8 +74,11 @@ export function AppNavBar({
   return (
     <header class="flex shrink-0 items-center justify-between gap-4 border-b border-hairline bg-surface px-4 py-3 sm:px-6">
       <div class="flex min-w-0 flex-1 items-center gap-4 sm:gap-8">
-        <span class="shrink-0 font-serif text-[18px] font-semibold tracking-[-0.01em] text-ink">
-          Focus<span class="text-amber-deep">Quote</span>
+        <span class="flex shrink-0 items-center gap-2">
+          <BrandMark size={26} />
+          <span class="font-serif text-[18px] font-semibold tracking-[-0.01em] text-ink">
+            Focus<span class="text-amber-deep">Quote</span>
+          </span>
         </span>
         <nav class="flex items-center gap-1">
           <NavLink
@@ -93,14 +96,6 @@ export function AppNavBar({
         </nav>
       </div>
       <div class="flex shrink-0 items-center gap-2 sm:gap-3">
-        {headerDate && (
-          <time
-            class="hidden font-mono text-[9.5px] font-medium uppercase tracking-mono-wide text-muted-2 sm:block"
-            dateTime={new Date().toISOString().slice(0, 10)}
-          >
-            {headerDate}
-          </time>
-        )}
         {showNewSession && (
           <Button
             variant="primary"

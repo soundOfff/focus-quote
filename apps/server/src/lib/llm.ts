@@ -4,6 +4,11 @@ import { env } from "../env"
 
 const ANTHROPIC_HAIKU = "claude-haiku-4-5-20251001"
 const ANTHROPIC_SONNET = "claude-sonnet-4-5-20250929"
+// Older, much cheaper Haiku (~4-5x less than 4.5). Used only for the per-Save
+// tag classifier — a low-stakes, self-correcting call (invalid tag ids are
+// dropped by the caller and the manual Tidy pass fixes any sloppiness). NOT used
+// for the heavier Consolidation/Tidy pass, which stays on Haiku 4.5.
+const ANTHROPIC_HAIKU_CHEAP = "claude-3-haiku-20240307"
 
 // OpenRouter supports OpenAI-compatible embeddings. Small + cheap is fine
 // here — we're scoring short strings (URL + title vs. goal/topic) and the
@@ -178,6 +183,12 @@ interface GenInput {
   maxTokens: number
   tier: "fast" | "smart"
   expectJson: boolean
+  /**
+   * Optional exact model override (Anthropic provider only). When set it wins
+   * over the tier→model mapping; the OpenRouter path always uses
+   * env.OPENROUTER_MODEL and ignores this.
+   */
+  model?: string
 }
 
 const generate = async (input: GenInput): Promise<string | null> => {
@@ -185,8 +196,21 @@ const generate = async (input: GenInput): Promise<string | null> => {
   if (provider === "anthropic") {
     const c = getAnthropic()
     if (!c) return null
+    const messages: Anthropic.MessageParam[] = [
+      { role: "user", content: input.user },
+    ]
+    // Force well-formed JSON: prefill the assistant turn with "{" so the model
+    // *continues* the object instead of prefacing it with prose ("Here is the
+    // JSON: ..."), which the cheaper models routinely do despite the prompt —
+    // wasting the token budget and getting the JSON truncated. reconstructJson
+    // restores the leading brace. Every expectJson caller wants a top-level
+    // object, so this is always safe.
+    if (input.expectJson) {
+      messages.push({ role: "assistant", content: "{" })
+    }
     const res = await c.messages.create({
-      model: input.tier === "smart" ? ANTHROPIC_SONNET : ANTHROPIC_HAIKU,
+      model:
+        input.model ?? (input.tier === "smart" ? ANTHROPIC_SONNET : ANTHROPIC_HAIKU),
       max_tokens: input.maxTokens,
       system: [
         {
@@ -195,29 +219,56 @@ const generate = async (input: GenInput): Promise<string | null> => {
           cache_control: { type: "ephemeral" },
         },
       ],
-      messages: [{ role: "user", content: input.user }],
+      messages,
     })
-    return res.content
+    const text = res.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
       .join("")
+    return input.expectJson ? reconstructJson(text) : text
   }
   if (provider === "openrouter") {
     const c = getOpenRouter()
     if (!c) return null
     try {
-      const res = await c.chat.completions.create({
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        { role: "system", content: input.system },
+        { role: "user", content: input.user },
+      ]
+      // Same prefill trick (OpenRouter supports an assistant prefill message):
+      // most OpenRouter models ignore response_format, so the "{" prefill is
+      // the reliable lever against prose preambles + truncation.
+      if (input.expectJson) {
+        messages.push({ role: "assistant", content: "{" })
+      }
+      // Reasoning models routed through OpenRouter (e.g. Gemini Flash) spend
+      // hidden "reasoning" tokens out of max_tokens BEFORE emitting the JSON.
+      // Left unbounded the reasoning can eat the whole budget and the object
+      // comes back truncated mid-string ("Unterminated string in JSON") —
+      // unrecoverable. Two levers, both only on the JSON path:
+      //   1. a generous max_tokens floor so reasoning + the object both fit, and
+      //   2. reasoning.effort "low" to bound the reasoning slice — these are
+      //      mechanical classify/extract calls that don't need deep thinking,
+      //      and capping it also cuts cost (reasoning tokens dominate the bill).
+      // Non-reasoning models ignore the `reasoning` field; reconstructJson then
+      // restores the object from whatever framing the model used.
+      const body: Record<string, unknown> = {
         model: env.OPENROUTER_MODEL,
-        max_tokens: input.maxTokens,
-        messages: [
-          { role: "system", content: input.system },
-          { role: "user", content: input.user },
-        ],
-        ...(input.expectJson
-          ? { response_format: { type: "json_object" } }
-          : {}),
-      })
-      return res.choices[0]?.message?.content ?? null
+        max_tokens: input.expectJson
+          ? Math.max(input.maxTokens, 1200)
+          : input.maxTokens,
+        messages,
+      }
+      if (input.expectJson) {
+        body.response_format = { type: "json_object" }
+        body.reasoning = { effort: "low" }
+      }
+      const res = await c.chat.completions.create(
+        body as unknown as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
+      )
+      const content = res.choices[0]?.message?.content ?? null
+      if (content === null) return null
+      return input.expectJson ? reconstructJson(content) : content
     } catch (err) {
       logOpenRouterError(err, {
         model: env.OPENROUTER_MODEL,
@@ -627,8 +678,49 @@ export const summarizeSession = async (input: {
   }
 }
 
-const stripFences = (s: string): string =>
-  s.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim()
+/**
+ * Best-effort extraction of the single JSON value the model was asked for.
+ * Strips markdown fences, then — because the cheaper Haiku models like to wrap
+ * the JSON in prose ("Here is the JSON: {…}") — narrows to the outermost
+ * object/array by slicing from the first opening brace to its matching last
+ * closing brace. Falls back to the trimmed string when no brace is present.
+ */
+export const stripFences = (s: string): string => {
+  const cleaned = s
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim()
+  for (const [open, close] of [
+    ["{", "}"],
+    ["[", "]"],
+  ] as const) {
+    const start = cleaned.indexOf(open)
+    const end = cleaned.lastIndexOf(close)
+    if (start !== -1 && end > start) return cleaned.slice(start, end + 1)
+  }
+  return cleaned
+}
+
+/**
+ * Reconstruct the JSON object the model was asked for, given that we prefill the
+ * assistant turn with "{". Depending on the provider/model the reply is either
+ * the *continuation* (no leading brace — prepend it) or, when the prefill is
+ * ignored, the full text (possibly wrapped in prose — extract it). Try both
+ * readings and return whichever actually parses; on neither (e.g. the reply was
+ * truncated mid-object) hand back a best-effort string so the caller's own
+ * try/catch logs once and falls back to null.
+ */
+export const reconstructJson = (raw: string): string => {
+  for (const candidate of [stripFences(`{${raw}`), stripFences(raw)]) {
+    try {
+      JSON.parse(candidate)
+      return candidate
+    } catch {
+      // try the next interpretation
+    }
+  }
+  return stripFences(raw)
+}
 
 // ---------------- Tag graph curation (ADR 0003) ----------------
 
@@ -665,6 +757,9 @@ export const classifyQuoteIntoTags = async (input: {
       }),
       maxTokens: 200,
       tier: "fast",
+      // Cheapest path: per-Save tagging is low-stakes + self-correcting, so it
+      // runs on the older, ~4-5x cheaper Haiku 3 rather than Haiku 4.5.
+      model: ANTHROPIC_HAIKU_CHEAP,
       expectJson: true,
     })
     if (!text) return null
@@ -682,6 +777,73 @@ export const classifyQuoteIntoTags = async (input: {
     return { attachTagIds, newTag }
   } catch (err) {
     console.warn("[llm] classifyQuoteIntoTags failed:", err)
+    return null
+  }
+}
+
+const SYSTEM_QUOTES_TAGS_BATCH = `You are a librarian filing several captured quotes into a user's tag graph in a single pass.
+You receive a list of quotes (each with an id and text) and the list of existing tags (each with an id and name).
+For EACH quote independently, choose the existing tag ids whose subject genuinely fits the quote (zero, one, or a few). If NONE fit well, propose ONE concise new tag name (1-3 words, Title Case) naming that quote's subject.
+Strongly prefer reusing an existing tag over inventing a near-duplicate. When several quotes in this batch share a subject that no existing tag covers, propose the SAME new tag name for each of them (so they file together).
+Reply with strict JSON: {"results": [{"id": string, "attachTagIds": string[], "newTag": string | null}]} with EXACTLY one entry per input quote id, echoing each id back.
+- When existing tags fit: list their ids in attachTagIds and set newTag to null.
+- When nothing fits: use an empty attachTagIds array and set newTag to the new name.
+Only use tag ids from the provided list. No prose, no markdown fences.`
+
+export interface BatchQuoteTagClassification {
+  id: string
+  attachTagIds: string[]
+  newTag: string | null
+}
+
+/**
+ * Batched per-Save classifier (ADR 0003): file up to a handful of untagged
+ * quotes in ONE call so the manual Tidy sweep pays a single (reasoning-heavy)
+ * LLM round-trip for the whole batch instead of one per quote — the cost lever
+ * for "Tidy now". Same low-stakes, self-correcting contract as the single-quote
+ * classifier (invalid/echoed-wrong ids are dropped by the caller). Fail-soft:
+ * returns null on any error so the sweep simply retries on the next Tidy.
+ */
+export const classifyQuotesIntoTagsBatch = async (input: {
+  quotes: ReadonlyArray<{ id: string; text: string }>
+  tags: ReadonlyArray<{ id: string; name: string }>
+}): Promise<BatchQuoteTagClassification[] | null> => {
+  if (input.quotes.length === 0) return []
+  try {
+    const text = await generate({
+      system: SYSTEM_QUOTES_TAGS_BATCH,
+      user: JSON.stringify({
+        quotes: input.quotes.map((q) => ({
+          id: q.id,
+          text: q.text.slice(0, 1200),
+        })),
+        tags: input.tags.slice(0, 300),
+      }),
+      // One classification is tiny (~30 tokens); size the cap to the batch with
+      // headroom on top of the reasoning slice generate() reserves.
+      maxTokens: Math.min(4000, 600 + input.quotes.length * 140),
+      tier: "fast",
+      model: ANTHROPIC_HAIKU_CHEAP,
+      expectJson: true,
+    })
+    if (!text) return null
+    const parsed = JSON.parse(stripFences(text)) as { results?: unknown }
+    if (!Array.isArray(parsed.results)) return null
+    return parsed.results.flatMap((r): BatchQuoteTagClassification[] => {
+      if (typeof r !== "object" || r === null) return []
+      const obj = r as Record<string, unknown>
+      if (typeof obj.id !== "string") return []
+      const attachTagIds = Array.isArray(obj.attachTagIds)
+        ? obj.attachTagIds.filter((t): t is string => typeof t === "string")
+        : []
+      const newTag =
+        typeof obj.newTag === "string" && obj.newTag.trim()
+          ? obj.newTag.trim()
+          : null
+      return [{ id: obj.id, attachTagIds, newTag }]
+    })
+  } catch (err) {
+    console.warn("[llm] classifyQuotesIntoTagsBatch failed:", err)
     return null
   }
 }

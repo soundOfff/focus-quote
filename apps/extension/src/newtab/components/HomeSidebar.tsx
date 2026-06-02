@@ -100,7 +100,7 @@ export function HomeSidebar({
               Active topics
             </h2>
           </div>
-          <ul class="flex flex-col gap-0.5">
+          <ul class="fq-scrollbar flex max-h-[400px] flex-col gap-0.5 overflow-y-auto">
             {visibleTopics.map((t) => {
               const active = selectedTopic === t.name
               return (

@@ -108,7 +108,7 @@ export const tokens = {
   radiusPill: "9999px",
   // Touch-target & icon sizes.
   size: {
-    tap: "34px", // rail buttons (34 wide × 32 tall)
+    tap: "32px", // rail buttons (34 wide × 32 tall)
     tapH: "32px",
     sideToggleH: "28px",
     badge: "7px",

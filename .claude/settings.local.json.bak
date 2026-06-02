@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(npm test *)",
+      "Bash(npx tsx *)",
+      "Bash(npx tsc *)",
+      "Bash(npx --no-install tsc --noEmit)",
+      "Bash(npx vitest *)",
+      "Bash(npx --no-install vitest run)",
+      "Bash(timeout 60 npx --no-install vitest run)",
+      "Bash(npx drizzle-kit *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git switch *)",
+      "Bash(git checkout *)",
+      "Bash(git stash *)",
+      "Bash(git fetch *)",
+      "Bash(git pull *)",
+      "Bash(git push *)",
+      "Bash(git merge *)",
+      "Bash(git reset *)",
+      "Bash(git restore *)",
+      "Bash(git --no-pager diff --stat)",
+      "Bash(gh auth *)",
+      "Bash(gh issue *)",
+      "Bash(gh pr *)",
+      "Bash(gh label *)",
+      "Bash(sqlite3 *)",
+      "Bash(lsof *)",
+      "Bash(curl *)",
+      "Bash(pkill -f \"tsx.*server\")",
+      "Bash(xargs kill)",
+      "Bash(xargs kill -9)",
+      "Bash(xargs cat)",
+      "Bash(awk '{print $2}')"
+    ]
+  }
+}

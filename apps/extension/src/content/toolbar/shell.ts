@@ -206,6 +206,7 @@ export const mountToolbar = (): ToolbarShell => {
     "position:fixed",
     "top:50%",
     "transform:translateY(-50%)",
+    "box-sizing:border-box",
     "display:flex",
     "flex-direction:column",
     "align-items:stretch",

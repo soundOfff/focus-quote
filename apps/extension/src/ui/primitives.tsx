@@ -34,7 +34,7 @@ export function Button({
       : variant === "outline"
         ? "border border-rule-2 bg-paper text-ink-2 hover:bg-paper-2"
         : variant === "ghost"
-          ? "border border-rule-2 bg-paper text-ink-2 hover:bg-paper-2"
+          ? "bg-transparent text-ink-2 hover:text-ink"
           : variant === "chip"
             ? "border border-rule bg-paper-2 text-ink-2 hover:bg-paper"
             : "bg-paper-2 text-ink hover:bg-rule/40"
@@ -96,6 +96,103 @@ export function MonoLabel({
     >
       {children}
     </As>
+  )
+}
+
+// Each rendered mark needs its own gradient id so multiple marks on one
+// surface don't share (and clobber) a single <radialGradient> definition.
+let brandMarkSeq = 0
+
+/**
+ * The FocusQuote mark — a warm amber tile with a serif opening quotation cut
+ * in cream and a focus underline (Direction A). Mirrors `assets/icons/icon.svg`
+ * so the in-app logo and the extension/favicon icons stay identical. `size` is
+ * the rendered edge length in px (the tile is square).
+ */
+export function BrandMark({
+  size = 24,
+  title = "FocusQuote",
+  class: className,
+}: {
+  size?: number
+  title?: string
+  class?: string
+}) {
+  const gradId = `fq-mark-${(brandMarkSeq += 1)}`
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 88 88"
+      role="img"
+      aria-label={title}
+      class={cx("shrink-0", className)}
+    >
+      <defs>
+        <radialGradient id={gradId} cx="0.3" cy="0.18" r="1.05">
+          <stop offset="0" stop-color="#F7B45C" />
+          <stop offset="0.46" stop-color="#F2A03C" />
+          <stop offset="1" stop-color="#E08E2A" />
+        </radialGradient>
+      </defs>
+      <rect width="88" height="88" rx="21.12" ry="21.12" fill={`url(#${gradId})`} />
+      <g fill="#FBFAF6">
+        <path d="M30 24 c-7.2 0-13 5.4-13 12.4 0 6.4 4.8 11.2 11 11.2 1.2 0 2.4-.2 3.3-.5 -.9 4.6-4.6 8.2-9.4 9.7-1.3.4-2 .9-2 2 0 1.3 1 2.2 2.5 2 C32 61.6 39 53.4 39 41.3 39 31.2 35.6 24 30 24Z" />
+        <path d="M61 24 c-7.2 0-13 5.4-13 12.4 0 6.4 4.8 11.2 11 11.2 1.2 0 2.4-.2 3.3-.5 -.9 4.6-4.6 8.2-9.4 9.7-1.3.4-2 .9-2 2 0 1.3 1 2.2 2.5 2 C63 61.6 70 53.4 70 41.3 70 31.2 66.6 24 61 24Z" />
+      </g>
+      <rect x="30" y="66" width="28" height="3.4" rx="1.7" fill="#FBFAF6" opacity="0.92" />
+      <rect
+        x="0.5"
+        y="0.5"
+        width="87"
+        height="87"
+        rx="20.62"
+        ry="20.62"
+        fill="none"
+        stroke="#784810"
+        stroke-opacity="0.45"
+        stroke-width="0.9"
+      />
+    </svg>
+  )
+}
+
+/**
+ * Progress — a hairline paper track with one amber fill, mirroring
+ * editorial-ui's `Progress` primitive (../../../editorial-ui/src). Determinate
+ * when `value` is a number (0–100); indeterminate — a fill that sweeps across
+ * the track — when omitted, for work whose duration we can't measure (e.g. the
+ * one-shot server-side Tidy pass). Sweep keyframes live in styles/tailwind.css.
+ */
+export function Progress({
+  value,
+  label,
+  class: className,
+}: {
+  value?: number | null
+  label?: string
+  class?: string
+}) {
+  const indeterminate = value == null
+  const clamped = indeterminate ? 0 : Math.max(0, Math.min(100, value))
+  return (
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={indeterminate ? undefined : 0}
+      aria-valuemax={indeterminate ? undefined : 100}
+      aria-valuenow={indeterminate ? undefined : Math.round(clamped)}
+      class={cx(
+        "fq-progress relative h-1.5 w-full overflow-hidden rounded-pill border border-rule bg-paper-2",
+        indeterminate && "fq-progress--indeterminate",
+        className,
+      )}
+    >
+      <div
+        class="fq-progress__bar h-full rounded-pill"
+        style={indeterminate ? undefined : { width: `${clamped}%` }}
+      />
+    </div>
   )
 }
 

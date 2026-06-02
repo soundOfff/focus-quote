@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="88" height="88" viewBox="0 0 88 88" role="img" aria-label="FocusQuote">
+  <!--
+    FocusQuote mark — favicon / 16px build.
+    A single, heavier-weight quotation pair with no underline and a rounder
+    tile, tuned for legibility once the detailed mark would muddy at 16px.
+  -->
+  <defs>
+    <radialGradient id="fq-field-sm" cx="0.3" cy="0.18" r="1.05">
+      <stop offset="0" stop-color="#F7B45C"/>
+      <stop offset="0.46" stop-color="#F2A03C"/>
+      <stop offset="1" stop-color="#E08E2A"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="88" height="88" rx="26.4" ry="26.4" fill="url(#fq-field-sm)"/>
+
+  <path fill="#FBFAF6" d="M28 22 c-8 0-14.5 6-14.5 14 0 7.2 5.4 12.6 12.4 12.6 1.6 0 3-.3 4.2-.7 -1 5.6-5.4 10-11.2 11.8-1.6.5-2.4 1.1-2.4 2.5 0 1.6 1.2 2.7 3 2.4 C32 76 41 66 41 51 41 37 36 22 28 22Z"/>
+  <path fill="#FBFAF6" d="M62 22 c-8 0-14.5 6-14.5 14 0 7.2 5.4 12.6 12.4 12.6 1.6 0 3-.3 4.2-.7 -1 5.6-5.4 10-11.2 11.8-1.6.5-2.4 1.1-2.4 2.5 0 1.6 1.2 2.7 3 2.4 C66 76 75 66 75 51 75 37 70 22 62 22Z"/>
+
+  <rect x="0.5" y="0.5" width="87" height="87" rx="25.9" ry="25.9" fill="none" stroke="#784810" stroke-opacity="0.45" stroke-width="0.9"/>
+</svg>

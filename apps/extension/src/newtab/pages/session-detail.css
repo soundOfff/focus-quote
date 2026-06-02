@@ -1,0 +1,512 @@
+/**
+ * Session-detail page styles — a verbatim port of the authoritative spec
+ * (docs/Session Detail.html). Every value here is copied from that file's
+ * <style> block; do not "improve" or re-space anything — diff against the spec.
+ *
+ * Differences from the raw spec file, and why:
+ *   - The spec's `:root` token block and the global resets it ships are NOT
+ *     repeated: the same tokens (--paper, --ink, --amber-deep, --shadow-popup,
+ *     …) already live globally in src/styles/tailwind.css with identical values
+ *     (and a derived .dark override), so referencing var(--…) makes dark mode
+ *     work for free.
+ *   - Everything is scoped under `.fq-session-detail` so it can't leak into the
+ *     surrounding AppShell. The `a { color: inherit }` reset is kept (scoped) —
+ *     without it the read cards and URL rows (both <a>) render default-blue.
+ *   - A small block of states the static mock doesn't show but the brief
+ *     requires (recall grade/answer/next, status variants, skeleton, spinner)
+ *     lives at the bottom, built only from existing tokens.
+ */
+
+/* page shell — from the spec's `body` + `.shell` */
+.fq-session-detail {
+  /* Radius tokens. The spec defined these in its own :root (card 11px), but
+   * they are NOT in our global token sheet — so without this the panels render
+   * square. We set them to the app's card (10px) / control (8px) radii so the
+   * panels match the cards on Home and Options rather than the spec's 11px. */
+  --radius-card: 10px;
+  --radius-control: 8px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  /* The recessed page surface the spec's column sits on, so paper cards lift
+   * off it. Home + Options now share this same backdrop (AppShell → bg-page). */
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  padding: 40px 24px 72px;
+}
+.fq-session-detail .shell { max-width: 680px; margin: 0 auto; }
+
+/* scoped resets — match the spec's element resets without touching app chrome */
+.fq-session-detail button { cursor: pointer; background: none; border: 0; padding: 0; font: inherit; color: inherit; }
+.fq-session-detail a { color: inherit; text-decoration: none; }
+.fq-session-detail input, .fq-session-detail textarea { font: inherit; color: inherit; }
+.fq-session-detail svg { display: block; }
+
+/* mono small-caps label */
+.fq-session-detail .label {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* top bar */
+.fq-session-detail .topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.fq-session-detail .back {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; font-weight: 500;
+  color: var(--ink-2);
+  padding: 7px 11px 7px 8px;
+  border-radius: var(--radius-control);
+  transition: background 0.12s, color 0.12s;
+}
+.fq-session-detail .back:hover { background: var(--paper-2); color: var(--ink); }
+.fq-session-detail .back svg { color: var(--muted); }
+
+/* generic buttons */
+.fq-session-detail .btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 12.5px; font-weight: 600;
+  line-height: 1;
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s, filter 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.fq-session-detail .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(242,160,60,0.22); border-color: var(--amber-deep); }
+.fq-session-detail .btn-amber {
+  background: linear-gradient(180deg, #F4AC4F 0%, #EE9B30 100%);
+  color: #2A1A05;
+  border-color: var(--amber-deep);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 1px 2px rgba(40,30,15,0.15);
+}
+.fq-session-detail .btn-amber:hover { filter: brightness(1.03); }
+.fq-session-detail .btn-amber:active { filter: brightness(0.97); }
+.fq-session-detail .btn-ghost {
+  background: var(--paper);
+  color: var(--ink-2);
+  border-color: var(--rule-2);
+  font-weight: 500;
+}
+.fq-session-detail .btn-ghost:hover { background: var(--paper-2); color: var(--ink); border-color: #C7C0AF; }
+.fq-session-detail .btn-sm { font-size: 11.5px; padding: 6px 10px; border-radius: 7px; }
+.fq-session-detail .btn:disabled { cursor: default; opacity: 0.55; }
+
+/* regenerate = mono small-caps ghost chip */
+.fq-session-detail .btn-regen {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted);
+  background: var(--paper);
+  border: 1px solid var(--rule-2);
+  border-radius: 999px;
+  padding: 6px 11px 6px 9px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.fq-session-detail .btn-regen:hover { background: var(--paper-2); color: var(--ink-2); border-color: #C7C0AF; }
+.fq-session-detail .btn-regen svg { color: var(--muted-2); }
+.fq-session-detail .btn-regen:hover svg { color: var(--amber-deep); }
+.fq-session-detail .btn-regen:disabled { cursor: default; opacity: 0.6; }
+
+/* ───── HERO ───── */
+.fq-session-detail .hero {
+  background: var(--paper);
+  border: 1px solid var(--popup-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-popup);
+  padding: 22px 24px 20px;
+  margin-bottom: 16px;
+}
+.fq-session-detail .status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 9.5px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--sage-ink);
+  background: var(--sage-soft);
+  border: 1px solid var(--sage-edge);
+  border-radius: 999px;
+  padding: 3px 9px 3px 7px;
+  margin-bottom: 13px;
+}
+.fq-session-detail .status .dot { width: 6px; height: 6px; border-radius: 999px; background: #6A8F66; }
+.fq-session-detail .hero h1 {
+  font-family: var(--font-serif);
+  font-size: 30px; font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  margin: 0 0 12px;
+}
+.fq-session-detail .meta {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 0;
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted);
+}
+.fq-session-detail .meta .m { display: inline-flex; align-items: center; gap: 5px; }
+.fq-session-detail .meta .m b { color: var(--ink-2); font-weight: 600; }
+.fq-session-detail .meta .sep { color: var(--muted-2); padding: 0 9px; }
+.fq-session-detail .meta svg { color: var(--muted-2); }
+
+/* ───── PANEL ───── */
+.fq-session-detail .panel {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  padding: 16px 18px 17px;
+  margin-bottom: 14px;
+}
+.fq-session-detail .panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+}
+.fq-session-detail .panel-title {
+  display: inline-flex; align-items: center; gap: 9px;
+  font-size: 14px; font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.005em;
+}
+.fq-session-detail .panel-title .ic {
+  width: 26px; height: 26px;
+  border-radius: 7px;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted);
+}
+.fq-session-detail .panel-sub {
+  font-size: 12px; color: var(--muted);
+  margin: 10px 0 0;
+  line-height: 1.5;
+}
+.fq-session-detail .empty-note {
+  font-size: 12.5px;
+  color: var(--muted-2);
+  font-style: italic;
+  font-family: var(--font-serif);
+  margin-top: 12px;
+}
+
+/* active recall */
+.fq-session-detail .recall-q {
+  font-family: var(--font-serif);
+  font-size: 15.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--ink);
+  margin: 14px 0 14px;
+  letter-spacing: -0.005em;
+}
+.fq-session-detail .recall-q .qn { color: var(--amber-deep); font-weight: 600; margin-right: 4px; }
+.fq-session-detail .textarea {
+  width: 100%;
+  background: var(--paper);
+  border: 1px solid var(--rule-2);
+  border-radius: var(--radius-control);
+  padding: 11px 13px;
+  font-size: 13px;
+  color: var(--ink);
+  min-height: 64px; resize: vertical; line-height: 1.5;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.fq-session-detail .textarea::placeholder { color: var(--muted-2); }
+.fq-session-detail .textarea:hover { border-color: #C7C0AF; }
+.fq-session-detail .textarea:focus { outline: none; border-color: var(--amber-deep); box-shadow: 0 0 0 3px rgba(242,160,60,0.18); }
+.fq-session-detail .recall-actions {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 11px;
+}
+.fq-session-detail .recall-actions .right { margin-left: auto; }
+.fq-session-detail .q-counter {
+  font-family: var(--font-mono);
+  font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+/* summary prose */
+.fq-session-detail .summary-text {
+  font-size: 13.5px; color: var(--ink-2);
+  line-height: 1.6; margin: 12px 0 0;
+  max-width: 64ch;
+}
+
+/* numbered study tips */
+.fq-session-detail .tips { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; }
+.fq-session-detail .tips li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  padding: 11px 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+.fq-session-detail .tips li + li { border-top: 1px solid var(--rule); }
+.fq-session-detail .tips li .n {
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 600;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  background: var(--amber-soft);
+  color: var(--amber-deep);
+  border: 1px solid #ECC78C;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.fq-session-detail .tips li b { color: var(--ink); font-weight: 600; }
+
+/* ── Suggested next reads — hairline list ── */
+.fq-session-detail .reads { display: flex; flex-direction: column; margin-top: 6px; }
+.fq-session-detail .read {
+  display: block;
+  padding: 15px 0 14px;
+  transition: opacity 0.12s;
+}
+.fq-session-detail .read + .read { border-top: 1px solid var(--rule); }
+.fq-session-detail .read:hover .read-title { color: var(--amber-deep); }
+.fq-session-detail .read-title {
+  display: flex; align-items: baseline; gap: 7px;
+  font-family: var(--font-serif);
+  font-size: 15px; font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  line-height: 1.25;
+  transition: color 0.12s;
+}
+.fq-session-detail .read-title .ext { color: var(--muted-2); flex-shrink: 0; align-self: center; transition: color 0.12s; transform: translateY(1px); }
+.fq-session-detail .read:hover .read-title .ext { color: var(--amber-deep); }
+.fq-session-detail .read-desc {
+  font-size: 12.5px; color: var(--ink-2);
+  line-height: 1.5; margin: 6px 0 9px;
+  max-width: 60ch;
+}
+.fq-session-detail .read-url {
+  display: flex; align-items: center; gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 9.5px; letter-spacing: 0.02em;
+  color: var(--muted-2);
+  min-width: 0;
+}
+.fq-session-detail .read-url svg { color: var(--muted-2); flex-shrink: 0; }
+.fq-session-detail .read-url .u {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0;
+}
+.fq-session-detail .read-url .u b { color: var(--muted); font-weight: 600; }
+
+/* URLs visited — collapsible footer row */
+.fq-session-detail .urls {
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+.fq-session-detail .urls-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px;
+  width: 100%;
+  transition: background 0.12s;
+}
+.fq-session-detail .urls-bar:hover { background: var(--paper-3); }
+.fq-session-detail .urls-bar .left { display: inline-flex; align-items: center; gap: 9px; }
+.fq-session-detail .urls-bar .left .ic {
+  width: 26px; height: 26px; border-radius: 7px;
+  background: var(--paper); border: 1px solid var(--rule);
+  display: inline-flex; align-items: center; justify-content: center; color: var(--muted);
+}
+.fq-session-detail .urls-bar .ttl { font-size: 14px; font-weight: 600; letter-spacing: -0.005em; }
+.fq-session-detail .urls-bar .count { color: var(--muted); font-weight: 500; }
+.fq-session-detail .urls-bar .chev { color: var(--muted-2); transition: transform 0.18s; }
+.fq-session-detail .urls.is-open .urls-bar .chev { transform: rotate(90deg); }
+.fq-session-detail .urls-list {
+  display: none;
+  border-top: 1px solid var(--rule);
+  padding: 4px 8px 8px;
+}
+.fq-session-detail .urls.is-open .urls-list { display: block; }
+
+/* domain-grouped visit row */
+.fq-session-detail .url-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 10px;
+  border-radius: 9px;
+  transition: background 0.12s;
+}
+.fq-session-detail .url-row + .url-row { border-top: 1px solid var(--rule); }
+.fq-session-detail .url-row:hover { background: var(--paper); }
+.fq-session-detail .url-row:hover + .url-row { border-top-color: transparent; }
+
+.fq-session-detail .url-row .favicon {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--paper); border: 1px solid var(--rule-2);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted); flex-shrink: 0;
+}
+.fq-session-detail .url-row .u-main { min-width: 0; }
+.fq-session-detail .url-row .u-top {
+  display: flex; align-items: center; gap: 8px;
+}
+.fq-session-detail .url-row .u-host {
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%;
+}
+.fq-session-detail .cat {
+  font-family: var(--font-mono);
+  font-size: 8.5px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 4px;
+  background: var(--paper-2); color: var(--muted);
+  border: 1px solid var(--rule); flex-shrink: 0;
+}
+.fq-session-detail .cat.is-blue { color: var(--blue-ink); background: var(--blue-soft); border-color: var(--blue-edge); }
+.fq-session-detail .cat.is-sage { color: var(--sage-ink); background: var(--sage-soft); border-color: var(--sage-edge); }
+.fq-session-detail .url-row .u-count {
+  font-family: var(--font-mono);
+  font-size: 9.5px; font-weight: 500;
+  color: var(--muted-2); flex-shrink: 0;
+}
+.fq-session-detail .url-row .u-query {
+  font-size: 12px; color: var(--muted);
+  margin-top: 3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fq-session-detail .url-row .u-open {
+  width: 30px; height: 30px; border-radius: 7px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted-2); flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.fq-session-detail .url-row:hover .u-open { color: var(--ink-2); }
+.fq-session-detail .url-row .u-open:hover { background: var(--paper-2); color: var(--amber-deep); }
+
+.fq-session-detail .urls-more {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted);
+  border-top: 1px solid var(--rule);
+  transition: color 0.12s;
+}
+.fq-session-detail .urls-more:hover { color: var(--amber-deep); }
+
+@media (max-width: 560px) {
+  .fq-session-detail { padding: 24px 12px 48px; }
+  .fq-session-detail .hero h1 { font-size: 25px; }
+  .fq-session-detail .meta .sep { padding: 0 6px; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Page-specific states the static mock doesn't render but the brief requires.
+ * Built only from existing tokens so dark mode tracks automatically.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/* status pill — derived tints for the non-completed states (mock shows only
+ * Completed/sage; the data also has canceled + running). */
+.fq-session-detail .status.is-canceled {
+  color: var(--clay-ink); background: var(--clay-soft); border-color: #E8C7B7;
+}
+.fq-session-detail .status.is-canceled .dot { background: var(--clay-ink); }
+.fq-session-detail .status.is-running {
+  color: var(--amber-deep); background: var(--amber-soft); border-color: #ECC78C;
+}
+.fq-session-detail .status.is-running .dot { background: var(--amber-deep); }
+
+/* the quiet "Next →" recall affordance — mono small-caps, amber on hover */
+.fq-session-detail .recall-next {
+  font-family: var(--font-mono);
+  font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted);
+  display: inline-flex; align-items: center; gap: 5px;
+  transition: color 0.12s;
+}
+.fq-session-detail .recall-next:hover { color: var(--amber-deep); }
+.fq-session-detail .recall-next svg { color: var(--muted-2); transition: color 0.12s; }
+.fq-session-detail .recall-next:hover svg { color: var(--amber-deep); }
+
+/* recall grade result + revealed answer callouts */
+.fq-session-detail .recall-result {
+  margin-top: 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  padding: 11px 13px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.fq-session-detail .recall-result .verdict {
+  font-family: var(--font-mono);
+  font-size: 9px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  display: block; margin-bottom: 5px;
+}
+.fq-session-detail .recall-result.is-correct { background: var(--sage-soft); border-color: var(--sage-edge, #C6D7C2); }
+.fq-session-detail .recall-result.is-correct .verdict { color: var(--sage-ink); }
+.fq-session-detail .recall-result.is-partial { background: var(--amber-soft); border-color: #ECC78C; }
+.fq-session-detail .recall-result.is-partial .verdict { color: var(--amber-deep); }
+.fq-session-detail .recall-result.is-incorrect { background: var(--clay-soft); border-color: #E8C7B7; }
+.fq-session-detail .recall-result.is-incorrect .verdict { color: var(--clay-ink); }
+
+.fq-session-detail .recall-answer {
+  margin-top: 10px;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  padding: 11px 13px;
+  font-size: 12.5px; line-height: 1.55; color: var(--ink-2);
+}
+.fq-session-detail .recall-answer .lbl {
+  font-family: var(--font-mono);
+  font-size: 9px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--muted); margin-right: 6px;
+}
+
+/* spinner for in-flight regenerate / refresh — respects reduced motion below */
+@keyframes fq-spin { to { transform: rotate(360deg); } }
+.fq-session-detail .spin { animation: fq-spin 0.8s linear infinite; transform-origin: center; }
+
+/* skeleton placeholders for the initial load */
+.fq-session-detail .sk {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--paper-2) 25%, var(--rule) 37%, var(--paper-2) 63%);
+  background-size: 400% 100%;
+  animation: fq-shimmer 1.4s ease infinite;
+}
+@keyframes fq-shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .fq-session-detail *,
+  .fq-session-detail *::before,
+  .fq-session-detail *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  .fq-session-detail .spin { animation: none; }
+}

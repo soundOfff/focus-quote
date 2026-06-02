@@ -31,14 +31,15 @@ import {
 import { ensureOpenrouterMigrated } from "../shared/settings"
 import { applyTheme, loadTodayGoal } from "../shared/theme"
 import { runP } from "./runtime"
-import { useAnalysisInsight } from "./components/AnalysisPanel"
+// TEMPORARILY DISABLED — distraction detection paused (no AI token spend).
+// import { useAnalysisInsight } from "./components/AnalysisPanel"
 import { QuoteList } from "./components/QuoteList"
 import { SearchBar } from "./components/SearchBar"
 import { SessionPanel } from "./components/SessionPanel"
 import { SettingsView } from "./components/SettingsView"
 import { SignIn } from "./components/SignIn"
 import type { Quote, User } from "@focus-quote/shared"
-import { MonoLabel, SkeletonCard } from "../ui/primitives"
+import { BrandMark, MonoLabel, SkeletonCard } from "../ui/primitives"
 import { ToastProvider, useToast } from "../ui/Toast"
 
 const loadQuotes = (query: string) =>
@@ -167,7 +168,9 @@ function AppInner() {
 
   // AnalysisPanel collapsed into a hook — its insight line piggy-backs on
   // the Today's Intent band so the popup keeps just four primary regions.
-  const analysis = useAnalysisInsight()
+  // TEMPORARILY DISABLED — distraction detection paused; the hook also polled
+  // the session-urls endpoint every 8s, so leaving it off avoids that traffic.
+  // const analysis = useAnalysisInsight()
 
   const refresh = (q: string) => {
     runP(loadQuotes(q))
@@ -337,7 +340,8 @@ function AppInner() {
     <div class="flex max-h-[760px] min-h-[460px] w-[380px] flex-col overflow-hidden bg-paper text-ink-2">
       {/* 1. Header bar */}
       <header class="flex shrink-0 items-center justify-between border-b border-rule px-4 pb-3 pt-[14px]">
-        <div class="flex items-baseline gap-2">
+        <div class="flex items-center gap-2">
+          <BrandMark size={24} />
           <h1 class="font-serif text-[18px] font-semibold tracking-[-0.01em] text-ink">
             Focus<span class="text-amber-deep">Quote</span>
           </h1>
@@ -383,11 +387,12 @@ function AppInner() {
             </span>
           )}
         </p>
+        {/* TEMPORARILY DISABLED — distraction-detection insight line.
         {analysis.insightLine && (
           <p class="mb-2 text-[11.5px] italic leading-[1.45] text-muted">
             {analysis.insightLine}
           </p>
-        )}
+        )} */}
       </section>
 
       {/* 3. Focus session */}

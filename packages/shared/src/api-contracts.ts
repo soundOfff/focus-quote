@@ -58,16 +58,35 @@ export interface TagGraphResponse {
 }
 
 /** Summary of what a single Consolidation ("Tidy now") pass changed. */
+export interface ConsolidateChanges {
+  /** Untagged quotes filed under a Tag by the sweep. */
+  filed: number
+  merged: number
+  renamed: number
+  reparented: number
+  deleted: number
+  requotesRefiled: number
+}
+
 export interface ConsolidateTagsResponse {
   ok: boolean
-  changes: {
-    merged: number
-    renamed: number
-    reparented: number
-    deleted: number
-    requotesRefiled: number
-  }
+  changes: ConsolidateChanges
 }
+
+/**
+ * One progress frame streamed (SSE) by POST /api/tags/consolidate so the UI
+ * can fill a determinate bar as the pass runs:
+ *  - `classifying`: the single batched LLM call is in flight (indeterminate).
+ *  - `filing`: applying the batch's results one quote at a time (determinate —
+ *    `processed`/`total`).
+ *  - `restructuring`: the merge/rename/re-parent pass is running (indeterminate).
+ *  - `done`: terminal frame carrying the final change tally.
+ */
+export type ConsolidateProgressEvent =
+  | { phase: "classifying"; total: number }
+  | { phase: "filing"; processed: number; total: number }
+  | { phase: "restructuring" }
+  | { phase: "done"; changes: ConsolidateChanges }
 
 // ---- Sessions ----
 
@@ -169,7 +188,19 @@ export interface RenameTopicResponse {
   topic: { id: string; name: string }
 }
 
-export type VaultItemKind = "note" | "url"
+export interface CreateTopicRequest {
+  name: string
+}
+
+export interface CreateTopicResponse {
+  topic: Topic
+}
+
+export interface DeleteTopicResponse {
+  ok: boolean
+}
+
+export type VaultItemKind = "note" | "url" | "image"
 
 export interface VaultItem {
   id: string
@@ -177,6 +208,8 @@ export interface VaultItem {
   kind: VaultItemKind
   body: string
   title: string | null
+  /** media_bucket_files id for kind "image"; null otherwise. */
+  mediaFileId: string | null
   createdAt: string
 }
 
@@ -188,10 +221,77 @@ export interface CreateVaultItemRequest {
   kind: VaultItemKind
   body: string
   title?: string | null
+  mediaFileId?: string | null
 }
 
 export interface CreateVaultItemResponse {
   item: VaultItem
+}
+
+/** A vault item saved mid-session, not yet filed under a topic. */
+export interface PendingVaultItem {
+  id: string
+  sessionId: string
+  kind: VaultItemKind
+  body: string
+  title: string | null
+  mediaFileId: string | null
+  createdAt: string
+}
+
+export interface ListPendingVaultItemsResponse {
+  items: ReadonlyArray<PendingVaultItem>
+}
+
+/** Result of saving a vault item against a session or via quick-save. */
+export interface SavedVaultItem {
+  id: string
+  /** null while pending (the session has no topic yet). */
+  topicId: string | null
+  /** Originating session, or null for a session-less direct save. */
+  sessionId: string | null
+  kind: VaultItemKind
+  body: string
+  title: string | null
+  mediaFileId: string | null
+  createdAt: string
+  /** true when stashed as a pending session item (not yet under a topic). */
+  pending: boolean
+}
+
+export interface SaveSessionVaultLinkResponse {
+  item: SavedVaultItem
+}
+
+/** Body for the general POST /api/vault/save quick-save endpoint. */
+export interface SaveVaultItemRequest {
+  sessionId?: string | null
+  kind: VaultItemKind
+  body: string
+  title?: string | null
+  mediaFileId?: string | null
+}
+
+export interface SaveVaultItemResponse {
+  item: SavedVaultItem
+}
+
+export interface MoveVaultItemRequest {
+  topicId: string
+}
+
+export interface MoveVaultItemResponse {
+  ok: boolean
+  itemId: string
+  topicId: string
+}
+
+export interface AssignSessionTopicRequest {
+  topicId: string
+}
+
+export interface AssignSessionTopicResponse {
+  session: Session
 }
 
 // ---- Session URLs (AI analysis) ----

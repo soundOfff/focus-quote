@@ -1,13 +1,16 @@
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq, isNull, sql } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { db } from "../db/client"
 import { quotes, tags, tagEdges, quoteTags } from "../db/schema"
 import {
   classifyQuoteIntoTags,
+  classifyQuotesIntoTagsBatch,
   proposeTagConsolidation,
+  type QuoteTagClassification,
 } from "./llm"
 import { aiFeatureEnabledForUser } from "./ai-gate"
 import { tryConsume } from "./rate-limit"
+import type { ConsolidateProgressEvent } from "@focus-quote/shared"
 
 // ADR 0003: the server owns the AI-maintained Tag graph. The per-Save Haiku
 // pass only ATTACHES a quote (creating one Tag if nothing fits); the error-prone
@@ -109,6 +112,59 @@ const markCategorized = (userId: string, quoteId: string) =>
     .where(and(eq(quotes.id, quoteId), eq(quotes.userId, userId)))
 
 /**
+ * Apply a classifier plan to a single quote: attach to the fitting existing
+ * Tags, else mint the one proposed Tag, else mark it processed (it lands in the
+ * Untagged bucket so we don't retry an unfileable quote forever). `liveTags` is
+ * the in-scope Tag list; a minted Tag is appended to it so a batch caller can
+ * reuse it for the next quote in the same pass. Returns what happened.
+ */
+const applyClassification = async (
+  userId: string,
+  quoteId: string,
+  plan: QuoteTagClassification,
+  liveTags: Array<{ id: string; name: string }>,
+): Promise<{ attached: number; createdTag: boolean }> => {
+  const now = new Date().toISOString()
+  const valid = new Set(liveTags.map((t) => t.id))
+  const attach = plan.attachTagIds.filter((id) => valid.has(id))
+
+  if (attach.length > 0) {
+    for (const tagId of attach) {
+      await db
+        .insert(quoteTags)
+        .values({ userId, quoteId, tagId, userEdited: false, createdAt: now })
+        .onConflictDoNothing()
+    }
+    await markCategorized(userId, quoteId)
+    return { attached: attach.length, createdTag: false }
+  }
+
+  if (plan.newTag) {
+    const tagId = randomUUID()
+    const name = plan.newTag.slice(0, 60)
+    await db.insert(tags).values({
+      id: tagId,
+      userId,
+      name,
+      userEdited: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await db
+      .insert(quoteTags)
+      .values({ userId, quoteId, tagId, userEdited: false, createdAt: now })
+      .onConflictDoNothing()
+    liveTags.push({ id: tagId, name })
+    await markCategorized(userId, quoteId)
+    return { attached: 1, createdTag: true }
+  }
+
+  // The model returned a definitive empty plan — file it as processed.
+  await markCategorized(userId, quoteId)
+  return { attached: 0, createdTag: false }
+}
+
+/**
  * Per-Save Haiku categorizer (ADR 0003). Files a single pending quote into the
  * Tag graph: attach to fitting existing Tags, else create one new Tag. Skips a
  * quote that already carries a (pinned) manual tag. Gated by the `quoteTagging`
@@ -162,45 +218,10 @@ export const maybeCategorizeQuote = async (
       })
       // null = model unavailable: leave pending so a later sweep retries it.
       // A non-null-but-empty plan means the model deliberately filed nothing —
-      // mark categorized (it lands in the Untagged bucket) so we don't retry,
-      // and burn tokens on, an unfileable quote forever.
+      // applyClassification marks it categorized (it lands in the Untagged
+      // bucket) so we don't retry, and burn tokens on, an unfileable quote.
       if (!plan) return
-
-      const valid = new Set(graphTags.map((t) => t.id))
-      const attach = plan.attachTagIds.filter((id) => valid.has(id))
-      const now = new Date().toISOString()
-
-      if (attach.length > 0) {
-        for (const tagId of attach) {
-          await db
-            .insert(quoteTags)
-            .values({ userId, quoteId, tagId, userEdited: false, createdAt: now })
-            .onConflictDoNothing()
-        }
-        await markCategorized(userId, quoteId)
-        return
-      }
-
-      if (plan.newTag) {
-        const tagId = randomUUID()
-        await db.insert(tags).values({
-          id: tagId,
-          userId,
-          name: plan.newTag.slice(0, 60),
-          userEdited: false,
-          createdAt: now,
-          updatedAt: now,
-        })
-        await db
-          .insert(quoteTags)
-          .values({ userId, quoteId, tagId, userEdited: false, createdAt: now })
-          .onConflictDoNothing()
-        await markCategorized(userId, quoteId)
-        return
-      }
-      // The model returned a definitive empty plan — file it as processed
-      // (Untagged) so we don't retry an unfileable quote forever.
-      await markCategorized(userId, quoteId)
+      await applyClassification(userId, quoteId, plan, graphTags)
     })
   } catch (err) {
     console.warn("[tags] categorize failed for", quoteId, err)
@@ -208,6 +229,8 @@ export const maybeCategorizeQuote = async (
 }
 
 export interface ConsolidateResult {
+  /** Untagged quotes the filing step just filed under a Tag. */
+  filed: number
   merged: number
   renamed: number
   reparented: number
@@ -216,6 +239,7 @@ export interface ConsolidateResult {
 }
 
 const emptyResult = (): ConsolidateResult => ({
+  filed: 0,
   merged: 0,
   renamed: 0,
   reparented: 0,
@@ -223,24 +247,116 @@ const emptyResult = (): ConsolidateResult => ({
   requotesRefiled: 0,
 })
 
+// Most untagged quotes one "Tidy now" will file in a single pass. The whole
+// sweep is ONE batched LLM call, so keep the batch modest — bounds prompt size
+// and keeps the progress bar quick; the rest are filed on the next click (and
+// the Untagged count keeps showing what's left).
+const UNTAGGED_SWEEP_CAP = 10
+
 /**
- * The manual Consolidation pass (ADR 0003). Asks Haiku for a restructuring plan
- * over the whole graph and applies it defensively: never touches a userEdited
- * (pinned) Tag, validates every id, and cycle-checks every new edge. Merges
- * re-file the merged Tag's quotes onto the survivor before deleting it.
+ * Tidy's filing step (the user-visible point of "Tidy now"): sweep quotes that
+ * carry no Tag at all through the batched Haiku classifier so the Untagged
+ * bucket actually clears — the restructuring pass below only reshapes *existing*
+ * Tags and never files a loose quote. Freshly-captured (pending) quotes are
+ * filed before already-processed ones so a backlog never starves new captures.
+ *
+ * The cost lever: the whole batch goes through the model in ONE round-trip
+ * (reasoning models bill mostly for hidden reasoning tokens, so one shared pass
+ * for up to UNTAGGED_SWEEP_CAP quotes is ~10x cheaper than one call per quote).
+ * Charges a single rate-limit token. We then apply the results one quote at a
+ * time and emit a progress frame after each so the bar fills smoothly. A minted
+ * Tag is reused for later quotes in the same batch. Must run inside the per-user
+ * lock. Fail-soft: a null plan or unechoed id just leaves that quote for next Tidy.
+ */
+const categorizeUntaggedQuotes = async (
+  userId: string,
+  onProgress?: (e: ConsolidateProgressEvent) => Promise<void> | void,
+): Promise<number> => {
+  const untagged = await db
+    .select({
+      id: quotes.id,
+      text: quotes.text,
+      status: quotes.categorizationStatus,
+    })
+    .from(quotes)
+    .leftJoin(
+      quoteTags,
+      and(eq(quoteTags.quoteId, quotes.id), eq(quoteTags.userId, userId)),
+    )
+    .where(and(eq(quotes.userId, userId), isNull(quoteTags.quoteId)))
+  if (untagged.length === 0) return 0
+
+  untagged.sort((a, b) =>
+    a.status === b.status ? 0 : a.status === "pending" ? -1 : 1,
+  )
+  const batch = untagged.slice(0, UNTAGGED_SWEEP_CAP)
+
+  // One batched call for the whole sweep — charge a single token; if the bucket
+  // is dry, leave the batch for the next Tidy.
+  if (!tryConsume(userId)) return 0
+
+  // The live Tag list, grown in-memory as we mint new Tags so a later quote in
+  // this same batch reuses one an earlier quote just created.
+  const liveTags = await db
+    .select({ id: tags.id, name: tags.name })
+    .from(tags)
+    .where(eq(tags.userId, userId))
+
+  await onProgress?.({ phase: "classifying", total: batch.length })
+  const plans = await classifyQuotesIntoTagsBatch({
+    quotes: batch.map((q) => ({ id: q.id, text: q.text })),
+    tags: liveTags,
+  })
+  if (!plans) return 0 // model unavailable — leave the batch for the next Tidy
+  const byId = new Map(plans.map((p) => [p.id, p]))
+
+  let filed = 0
+  let processed = 0
+  for (const q of batch) {
+    const plan = byId.get(q.id)
+    if (plan) {
+      const { attached } = await applyClassification(userId, q.id, plan, liveTags)
+      if (attached > 0) filed++
+    }
+    processed++
+    await onProgress?.({ phase: "filing", processed, total: batch.length })
+  }
+  return filed
+}
+
+/**
+ * The manual "Tidy now" pass (ADR 0003). Two steps, both user-triggered:
+ *   1. Filing — sweep Untagged quotes through the classifier (the visible win).
+ *   2. Restructuring — ask Haiku for a graph plan (merge / rename / re-parent)
+ *      and apply it defensively: never touch a userEdited (pinned) Tag, validate
+ *      every id, cycle-check every new edge, and re-file a merged Tag's quotes
+ *      onto the survivor before deleting it.
+ * Each step is independently gated (quoteTagging / tagConsolidation) so turning
+ * one feature off still runs the other.
  */
 export const consolidateGraph = async (
   userId: string,
+  onProgress?: (e: ConsolidateProgressEvent) => Promise<void> | void,
 ): Promise<ConsolidateResult> => {
   try {
-    if (!(await aiFeatureEnabledForUser(userId, "tagConsolidation"))) {
-      return emptyResult()
-    }
-    // Heavier than a per-Save pass — charge more of the bucket.
-    if (!tryConsume(userId, 3)) return emptyResult()
+    const canFile = await aiFeatureEnabledForUser(userId, "quoteTagging")
+    const canTidy = await aiFeatureEnabledForUser(userId, "tagConsolidation")
+    if (!canFile && !canTidy) return emptyResult()
 
     return await withUserLock(userId, async () => {
       const result = emptyResult()
+
+      // 1) Filing step — clear the Untagged bucket via one batched call, then
+      //    stream a frame per applied quote (see categorizeUntaggedQuotes).
+      if (canFile) result.filed = await categorizeUntaggedQuotes(userId, onProgress)
+
+      // 2) Restructuring step — heavier than a per-Save pass, so charge more of
+      //    the bucket. If filing drained it, skip restructuring this round; the
+      //    filing already helped and the next click (after refill) reshapes.
+      if (!canTidy) return result
+      if (!tryConsume(userId, 3)) return result
+      await onProgress?.({ phase: "restructuring" })
+
       const tagRows = await db
         .select({ id: tags.id, name: tags.name, userEdited: tags.userEdited })
         .from(tags)

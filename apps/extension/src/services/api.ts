@@ -29,11 +29,20 @@ import type {
   RecallGradeResponse,
   ListTopicsResponse,
   RenameTopicResponse,
+  CreateTopicResponse,
+  DeleteTopicResponse,
   TagGraphResponse,
-  ConsolidateTagsResponse,
+  ConsolidateChanges,
+  ConsolidateProgressEvent,
   ListVaultItemsResponse,
   CreateVaultItemRequest,
   CreateVaultItemResponse,
+  ListPendingVaultItemsResponse,
+  SaveSessionVaultLinkResponse,
+  SaveVaultItemRequest,
+  SaveVaultItemResponse,
+  MoveVaultItemResponse,
+  AssignSessionTopicResponse,
   SyncBatchRequest,
   SyncBatchResponse,
   MeResponse,
@@ -90,6 +99,51 @@ const buildUrl = (
 const retryPolicy = Schedule.exponential("400 millis").pipe(
   Schedule.intersect(Schedule.recurs(2)),
 )
+
+/**
+ * Reads the SSE body of POST /api/tags/consolidate: split on blank-line frame
+ * delimiters, parse each frame's `data:` payload, forward non-terminal frames
+ * to `onProgress`, and return the terminal `done` frame's changes (or null if
+ * the stream ended without one). Mirrors the framing in realtimeStream.ts.
+ */
+const drainConsolidateStream = async (
+  body: ReadableStream<Uint8Array>,
+  onProgress: (event: ConsolidateProgressEvent) => void,
+): Promise<ConsolidateChanges | null> => {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let pending = ""
+  let result: ConsolidateChanges | null = null
+  const handleFrame = (block: string) => {
+    let data = ""
+    for (const line of block.split("\n")) {
+      if (line.startsWith("data:")) data += line.slice(5).trimStart() + "\n"
+    }
+    const trimmed = data.trim()
+    if (!trimmed) return
+    let event: ConsolidateProgressEvent
+    try {
+      event = JSON.parse(trimmed) as ConsolidateProgressEvent
+    } catch {
+      return
+    }
+    if (event.phase === "done") result = event.changes
+    else onProgress(event)
+  }
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    pending += decoder.decode(value, { stream: true })
+    let idx: number
+    while ((idx = pending.indexOf("\n\n")) !== -1) {
+      handleFrame(pending.slice(0, idx))
+      pending = pending.slice(idx + 2)
+    }
+  }
+  pending += decoder.decode()
+  if (pending.trim()) handleFrame(pending)
+  return result
+}
 
 export class ApiService extends Effect.Service<ApiService>()("ApiService", {
   effect: Effect.gen(function* () {
@@ -208,10 +262,28 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
         sessionId: string,
         body: { url: string; title?: string | null },
       ) =>
-        request<CreateVaultItemResponse>(
+        request<SaveSessionVaultLinkResponse>(
           `/api/focus-sessions/${sessionId}/vault-link`,
           { method: "POST", json: body },
         ),
+      // Pending vault items saved during a session before it has a topic.
+      listSessionVaultPending: (sessionId: string) =>
+        request<ListPendingVaultItemsResponse>(
+          `/api/focus-sessions/${sessionId}/vault-pending`,
+        ),
+      // Manually assign a session to an existing topic (promotes pending items).
+      assignSessionTopic: (sessionId: string, topicId: string) =>
+        request<AssignSessionTopicResponse>(
+          `/api/focus-sessions/${sessionId}/topic`,
+          { method: "POST", json: { topicId } },
+        ),
+      // General quick-save (images): session-scoped when sessionId is set, else
+      // filed under "Uncategorized".
+      saveVaultItem: (body: SaveVaultItemRequest) =>
+        request<SaveVaultItemResponse>("/api/vault/save", {
+          method: "POST",
+          json: body,
+        }),
       regenerateArtifact: (sessionId: string, body: RegenerateRequest) =>
         request<RegenerateResponse>(
           `/api/focus-sessions/${sessionId}/regenerate`,
@@ -223,10 +295,19 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
           { method: "POST", json: body },
         ),
       listTopics: () => request<ListTopicsResponse>("/api/topics"),
+      createTopic: (name: string) =>
+        request<CreateTopicResponse>("/api/topics", {
+          method: "POST",
+          json: { name },
+        }),
       renameTopic: (id: string, name: string) =>
         request<RenameTopicResponse>(`/api/topics/${encodeURIComponent(id)}`, {
           method: "PATCH",
           json: { name },
+        }),
+      deleteTopic: (id: string) =>
+        request<DeleteTopicResponse>(`/api/topics/${encodeURIComponent(id)}`, {
+          method: "DELETE",
         }),
       listTopicMedia: (label: string) =>
         request<{
@@ -268,6 +349,16 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
           `/api/topics/${encodeURIComponent(topicId)}/vault/${itemId}`,
           { method: "DELETE" },
         ),
+      // Move a committed vault item from one topic to another.
+      moveTopicVaultItem: (
+        topicId: string,
+        itemId: string,
+        targetTopicId: string,
+      ) =>
+        request<MoveVaultItemResponse>(
+          `/api/topics/${encodeURIComponent(topicId)}/vault/${itemId}`,
+          { method: "PATCH", json: { topicId: targetTopicId } },
+        ),
 
       // Session URLs (AI analysis)
       postSessionUrls: (body: SessionUrlBatchRequest) =>
@@ -298,9 +389,67 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
 
       // Tag graph (ADR 0003)
       getTagGraph: () => request<TagGraphResponse>("/api/tags/graph"),
-      consolidateTags: () =>
-        request<ConsolidateTagsResponse>("/api/tags/consolidate", {
-          method: "POST",
+      // Streamed "Tidy now": POST that emits SSE progress frames. We read it via
+      // fetch + ReadableStream (EventSource can neither POST nor send the auth
+      // header), forward each step to `onProgress`, and resolve with the final
+      // `done` frame's change tally. No auto-retry — the pass has side effects,
+      // so a half-applied run must not silently replay.
+      consolidateTagsStream: (
+        onProgress: (event: ConsolidateProgressEvent) => void,
+      ): Effect.Effect<ConsolidateChanges, NetworkError | SignedOutError> =>
+        Effect.gen(function* () {
+          const token = yield* storage
+            .get<string>(AUTH_TOKEN_KEY)
+            .pipe(Effect.catchAll(() => Effect.succeed(null)))
+          const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          }
+          if (token) headers.Authorization = `Bearer ${token}`
+
+          const res = yield* Effect.tryPromise({
+            try: () =>
+              fetch(buildUrl("/api/tags/consolidate"), {
+                method: "POST",
+                headers,
+              }),
+            catch: (cause) =>
+              new NetworkError({ message: "fetch failed", cause }),
+          })
+
+          if (res.status === 401) {
+            yield* storage
+              .remove(AUTH_TOKEN_KEY)
+              .pipe(Effect.catchAll(() => Effect.void))
+            yield* storage
+              .remove(AUTH_USER_KEY)
+              .pipe(Effect.catchAll(() => Effect.void))
+            return yield* Effect.fail(
+              new SignedOutError({ message: "Session expired or missing" }),
+            )
+          }
+          if (!res.ok || !res.body) {
+            return yield* Effect.fail(
+              new NetworkError({
+                message: `HTTP ${res.status}`,
+                status: res.status,
+              }),
+            )
+          }
+
+          const changes = yield* Effect.tryPromise({
+            try: () => drainConsolidateStream(res.body as ReadableStream<Uint8Array>, onProgress),
+            catch: (cause) =>
+              new NetworkError({ message: "stream read failed", cause }),
+          })
+          if (!changes) {
+            return yield* Effect.fail(
+              new NetworkError({
+                message: "tidy stream ended without a result",
+              }),
+            )
+          }
+          return changes
         }),
 
       // Sync

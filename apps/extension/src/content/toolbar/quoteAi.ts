@@ -102,12 +102,20 @@ const parseReply = (text: string): ParsedReply => {
     break
   }
 
-  if (followUps.length < 2) {
+  if (followUps.length < 1) {
     return { summary: trimmed, followUps: [] }
   }
-  const summary = lines.slice(0, cut).join("\n").trim()
+  // Drop a trailing lead-in line like "Here are some follow-up questions:" so it
+  // doesn't dangle as plain text once the items below become chips.
+  let summaryLines = lines.slice(0, cut)
+  while (
+    summaryLines.length > 0 &&
+    /:\s*$/.test(summaryLines[summaryLines.length - 1]?.trim() ?? "")
+  ) {
+    summaryLines = summaryLines.slice(0, -1)
+  }
   return {
-    summary: summary || trimmed,
+    summary: summaryLines.join("\n").trim(),
     followUps: followUps.slice(0, 3),
   }
 }
@@ -581,19 +589,20 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
     )
     currentPopover.setBody(root)
 
-    const renderSources = (list: ReadonlyArray<QuoteAssistantSource>) => {
-      sources.list.replaceChildren()
-      if (list.length === 0) {
-        sources.wrap.style.display = "none"
-        return
-      }
-      sources.wrap.style.display = ""
-      for (const s of list) sources.list.appendChild(buildSourceLink(s))
-    }
-
+    // Only the assistant reply drives this view. The toolbar store is also
+    // mutated on every page click/scroll by actionCapture during a session;
+    // re-rendering on those would `replaceChildren()` the follow-up buttons out
+    // from under a click (the capture-phase click handler fires first), so the
+    // suggestion never reaches its own handler and feels unclickable. Guard on
+    // the reply text so unrelated store churn is a no-op.
+    let lastRenderedReply: string | null = null
+    let hasRendered = false
     const renderFromStore = () => {
       const chat = toolbarStore.getState().chat
       const lastReply = lastAssistantText(chat.history)
+      if (hasRendered && lastReply === lastRenderedReply) return
+      hasRendered = true
+      lastRenderedReply = lastReply
       if (!lastReply) {
         summaryBlock.body.style.color = tokens.muted
         summaryBlock.body.style.fontStyle = "italic"

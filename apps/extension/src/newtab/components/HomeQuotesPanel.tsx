@@ -5,14 +5,21 @@ import {
   ExternalLink,
   Plus,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-preact"
 import { useEffect, useMemo, useState } from "preact/hooks"
-import type { Quote, QuoteId, TagGraph, TagId } from "@focus-quote/shared"
+import type {
+  ConsolidateProgressEvent,
+  Quote,
+  QuoteId,
+  TagGraph,
+  TagId,
+} from "@focus-quote/shared"
 import { QuotesService } from "../../services/quotes"
 import { TagsService } from "../../services/tags"
 import { runP } from "../runtime"
-import { Button, EmptyState } from "../../ui/primitives"
+import { Button, EmptyState, Progress } from "../../ui/primitives"
 import {
   UNTAGGED_LABEL,
   buildTagTree,
@@ -45,10 +52,45 @@ const detachEff = (quoteId: QuoteId, tagId: TagId) =>
     return yield* tags.detach(quoteId, tagId)
   })
 
-const consolidateEff = Effect.gen(function* () {
-  const tags = yield* TagsService
-  return yield* tags.consolidate
-})
+const deleteTagEff = (tagId: TagId) =>
+  Effect.gen(function* () {
+    const tags = yield* TagsService
+    return yield* tags.deleteTag(tagId)
+  })
+
+const removeQuoteEff = (quoteId: QuoteId) =>
+  Effect.gen(function* () {
+    const quotes = yield* QuotesService
+    return yield* quotes.remove(quoteId)
+  })
+
+const consolidateEff = (
+  onProgress: (event: ConsolidateProgressEvent) => void,
+) =>
+  Effect.gen(function* () {
+    const tags = yield* TagsService
+    return yield* tags.consolidate(onProgress)
+  })
+
+/** Map a streamed progress frame to a determinate bar value + caption. */
+const tidyBar = (
+  e: ConsolidateProgressEvent | null,
+): { value: number | null; label: string } => {
+  if (!e) return { value: null, label: "Starting…" }
+  switch (e.phase) {
+    case "classifying":
+      return { value: null, label: `Reading ${e.total} quotes…` }
+    case "filing":
+      return {
+        value: e.total > 0 ? (e.processed / e.total) * 100 : 100,
+        label: `Filed ${e.processed} / ${e.total}`,
+      }
+    case "restructuring":
+      return { value: null, label: "Tidying tags…" }
+    case "done":
+      return { value: 100, label: "Done" }
+  }
+}
 
 const cx = (...parts: Array<string | false | null | undefined>) =>
   parts.filter(Boolean).join(" ")
@@ -67,6 +109,8 @@ export function HomeQuotesPanel() {
   const [tagInput, setTagInput] = useState("")
   const [tidying, setTidying] = useState(false)
   const [tidyNote, setTidyNote] = useState<string | null>(null)
+  const [tidyProgress, setTidyProgress] =
+    useState<ConsolidateProgressEvent | null>(null)
 
   const reload = () =>
     runP(loadData)
@@ -112,23 +156,49 @@ export function HomeQuotesPanel() {
   const detach = (quoteId: QuoteId, tagId: TagId) => {
     runP(detachEff(quoteId, tagId)).then(reload).catch(() => {})
   }
+  // Deletes the Tag itself (and any sub-tag edges hanging off it). Quotes filed
+  // only under it fall back to Untagged; child tags are promoted to roots.
+  // Irreversible, so confirm first.
+  const deleteTag = (tagId: TagId, name: string) => {
+    if (
+      !window.confirm(
+        `Delete the tag "${name}"? Quotes filed only here move to Untagged and any sub-tags move up a level. This can't be undone.`,
+      )
+    )
+      return
+    if (selected.kind === "tag" && selected.tagId === tagId)
+      setSelected({ kind: "all" })
+    runP(deleteTagEff(tagId)).then(reload).catch(() => {})
+  }
+  // Deletes the Quote entirely (distinct from the per-chip ✕, which only removes
+  // a tag). Irreversible, so confirm first.
+  const deleteQuote = (quoteId: QuoteId) => {
+    if (!window.confirm("Delete this quote? This can't be undone.")) return
+    runP(removeQuoteEff(quoteId)).then(reload).catch(() => {})
+  }
 
   const tidyNow = () => {
     setTidying(true)
     setTidyNote(null)
-    runP(consolidateEff)
+    setTidyProgress(null)
+    runP(consolidateEff((e) => setTidyProgress(e)))
       .then(({ changes }) => {
-        const { merged, renamed, reparented } = changes
-        const total = merged + renamed + reparented
+        const { filed, merged, renamed, reparented } = changes
+        const parts: string[] = []
+        if (filed) parts.push(`${filed} filed`)
+        if (merged) parts.push(`${merged} merged`)
+        if (renamed) parts.push(`${renamed} renamed`)
+        if (reparented) parts.push(`${reparented} re-parented`)
         setTidyNote(
-          total === 0
+          parts.length === 0
             ? "Already tidy — no changes."
-            : `Tidied: ${merged} merged, ${renamed} renamed, ${reparented} re-parented.`,
+            : `Tidied: ${parts.join(", ")}.`,
         )
       })
       .catch(() => setTidyNote("Couldn't tidy right now."))
       .finally(() => {
         setTidying(false)
+        setTidyProgress(null)
         reload()
       })
   }
@@ -199,6 +269,14 @@ export function HomeQuotesPanel() {
               {count}
             </span>
           </button>
+          <button
+            type="button"
+            onClick={() => deleteTag(node.tag.id, node.tag.name)}
+            aria-label={`Delete tag ${node.tag.name}`}
+            class="shrink-0 rounded p-0.5 text-mute opacity-0 transition-opacity hover:text-accent-red focus-visible:opacity-100 group-hover:opacity-100"
+          >
+            <Trash2 size={12} aria-hidden />
+          </button>
         </div>
         {hasChildren && !isCollapsed && (
           <ul>{node.children.map((c) => renderNode(c, depth + 1))}</ul>
@@ -236,7 +314,9 @@ export function HomeQuotesPanel() {
           variant="outline"
           size="sm"
           type="button"
-          disabled={tidying || graph.tags.length < 2}
+          // Useful when there's anything to do: loose quotes to file, or enough
+          // tags to restructure.
+          disabled={tidying || (graph.tags.length < 2 && untaggedIds.size === 0)}
           onClick={tidyNow}
           class="!rounded-md gap-1.5"
         >
@@ -244,7 +324,21 @@ export function HomeQuotesPanel() {
           {tidying ? "Tidying…" : "Tidy now"}
         </Button>
       </div>
-      {tidyNote && <p class="text-[11px] text-mute">{tidyNote}</p>}
+      {tidying ? (
+        (() => {
+          const { value, label } = tidyBar(tidyProgress)
+          return (
+            <div class="flex items-center gap-2">
+              <Progress value={value} label={label} class="flex-1" />
+              <span class="shrink-0 text-[11px] tabular-nums text-mute">
+                {label}
+              </span>
+            </div>
+          )
+        })()
+      ) : (
+        tidyNote && <p class="text-[11px] text-mute">{tidyNote}</p>
+      )}
 
       <div class="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
         {/* Tag tree */}
@@ -299,11 +393,21 @@ export function HomeQuotesPanel() {
               return (
                 <li
                   key={q.id}
-                  class="rounded-md border border-hairline bg-surface px-4 py-3"
+                  class="group rounded-md border border-hairline bg-surface px-4 py-3"
                 >
-                  <blockquote class="font-serif text-sm font-medium leading-snug text-ink">
-                    {q.text}
-                  </blockquote>
+                  <div class="flex items-start gap-2">
+                    <blockquote class="flex-1 font-serif text-sm font-medium leading-snug text-ink">
+                      {q.text}
+                    </blockquote>
+                    <button
+                      type="button"
+                      onClick={() => deleteQuote(q.id)}
+                      aria-label="Delete quote"
+                      class="shrink-0 rounded p-1 text-mute opacity-0 transition-opacity hover:text-accent-red focus-visible:opacity-100 group-hover:opacity-100"
+                    >
+                      <Trash2 size={13} aria-hidden />
+                    </button>
+                  </div>
                   <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                     {(q.sourceTitle || q.sourceUrl) && (
                       <div class="flex items-center gap-1 text-[11px] text-mute">
@@ -315,7 +419,7 @@ export function HomeQuotesPanel() {
                             class="inline-flex items-center gap-0.5 font-medium text-link-blue hover:underline"
                           >
                             {q.sourceTitle ?? q.sourceUrl}
-                            <ExternalLink size={10} aria-hidden />
+                            {/* <ExternalLink size={10} aria-hidden /> */}
                           </a>
                         ) : (
                           <span>{q.sourceTitle}</span>
@@ -340,10 +444,6 @@ export function HomeQuotesPanel() {
                           </button>
                         </span>
                       ))}
-                      {qTags.length === 0 &&
-                        q.categorizationStatus === "pending" && (
-                          <span class="text-[11px] italic text-mute">Filing…</span>
-                        )}
                       {editing ? (
                         <input
                           type="text"

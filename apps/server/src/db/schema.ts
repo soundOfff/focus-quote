@@ -599,8 +599,11 @@ export const topicMedia = sqliteTable(
   }),
 )
 
-// A Topic's Vault: curated items kept under a topic — notes (kind="note") and
-// saved URLs (kind="url"). Keyed by the first-class topic id (ADR 0001).
+// A Topic's Vault: curated items kept under a topic — notes (kind="note"),
+// saved URLs (kind="url") and saved images (kind="image"). Keyed by the
+// first-class topic id (ADR 0001). For image items `mediaFileId` points at the
+// stored bytes in media_bucket_files and `body` holds the source URL (page or
+// image src) for context.
 export const topicVaultItems = sqliteTable(
   "topic_vault_items",
   {
@@ -614,6 +617,9 @@ export const topicVaultItems = sqliteTable(
     kind: text("kind").notNull(),
     body: text("body").notNull(),
     title: text("title"),
+    mediaFileId: text("media_file_id").references(() => mediaBucketFiles.id, {
+      onDelete: "set null",
+    }),
     createdAt: text("created_at")
       .notNull()
       .default(sql`(datetime('now'))`),
@@ -622,6 +628,38 @@ export const topicVaultItems = sqliteTable(
     userTopicCreatedIdx: index(
       "topic_vault_items_user_topic_created_idx",
     ).on(t.userId, t.topicId, t.createdAt),
+  }),
+)
+
+// Pending Vault items saved DURING a focus session, before the session has a
+// resolved Topic. Keyed by sessionId rather than topicId. When the session
+// completes (or the user assigns a topic) these are promoted into
+// topic_vault_items under the resolved topic — or "Uncategorized" as a final
+// fallback. Same shape as topic_vault_items minus the topic link.
+export const sessionVaultItems = sqliteTable(
+  "session_vault_items",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => focusSessions.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    body: text("body").notNull(),
+    title: text("title"),
+    mediaFileId: text("media_file_id").references(() => mediaBucketFiles.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    userSessionCreatedIdx: index(
+      "session_vault_items_user_session_created_idx",
+    ).on(t.userId, t.sessionId, t.createdAt),
   }),
 )
 

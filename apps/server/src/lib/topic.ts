@@ -292,6 +292,9 @@ export const backfillTopics = async (
 
 /**
  * Aggregates topics across the user's sessions: count + total time + last used.
+ * Drives from the Topic entity (LEFT JOIN sessions) so freshly-created topics
+ * with no sessions yet still show up — otherwise they'd be persisted but
+ * invisible until their first session linked them in.
  */
 export const listTopics = async (userId: string) => {
   // Group by the Topic entity (not the legacy label) so a rename is reflected
@@ -300,14 +303,22 @@ export const listTopics = async (userId: string) => {
     .select({
       id: topics.id,
       name: topics.name,
+      createdAt: topics.createdAt,
+      sessionId: focusSessions.id,
       durationMinutes: focusSessions.durationMinutes,
       startedAt: focusSessions.startedAt,
       endedAt: focusSessions.endedAt,
       completed: focusSessions.completed,
     })
-    .from(focusSessions)
-    .innerJoin(topics, eq(focusSessions.topicId, topics.id))
-    .where(eq(focusSessions.userId, userId))
+    .from(topics)
+    .leftJoin(
+      focusSessions,
+      and(
+        eq(focusSessions.topicId, topics.id),
+        eq(focusSessions.userId, userId),
+      ),
+    )
+    .where(eq(topics.userId, userId))
     .orderBy(desc(focusSessions.startedAt))
     .limit(500)
 
@@ -317,6 +328,7 @@ export const listTopics = async (userId: string) => {
     {
       id: string
       name: string
+      createdAt: string
       sessionCount: number
       completedCount: number
       totalActualMs: number
@@ -327,27 +339,42 @@ export const listTopics = async (userId: string) => {
     const cur = byTopic.get(r.id) ?? {
       id: r.id,
       name: r.name,
+      createdAt: r.createdAt,
       sessionCount: 0,
       completedCount: 0,
       totalActualMs: 0,
-      lastUsedAt: r.startedAt,
+      // Fall back to the topic's own createdAt for session-less topics.
+      lastUsedAt: r.startedAt ?? r.createdAt,
     }
-    cur.sessionCount += 1
-    if (r.completed) cur.completedCount += 1
-    if (r.endedAt) {
-      cur.totalActualMs +=
-        new Date(r.endedAt).getTime() - new Date(r.startedAt).getTime()
-    } else {
-      // running or never-ended — use planned duration as a stand-in.
-      cur.totalActualMs += r.durationMinutes * 60_000
+    // Session-less topics produce a single LEFT JOIN row with null session
+    // fields — count it as a topic, but not as a session.
+    if (r.sessionId && r.startedAt) {
+      cur.sessionCount += 1
+      if (r.completed) cur.completedCount += 1
+      if (r.endedAt) {
+        cur.totalActualMs +=
+          new Date(r.endedAt).getTime() - new Date(r.startedAt).getTime()
+      } else {
+        // running or never-ended — use planned duration as a stand-in.
+        cur.totalActualMs += (r.durationMinutes ?? 0) * 60_000
+      }
+      if (r.startedAt > cur.lastUsedAt) cur.lastUsedAt = r.startedAt
     }
-    if (r.startedAt > cur.lastUsedAt) cur.lastUsedAt = r.startedAt
     byTopic.set(r.id, cur)
   }
 
-  return Array.from(byTopic.values()).sort((a, b) =>
-    b.lastUsedAt.localeCompare(a.lastUsedAt),
-  )
+  // Stable order: oldest topic first (created_at ASC). Creating or using a
+  // topic never reshuffles the list — new topics simply append at the end.
+  return Array.from(byTopic.values())
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map((t) => ({
+      id: t.id,
+      name: t.name,
+      sessionCount: t.sessionCount,
+      completedCount: t.completedCount,
+      totalActualMs: t.totalActualMs,
+      lastUsedAt: t.lastUsedAt,
+    }))
 }
 
 // Re-export sql for any callers (unused here but the migration may need it)

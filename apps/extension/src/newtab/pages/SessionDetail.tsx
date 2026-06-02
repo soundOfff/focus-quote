@@ -1,26 +1,6 @@
+import type { ComponentChildren } from "preact"
 import { useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
-import {
-  ArrowLeft,
-  BookmarkCheck,
-  BookmarkPlus,
-  BookOpen,
-  Brain,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  ExternalLink,
-  Eye,
-  EyeOff,
-  Globe,
-  Lightbulb,
-  Loader2,
-  RefreshCw,
-  RotateCw,
-  Send,
-  Sparkles,
-  XCircle,
-} from "lucide-preact"
 import { SessionsService } from "../../services/sessions"
 import { ApiService } from "../../services/api"
 import { runP } from "../runtime"
@@ -36,15 +16,56 @@ import type {
 } from "@focus-quote/shared"
 import { isAiFeatureEnabled } from "@focus-quote/shared"
 import { PREFS_KEY } from "../../shared/prefs"
-import {
-  Badge,
-  Button,
-  EmptyState,
-  ListRow,
-  SectionHeader,
-  SkeletonCard,
-  Surface,
-} from "../../ui/primitives"
+import "./session-detail.css"
+
+// ───────────────────────────────────────────────────────────────────────────
+// Icons — the spec's exact <symbol> set (docs/Session Detail.html). Inlined
+// rather than swapped for lucide so the glyph geometry / stroke-widths match
+// the reference to the pixel. Rendered once via <SvgDefs/>, referenced by id.
+// ───────────────────────────────────────────────────────────────────────────
+
+function SvgDefs() {
+  return (
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-arrow-l" viewBox="0 0 24 24"><path d="M11 5 4 12l7 7M4 12h16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+        <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14-4.5L4 8M4 4v4h4M4 13a8 8 0 0 0 14 4.5L20 16M20 20v-4h-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+        <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" /></symbol>
+        <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.3 1 2.1V16h6v-.4c0-.8.4-1.5 1-2.1A6 6 0 0 0 12 3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+        <symbol id="i-recall" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.5v.2M12 17v.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></symbol>
+        <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h5v16H6a2 2 0 0 0-2 2V5zM20 5a2 2 0 0 0-2-2h-5v16h5a2 2 0 0 1 2 2V5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" /></symbol>
+        <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M3 12h18M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18" fill="none" stroke="currentColor" stroke-width="1.6" /></symbol>
+        <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+        <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12 20 4l-6 16-3-7-7-1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /></symbol>
+        <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /><circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.6" /></symbol>
+        <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+        <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+      </defs>
+    </svg>
+  )
+}
+
+function Icon({
+  id,
+  size,
+  class: className,
+}: {
+  id: string
+  size: number
+  class?: string
+}) {
+  return (
+    <svg width={size} height={size} class={className} aria-hidden="true">
+      <use href={`#${id}`} />
+    </svg>
+  )
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Data layer (unchanged from the previous implementation — the redesign is
+// purely presentational). Each AI artifact is fetched independently so a slow
+// one doesn't block the rest.
+// ───────────────────────────────────────────────────────────────────────────
 
 interface UrlRow {
   id: string
@@ -52,7 +73,7 @@ interface UrlRow {
   hostname: string
   title: string | null
   category: string | null
-  distractionScore: number | null
+  visitedAt: string
 }
 
 interface PageData {
@@ -76,8 +97,6 @@ const loadAll = (sessionId: string) =>
       .getSessionUrls(sessionId)
       .pipe(Effect.catchAll(() => Effect.succeed({ urls: [] as SessionUrl[] })))
 
-    // The four AI artifacts — independent fetches so a slow one doesn't
-    // block the rest. Each falls back to null on error.
     const [summaryRes, tipsRes, recallRes, resourcesRes] = yield* Effect.all(
       [
         api
@@ -89,9 +108,9 @@ const loadAll = (sessionId: string) =>
         api
           .getRecallQuestions(sessionId)
           .pipe(Effect.catchAll(() => Effect.succeed({ questions: null }))),
-        api.getResourceRecommendations(sessionId).pipe(
-          Effect.catchAll(() => Effect.succeed({ resources: null })),
-        ),
+        api
+          .getResourceRecommendations(sessionId)
+          .pipe(Effect.catchAll(() => Effect.succeed({ resources: null }))),
       ],
       { concurrency: "unbounded" },
     )
@@ -104,7 +123,7 @@ const loadAll = (sessionId: string) =>
         hostname: u.hostname,
         title: u.title,
         category: u.category,
-        distractionScore: u.distractionScore,
+        visitedAt: u.visitedAt,
       })),
       summary: summaryRes.summary,
       tips: tipsRes.tips,
@@ -113,16 +132,9 @@ const loadAll = (sessionId: string) =>
     } satisfies PageData
   })
 
-// ---- helpers (small ones inline; bigger ones from SessionsSection) ----
-
-const fmtTime = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
+// ───────────────────────────────────────────────────────────────────────────
+// Formatting helpers
+// ───────────────────────────────────────────────────────────────────────────
 
 const fmtMinutes = (ms: number): string => {
   if (ms < 60_000) return `${Math.round(ms / 1000)}s`
@@ -131,78 +143,217 @@ const fmtMinutes = (ms: number): string => {
   return sec === 0 ? `${min}m` : `${min}m ${sec}s`
 }
 
-const categoryTone = (c: string | null): "success" | "danger" | "warning" | "info" | "neutral" => {
+/** Hours:minutes split out from the locale's day-period, so we can render a
+ *  range with a single trailing meridiem ("02:21–02:36 AM") exactly like the
+ *  spec, while still respecting 24-hour locales (no meridiem at all). */
+const clockParts = (iso: string): { hhmm: string; meridiem: string } => {
+  const fmt = new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  })
+  const parts = fmt.formatToParts(new Date(iso))
+  const hhmm = parts
+    .filter(
+      (p) =>
+        p.type === "hour" ||
+        p.type === "minute" ||
+        (p.type === "literal" && p.value === ":"),
+    )
+    .map((p) => p.value)
+    .join("")
+  const meridiem = parts.find((p) => p.type === "dayPeriod")?.value ?? ""
+  return { hhmm, meridiem }
+}
+
+const fmtClockRange = (startIso: string, endIso: string | null): string => {
+  const s = clockParts(startIso)
+  if (!endIso) return s.meridiem ? `${s.hhmm} ${s.meridiem}` : s.hhmm
+  const e = clockParts(endIso)
+  return e.meridiem ? `${s.hhmm}–${e.hhmm} ${e.meridiem}` : `${s.hhmm}–${e.hhmm}`
+}
+
+const fmtDate = (iso: string): string =>
+  new Date(iso).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  })
+
+/** Split a URL into a bold host (sans `www.`) and the remaining path for the
+ *  serif-card read URLs. Falls back to the raw string on parse failure. */
+const splitReadUrl = (raw: string): { host: string; path: string } => {
+  try {
+    const u = new URL(raw)
+    const host = u.hostname.replace(/^www\./, "")
+    let path = `${u.pathname}${u.search}${u.hash}`
+    if (path === "/") path = ""
+    return { host, path }
+  } catch {
+    return { host: raw, path: "" }
+  }
+}
+
+/** Map a freeform server category onto one of the spec's three chip tints
+ *  (blue = tools-ish, sage = docs-ish, neutral = everything else). */
+const categoryBucket = (c: string | null): "is-blue" | "is-sage" | "" => {
   const v = (c ?? "").toLowerCase()
-  if (v.includes("work") || v.includes("research") || v.includes("tools"))
-    return "success"
-  if (v.includes("social") || v.includes("entertainment"))
-    return "danger"
-  if (v.includes("news") || v.includes("shopping"))
-    return "warning"
-  if (!c) return "neutral"
-  return "info"
+  if (!v) return ""
+  if (/(tool|work|research|dev|code|software|product|app)/.test(v))
+    return "is-blue"
+  if (/(doc|reference|learn|edu|tutorial|course|wiki|guide|manual)/.test(v))
+    return "is-sage"
+  return ""
 }
 
-// ---- sub-components ----
+const titleCase = (c: string): string =>
+  c.length === 0 ? c : c.charAt(0).toUpperCase() + c.slice(1)
 
-interface BlockCommon {
-  onRegenerate: () => void
-  regenerating: boolean
+interface DomainGroup {
+  hostname: string
+  count: number
+  title: string | null
+  category: string | null
+  url: string
 }
 
-function SummaryBlock({
+/** Collapse raw per-visit rows into one row per domain (most-visited first),
+ *  carrying a representative title (most recent), category, and a link. */
+const groupByDomain = (urls: UrlRow[]): DomainGroup[] => {
+  const map = new Map<string, DomainGroup & { repAt: number }>()
+  for (const u of urls) {
+    const key = u.hostname || "(unknown)"
+    const at = new Date(u.visitedAt).getTime() || 0
+    const ex = map.get(key)
+    if (!ex) {
+      map.set(key, {
+        hostname: key,
+        count: 1,
+        title: u.title,
+        category: u.category,
+        url: u.url,
+        repAt: at,
+      })
+    } else {
+      ex.count += 1
+      if (!ex.category && u.category) ex.category = u.category
+      // Representative title/link = most recent visit for the domain.
+      if (at >= ex.repAt) {
+        ex.repAt = at
+        if (u.title) ex.title = u.title
+        ex.url = u.url
+      } else if (!ex.title && u.title) {
+        ex.title = u.title
+      }
+    }
+  }
+  // `repAt` rides along as an extra property; the DomainGroup[] return type
+  // simply ignores it (structural, non-literal assignment).
+  return [...map.values()].sort((a, b) => b.count - a.count)
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Panel scaffold + AI sections
+// ───────────────────────────────────────────────────────────────────────────
+
+function Panel({
+  iconId,
+  title,
+  sub,
+  onRegenerate,
+  regenerating,
+  children,
+}: {
+  iconId: string
+  title: string
+  sub?: string
+  onRegenerate?: () => void
+  regenerating?: boolean
+  children: ComponentChildren
+}) {
+  return (
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">
+          <span class="ic">
+            <Icon id={iconId} size={15} />
+          </span>{" "}
+          {title}
+        </span>
+        {onRegenerate && (
+          <button
+            type="button"
+            class="btn-regen"
+            onClick={onRegenerate}
+            disabled={regenerating}
+            aria-label={`Regenerate ${title}`}
+            title={`Regenerate ${title}`}
+          >
+            <Icon id="i-refresh" size={13} class={regenerating ? "spin" : ""} />{" "}
+            Regenerate
+          </button>
+        )}
+      </div>
+      {sub && <p class="panel-sub">{sub}</p>}
+      {children}
+    </div>
+  )
+}
+
+function SummaryPanel({
   summary,
   onRegenerate,
   regenerating,
-}: { summary: string | null } & BlockCommon) {
+}: {
+  summary: string | null
+  onRegenerate: () => void
+  regenerating: boolean
+}) {
   return (
-    <Section
-      icon={<Sparkles size={14} class="text-mute" />}
+    <Panel
+      iconId="i-spark"
       title="AI summary"
       onRegenerate={onRegenerate}
       regenerating={regenerating}
     >
       {summary ? (
-        <p class="text-sm leading-relaxed">{summary}</p>
+        <p class="summary-text">{summary}</p>
       ) : (
-        <p class="text-xs opacity-50">Generating… reload in a moment.</p>
+        <p class="empty-note">No summary generated yet.</p>
       )}
-    </Section>
+    </Panel>
   )
 }
 
-function TipsBlock({
+function TipsPanel({
   tips,
   onRegenerate,
   regenerating,
-}: { tips: ReadonlyArray<string> | null } & BlockCommon) {
+}: {
+  tips: ReadonlyArray<string> | null
+  onRegenerate: () => void
+  regenerating: boolean
+}) {
   return (
-    <Section
-      icon={<Lightbulb size={14} class="text-mute" />}
+    <Panel
+      iconId="i-bulb"
       title="Study tips"
       onRegenerate={onRegenerate}
       regenerating={regenerating}
     >
       {tips && tips.length > 0 ? (
-        <ul class="space-y-3">
+        <ol class="tips">
           {tips.map((t, i) => (
-            <li
-              key={i}
-              class="flex gap-3 text-sm leading-relaxed text-body"
-            >
-              <span class="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md bg-accent-blue-soft text-xs font-semibold tabular-nums text-link-blue">
-                {i + 1}
-              </span>
-              <span class="min-w-0 pt-0.5">{t}</span>
+            <li key={i}>
+              <span class="n">{i + 1}</span>
+              <span>{t}</span>
             </li>
           ))}
-        </ul>
+        </ol>
       ) : (
-        <p class="text-xs opacity-50">
-          Generating tips… reload in a moment.
-        </p>
+        <p class="empty-note">No study tips generated yet.</p>
       )}
-    </Section>
+    </Panel>
   )
 }
 
@@ -211,7 +362,14 @@ interface GradeState {
   feedback: string
 }
 
-function RecallBlock({
+const verdictClass = (v: RecallVerdict): string =>
+  v === "correct"
+    ? "is-correct"
+    : v === "partial"
+      ? "is-partial"
+      : "is-incorrect"
+
+function RecallPanel({
   sessionId,
   questions,
   onRegenerate,
@@ -219,350 +377,291 @@ function RecallBlock({
 }: {
   sessionId: string
   questions: ReadonlyArray<RecallQuestion> | null
-} & BlockCommon) {
-  const [revealed, setRevealed] = useState<Set<number>>(new Set())
+  onRegenerate: () => void
+  regenerating: boolean
+}) {
+  const total = questions?.length ?? 0
+  const [idx, setIdx] = useState(0)
   const [answers, setAnswers] = useState<Map<number, string>>(new Map())
-  const [grading, setGrading] = useState<Set<number>>(new Set())
   const [grades, setGrades] = useState<Map<number, GradeState>>(new Map())
+  const [revealed, setRevealed] = useState<Set<number>>(new Set())
+  const [grading, setGrading] = useState<Set<number>>(new Set())
 
-  const toggle = (idx: number) => {
-    const next = new Set(revealed)
-    if (next.has(idx)) next.delete(idx)
-    else next.add(idx)
-    setRevealed(next)
-  }
-  const setAnswer = (idx: number, value: string) => {
-    const next = new Map(answers)
-    next.set(idx, value)
-    setAnswers(next)
-  }
-  const submit = (idx: number) => {
-    const ans = answers.get(idx)?.trim()
-    if (!ans) return
-    setGrading((prev) => new Set(prev).add(idx))
+  // Clamp the cursor if a regenerate shrank the set.
+  const cur = total === 0 ? 0 : Math.min(idx, total - 1)
+  const q = questions && total > 0 ? questions[cur] : null
+
+  const setAnswer = (value: string) =>
+    setAnswers((prev) => new Map(prev).set(cur, value))
+
+  const submit = () => {
+    const ans = answers.get(cur)?.trim()
+    if (!ans || grading.has(cur)) return
+    setGrading((prev) => new Set(prev).add(cur))
     runP(
       Effect.gen(function* () {
         const api = yield* ApiService
         return yield* api.gradeRecallAnswer(sessionId, {
-          questionIndex: idx,
+          questionIndex: cur,
           userAnswer: ans,
         })
       }),
     )
-      .then((g) => {
-        setGrades((prev) => {
-          const next = new Map(prev)
-          next.set(idx, { verdict: g.verdict, feedback: g.feedback })
-          return next
-        })
-      })
-      .catch(() => {
-        setGrades((prev) => {
-          const next = new Map(prev)
-          next.set(idx, {
+      .then((g) =>
+        setGrades((prev) =>
+          new Map(prev).set(cur, { verdict: g.verdict, feedback: g.feedback }),
+        ),
+      )
+      .catch(() =>
+        setGrades((prev) =>
+          new Map(prev).set(cur, {
             verdict: "incorrect",
             feedback: "Could not grade right now — try again in a moment.",
-          })
-          return next
-        })
-      })
-      .finally(() => {
+          }),
+        ),
+      )
+      .finally(() =>
         setGrading((prev) => {
           const next = new Set(prev)
-          next.delete(idx)
+          next.delete(cur)
           return next
-        })
-      })
+        }),
+      )
   }
 
-  const verdictClasses = (v: RecallVerdict) => {
-    if (v === "correct")
-      return "bg-accent-green-soft text-accent-green"
-    if (v === "partial") return "bg-primary/20 text-ink"
-    return "bg-accent-red-soft text-accent-red"
-  }
+  const toggleReveal = () =>
+    setRevealed((prev) => {
+      const next = new Set(prev)
+      if (next.has(cur)) next.delete(cur)
+      else next.add(cur)
+      return next
+    })
+
+  const grade = grades.get(cur)
+  const isGrading = grading.has(cur)
+  const isRevealed = revealed.has(cur)
+  const canAdvance = (grade !== undefined || isRevealed) && cur < total - 1
 
   return (
-    <Section
-      icon={<Brain size={14} class="text-mute" />}
+    <Panel
+      iconId="i-recall"
       title="Active recall"
-      subtitle="Type your answer and submit — the LLM grades it. Or reveal directly."
+      sub="Type your answer and submit — the LLM grades it. Or reveal directly."
       onRegenerate={onRegenerate}
       regenerating={regenerating}
     >
-      {questions && questions.length > 0 ? (
-        <ol class="space-y-4">
-          {questions.map((q, i) => {
-            const grade = grades.get(i)
-            const isGrading = grading.has(i)
-            return (
-              <li key={i} class="rounded-md border border-hairline-soft bg-surface-doc p-3">
-                <div class="mb-2 text-sm font-medium">
-                  {i + 1}. {q.q}
-                </div>
-                <textarea
-                  rows={2}
-                  placeholder="Your answer…"
-                  value={answers.get(i) ?? ""}
-                  onInput={(e) =>
-                    setAnswer(
-                      i,
-                      (e.currentTarget as HTMLTextAreaElement).value,
-                    )
-                  }
-                  class="w-full resize-none rounded-sm border border-hairline bg-surface px-2 py-1.5 text-xs text-body outline-none focus:ring-1 focus:ring-focus-ring/70"
-                />
-                <div class="mt-2 flex items-center gap-3">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => submit(i)}
-                    disabled={isGrading || !(answers.get(i)?.trim())}
-                  >
-                    {isGrading ? (
-                      <Loader2 size={11} class="animate-spin" />
-                    ) : (
-                      <Send size={11} />
-                    )}
-                    {isGrading ? "Grading…" : "Submit"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggle(i)}
-                  >
-                    {revealed.has(i) ? (
-                      <>
-                        <EyeOff size={11} /> Hide answer
-                      </>
-                    ) : (
-                      <>
-                        <Eye size={11} /> Reveal answer
-                      </>
-                    )}
-                  </Button>
-                </div>
-                {grade && (
-                  <div class={`mt-2 rounded-md p-2 text-xs ${verdictClasses(grade.verdict)}`}>
-                    <div class="mb-1 font-medium uppercase tracking-wide">
-                      {grade.verdict}
-                    </div>
-                    <p class="leading-relaxed">{grade.feedback}</p>
-                  </div>
-                )}
-                {revealed.has(i) && (
-                  <p class="mt-2 rounded-md bg-accent-green-soft p-2 text-xs leading-relaxed text-accent-green">
-                    <span class="text-mute">Expected: </span>
-                    {q.a}
-                  </p>
-                )}
-              </li>
-            )
-          })}
-        </ol>
+      {q ? (
+        <>
+          <p class="recall-q">
+            <span class="qn">{cur + 1}.</span>
+            {q.q}
+          </p>
+
+          <textarea
+            class="textarea"
+            placeholder="Your answer…"
+            aria-label="Your answer"
+            value={answers.get(cur) ?? ""}
+            onInput={(e) =>
+              setAnswer((e.currentTarget as HTMLTextAreaElement).value)
+            }
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault()
+                submit()
+              }
+            }}
+          />
+
+          <div class="recall-actions">
+            <button
+              type="button"
+              class="btn btn-amber"
+              onClick={submit}
+              disabled={isGrading || !(answers.get(cur)?.trim())}
+            >
+              <Icon id={isGrading ? "i-refresh" : "i-send"} size={13} class={isGrading ? "spin" : ""} />{" "}
+              {isGrading ? "Grading…" : "Submit"}
+            </button>
+            <button type="button" class="btn btn-ghost" onClick={toggleReveal}>
+              <Icon id="i-eye" size={13} /> Reveal answer
+            </button>
+            {canAdvance && (
+              <button
+                type="button"
+                class="recall-next right"
+                onClick={() => setIdx(cur + 1)}
+              >
+                Next <Icon id="i-chev-r" size={11} />
+              </button>
+            )}
+            <span class={`q-counter${canAdvance ? "" : " right"}`}>
+              {cur + 1} / {total}
+            </span>
+          </div>
+
+          {grade && (
+            <div class={`recall-result ${verdictClass(grade.verdict)}`}>
+              <span class="verdict">{grade.verdict}</span>
+              {grade.feedback}
+            </div>
+          )}
+          {isRevealed && (
+            <div class="recall-answer">
+              <span class="lbl">Answer</span>
+              {q.a}
+            </div>
+          )}
+        </>
       ) : (
-        <p class="text-xs opacity-50">
-          Generating recall questions… reload in a moment.
-        </p>
+        <p class="empty-note">No recall questions generated yet.</p>
       )}
-    </Section>
+    </Panel>
   )
 }
 
-function ResourcesBlock({
+function ReadsPanel({
   resources,
   onRegenerate,
   regenerating,
 }: {
   resources: ReadonlyArray<ResourceRecommendation> | null
-} & BlockCommon) {
+  onRegenerate: () => void
+  regenerating: boolean
+}) {
   return (
-    <Section
-      icon={<BookOpen size={14} class="text-mute" />}
+    <Panel
+      iconId="i-book"
       title="Suggested next reads"
-      subtitle="Resources that complement what you covered. URLs are verified before saving."
+      sub="Resources that complement what you covered. URLs are verified before saving."
       onRegenerate={onRegenerate}
       regenerating={regenerating}
     >
       {resources && resources.length > 0 ? (
-        <ul class="space-y-2">
-          {resources.map((r, i) => (
-            <li key={i} class="rounded-md border border-hairline-soft bg-surface-doc p-3">
+        <div class="reads">
+          {resources.map((r, i) => {
+            const { host, path } = splitReadUrl(r.url)
+            return (
               <a
+                key={i}
+                class="read"
                 href={r.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                class="flex items-center gap-1 text-sm font-medium text-link-blue transition-colors hover:text-ink"
               >
-                {r.title}
-                <ExternalLink size={11} />
+                <div class="read-title">
+                  {r.title}{" "}
+                  <span class="ext">
+                    <Icon id="i-ext" size={13} />
+                  </span>
+                </div>
+                <div class="read-desc">{r.why}</div>
+                <div class="read-url">
+                  <Icon id="i-globe" size={11} />{" "}
+                  <span class="u">
+                    <b>{host}</b>
+                    {path}
+                  </span>
+                </div>
               </a>
-              <p class="mt-1 text-xs text-body">{r.why}</p>
-              <p class="mt-1 truncate font-mono text-[11px] text-mute">
-                {r.url}
-              </p>
-            </li>
-          ))}
-        </ul>
+            )
+          })}
+        </div>
       ) : (
-        <p class="text-xs opacity-50">
-          Generating recommendations… reload in a moment.
-        </p>
+        <p class="empty-note">No suggested reads yet.</p>
       )}
-    </Section>
+    </Panel>
   )
 }
 
-function Section({
-  icon,
-  title,
-  subtitle,
-  onRegenerate,
-  regenerating,
-  children,
-}: {
-  icon: preact.ComponentChildren
-  title: string
-  subtitle?: string
-  onRegenerate?: () => void
-  regenerating?: boolean
-  children: preact.ComponentChildren
-}) {
+// ───────────────────────────────────────────────────────────────────────────
+// URLs visited — paper-2 collapsible, domain-grouped
+// ───────────────────────────────────────────────────────────────────────────
+
+const URL_PREVIEW = 4
+
+function UrlsPanel({ urls }: { urls: UrlRow[] }) {
+  const [open, setOpen] = useState(true)
+  const [showAll, setShowAll] = useState(false)
+
+  const groups = useMemo(() => groupByDomain(urls), [urls])
+  const visible = showAll ? groups : groups.slice(0, URL_PREVIEW)
+  const total = urls.length
+
   return (
-    <Surface>
-      <SectionHeader
-        title={title}
-        subtitle={subtitle}
-        icon={icon}
-        action={
-          onRegenerate ? (
-            <Button
-              onClick={onRegenerate}
-              disabled={regenerating}
-              variant="ghost"
-              size="sm"
-              aria-label="Regenerate"
-              title="Regenerate"
-              class="!text-[10px] !font-bold uppercase tracking-wider"
-            >
-              <RefreshCw size={11} class={regenerating ? "animate-spin" : ""} />
-              {regenerating ? "Regenerating…" : "Regenerate"}
-            </Button>
-          ) : null
-        }
-      />
-      {children}
-    </Surface>
-  )
-}
-
-const saveVaultLink = (sessionId: string, url: string, title: string | null) =>
-  Effect.gen(function* () {
-    const api = yield* ApiService
-    return yield* api.attachSessionVaultLink(sessionId, { url, title })
-  })
-
-function UrlsBlock({
-  urls,
-  sessionId,
-}: {
-  urls: UrlRow[]
-  sessionId: string
-}) {
-  const [open, setOpen] = useState(false)
-  const [saved, setSaved] = useState<Set<string>>(new Set())
-  const [savingId, setSavingId] = useState<string | null>(null)
-
-  const promote = (u: UrlRow) => {
-    if (saved.has(u.id) || savingId) return
-    setSavingId(u.id)
-    runP(saveVaultLink(sessionId, u.url, u.title))
-      .then(() => setSaved((prev) => new Set(prev).add(u.id)))
-      .catch(() => {})
-      .finally(() => setSavingId(null))
-  }
-  return (
-    <Surface class="p-0">
+    <div class={`urls${open ? " is-open" : ""}`}>
       <button
         type="button"
-        onClick={() => setOpen(!open)}
-        class="flex w-full items-center gap-2 px-2 py-3 rounded text-left transition-colors hover:bg-surface-doc"
+        class="urls-bar"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
       >
-        <Globe size={14} class="text-mute" />
-        <h2 class="text-sm font-semibold text-ink">
-          URLs visited{" "}
-          <span class="text-mute tabular-nums">({urls.length})</span>
-        </h2>
-        <span class="ml-auto text-mute">
-          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <span class="left">
+          <span class="ic">
+            <Icon id="i-globe" size={15} />
+          </span>
+          <span class="ttl">
+            URLs visited <span class="count">({total})</span>
+          </span>
         </span>
+        <Icon id="i-chev-r" size={16} class="chev" />
       </button>
-      {open && (
-        <ul class="space-y-3 px-5 pb-5 pt-3">
-          {urls.map((u) => (
-            <li key={u.id}>
-              <ListRow class="text-xs">
-              <Globe size={11} class="mt-0.5 shrink-0 text-mute" />
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-2">
-                  <a
-                    href={u.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="truncate font-medium text-ink hover:underline"
-                  >
-                    {u.hostname}
-                  </a>
-                  {u.category && (
-                    <Badge tone={categoryTone(u.category)}>
-                      {u.category}
-                    </Badge>
-                  )}
-                  {u.distractionScore !== null && (
-                    <span class="shrink-0 text-[10px] text-mute tabular-nums">
-                      {u.distractionScore}
+      <div class="urls-list">
+        {visible.map((g) => {
+          const bucket = categoryBucket(g.category)
+          return (
+            <a
+              key={g.hostname}
+              class="url-row"
+              href={g.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span class="favicon">
+                <Icon id="i-globe" size={15} />
+              </span>
+              <span class="u-main">
+                <div class="u-top">
+                  <span class="u-host">{g.hostname}</span>
+                  {g.category && (
+                    <span class={`cat ${bucket}`.trim()}>
+                      {titleCase(g.category)}
                     </span>
                   )}
+                  <span class="u-count">
+                    {g.count} visit{g.count === 1 ? "" : "s"}
+                  </span>
                 </div>
-                {u.title && (
-                  <div class="truncate text-[11px] text-mute">
-                    {u.title}
-                  </div>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => promote(u)}
-                disabled={saved.has(u.id) || savingId === u.id}
-                aria-label="Save to topic vault"
-                title="Save to topic vault"
-                class="shrink-0 rounded p-0.5 text-mute transition-colors hover:text-ink disabled:cursor-default"
-              >
-                {saved.has(u.id) ? (
-                  <BookmarkCheck size={12} class="text-accent-green" />
-                ) : (
-                  <BookmarkPlus size={12} />
-                )}
-              </button>
-              </ListRow>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Surface>
+                {g.title && <div class="u-query">{g.title}</div>}
+              </span>
+              <span class="u-open" aria-label="Open in new tab">
+                <Icon id="i-ext" size={14} />
+              </span>
+            </a>
+          )
+        })}
+        {!showAll && groups.length > URL_PREVIEW && (
+          <button
+            type="button"
+            class="urls-more"
+            onClick={() => setShowAll(true)}
+          >
+            Show all {total} visits
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 
-// ---- page ----
+// ───────────────────────────────────────────────────────────────────────────
+// Page
+// ───────────────────────────────────────────────────────────────────────────
 
 interface Props {
   sessionId: string
 }
 
-// Note: the surrounding AppShell (nav bar + theme toggle + page chrome) is
-// rendered by `newtab/App.tsx` and stays mounted across home ↔ session-detail
-// transitions. Detail no longer wraps its own AppShell so popping back to home
-// doesn't tear down + refetch TopicsSection / SessionsSection.
 // The study artifacts a generate-all run fans out, each mapped to the AI
 // feature that gates it (ADR 0002). "topic" is gated by the master switch only.
 const GENERATE_ALL_ARTIFACTS: ReadonlyArray<{
@@ -608,54 +707,10 @@ export function SessionDetail({ sessionId }: Props) {
       .catch(() => {})
   }, [])
 
-  const generateAll = () => {
-    const targets: RegenerateArtifact[] = []
-    if (aiMasterEnabled) targets.push("topic")
-    for (const t of GENERATE_ALL_ARTIFACTS) {
-      if (
-        isAiFeatureEnabled(t.feature, {
-          masterEnabled: aiMasterEnabled,
-          featureOverrides,
-        })
-      ) {
-        targets.push(t.artifact)
-      }
-    }
-    // Auto-title only applies to goal-less sessions (issue #9); the server
-    // skips it otherwise, but we avoid the wasted round-trip here.
-    if (
-      !data?.session?.goal &&
-      isAiFeatureEnabled("autoTitle", {
-        masterEnabled: aiMasterEnabled,
-        featureOverrides: { ...featureOverrides, autoTitle: autoTitleEnabled },
-      })
-    ) {
-      targets.push("title")
-    }
-    if (targets.length === 0) return
-    setGeneratingAll(true)
-    runP(
-      Effect.gen(function* () {
-        const api = yield* ApiService
-        // Sequential so we don't fan a burst of LLM calls at the server.
-        for (const artifact of targets) {
-          yield* api
-            .regenerateArtifact(sessionId, { artifact })
-            .pipe(Effect.catchAll(() => Effect.void))
-        }
-      }),
-    )
-      .then(() => refresh())
-      .catch(() => {})
-      .finally(() => setGeneratingAll(false))
-  }
-
   const refresh = () => {
     setLoading(true)
     runP(loadAll(sessionId))
-      .then((d) => {
-        setData(d)
-      })
+      .then((d) => setData(d))
       .catch(() => setData(null))
       .finally(() => setLoading(false))
   }
@@ -681,6 +736,45 @@ export function SessionDetail({ sessionId }: Props) {
       })
   }
 
+  const generateAll = () => {
+    const targets: RegenerateArtifact[] = []
+    if (aiMasterEnabled) targets.push("topic")
+    for (const t of GENERATE_ALL_ARTIFACTS) {
+      if (
+        isAiFeatureEnabled(t.feature, {
+          masterEnabled: aiMasterEnabled,
+          featureOverrides,
+        })
+      ) {
+        targets.push(t.artifact)
+      }
+    }
+    if (
+      !data?.session?.goal &&
+      isAiFeatureEnabled("autoTitle", {
+        masterEnabled: aiMasterEnabled,
+        featureOverrides: { ...featureOverrides, autoTitle: autoTitleEnabled },
+      })
+    ) {
+      targets.push("title")
+    }
+    if (targets.length === 0) return
+    setGeneratingAll(true)
+    runP(
+      Effect.gen(function* () {
+        const api = yield* ApiService
+        for (const artifact of targets) {
+          yield* api
+            .regenerateArtifact(sessionId, { artifact })
+            .pipe(Effect.catchAll(() => Effect.void))
+        }
+      }),
+    )
+      .then(() => refresh())
+      .catch(() => {})
+      .finally(() => setGeneratingAll(false))
+  }
+
   useEffect(() => {
     refresh()
   }, [sessionId])
@@ -700,26 +794,57 @@ export function SessionDetail({ sessionId }: Props) {
     return { plannedMs, actualMs, status }
   }, [data])
 
+  // ── Initial load skeleton ──
   if (loading && !data) {
     return (
-      <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-6 py-8">
-        <SkeletonCard lines={3} />
-        <SkeletonCard lines={4} />
-        <SkeletonCard lines={5} />
+      <div class="fq-session-detail">
+        <SvgDefs />
+        <div class="shell">
+          <div class="topbar">
+            <button type="button" class="back" onClick={navigateHome}>
+              <Icon id="i-arrow-l" size={15} /> Back
+            </button>
+          </div>
+          <div class="hero">
+            <div class="sk" style="height:18px;width:96px;border-radius:999px;margin-bottom:13px" />
+            <div class="sk" style="height:30px;width:62%;margin-bottom:14px" />
+            <div class="sk" style="height:11px;width:80%" />
+          </div>
+          {[0, 1, 2].map((i) => (
+            <div class="panel" key={i}>
+              <div class="sk" style="height:15px;width:34%;margin-bottom:14px" />
+              <div class="sk" style="height:12px;width:100%;margin-bottom:8px" />
+              <div class="sk" style="height:12px;width:88%" />
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
 
+  // ── Not found ──
   if (!data?.session) {
     return (
-      <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 px-6 py-8">
-        <Button onClick={navigateHome} variant="ghost" size="sm" class="self-start">
-          <ArrowLeft size={12} /> Back
-        </Button>
-        <EmptyState
-          title="Session not found"
-          description="This session may not be synced to this device yet."
-        />
+      <div class="fq-session-detail">
+        <SvgDefs />
+        <div class="shell">
+          <div class="topbar">
+            <button type="button" class="back" onClick={navigateHome}>
+              <Icon id="i-arrow-l" size={15} /> Back
+            </button>
+          </div>
+          <div class="panel">
+            <span class="panel-title">
+              <span class="ic">
+                <Icon id="i-globe" size={15} />
+              </span>{" "}
+              Session not found
+            </span>
+            <p class="panel-sub">
+              This session may not be synced to this device yet.
+            </p>
+          </div>
+        </div>
       </div>
     )
   }
@@ -732,121 +857,140 @@ export function SessionDetail({ sessionId }: Props) {
     (data.questions && data.questions.length) ||
     (data.resources && data.resources.length)
   )
+  const showAiPanels = d.status === "completed" || hasArtifacts
+
+  const statusClass =
+    d.status === "completed"
+      ? ""
+      : d.status === "canceled"
+        ? " is-canceled"
+        : " is-running"
+  const statusLabel =
+    d.status === "completed"
+      ? "Completed"
+      : d.status === "canceled"
+        ? "Canceled"
+        : "Running"
 
   return (
-    <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 overflow-y-auto px-4 py-6 sm:px-6">
-        <div class="flex items-center justify-between gap-2">
+    <div class="fq-session-detail">
+      <SvgDefs />
+      <div class="shell">
+        {/* Top bar */}
+        <div class="topbar">
+          <button type="button" class="back" onClick={navigateHome}>
+            <Icon id="i-arrow-l" size={15} /> Back
+          </button>
           <button
             type="button"
-            onClick={navigateHome}
-            class="inline-flex min-h-10 items-center gap-1 rounded-md px-2 text-xs font-semibold text-mute transition-[color,transform] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70 active:scale-[0.96] motion-reduce:active:scale-100"
-          >
-            <ArrowLeft size={14} strokeWidth={2} aria-hidden /> Back
-          </button>
-          <Button
+            class="btn btn-ghost btn-sm"
             onClick={refresh}
-            variant="outline"
-            size="sm"
             aria-label="Refresh session"
-            class="gap-1.5 !font-semibold"
           >
-            <RotateCw size={14} strokeWidth={2} /> Refresh
-          </Button>
+            <Icon id="i-refresh" size={13} class={loading ? "spin" : ""} />{" "}
+            Refresh
+          </button>
         </div>
 
-        <Surface>
-          <div class="mb-2 flex flex-wrap items-center gap-2">
-            {d.status === "completed" && (
-              <Badge tone="success">
-                <CheckCircle2 size={10} /> Completed
-              </Badge>
+        {/* Hero */}
+        <div class="hero">
+          <span class={`status${statusClass}`}>
+            <span class="dot" /> {statusLabel}
+          </span>
+          <h1>{s.goal || s.title || "Untitled session"}</h1>
+          <div class="meta">
+            <span class="m">
+              <b>{fmtMinutes(d.plannedMs)}</b> planned
+            </span>
+            {d.actualMs !== null && (
+              <>
+                <span class="sep">·</span>
+                <span class="m">
+                  <b>{fmtMinutes(d.actualMs)}</b> actual
+                </span>
+              </>
             )}
-            {d.status === "canceled" && (
-              <Badge tone="danger">
-                <XCircle size={10} /> Canceled
-              </Badge>
-            )}
-            {d.status === "running" && (
-              <Badge tone="warning">
-                <Loader2 size={10} class="animate-spin" /> Running
-              </Badge>
-            )}
+            <span class="sep">·</span>
+            <span class="m">
+              <Icon id="i-clock" size={11} /> {fmtClockRange(s.startedAt, s.endedAt)}
+            </span>
+            <span class="sep">·</span>
+            <span class="m">{fmtDate(s.startedAt)}</span>
+            <span class="sep">·</span>
+            <span class="m">
+              <b>{data.urls.length}</b> URL{data.urls.length === 1 ? "" : "s"}
+            </span>
           </div>
-          <h1 class="text-balance text-2xl font-bold text-ink">
-            {s.goal || s.title || (
-              <span class="text-mute">Session without a goal</span>
-            )}
-          </h1>
-          <p class="mt-3 text-balance font-mono text-[11px] uppercase leading-relaxed text-mute">
-            {[
-              `${fmtMinutes(d.plannedMs)} planned`,
-              d.actualMs !== null ? `${fmtMinutes(d.actualMs)} actual` : null,
-              `started ${fmtTime(s.startedAt)}`,
-              s.endedAt ? `ended ${fmtTime(s.endedAt)}` : null,
-              `${data.urls.length} URL${data.urls.length === 1 ? "" : "s"}`,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
-        </Surface>
+        </div>
 
-        {(d.status === "completed" || hasArtifacts) && (
+        {/* AI panels — shown when the session completed or any artifact exists */}
+        {showAiPanels && (
           <>
-            <SummaryBlock
+            <SummaryPanel
               summary={data.summary}
               onRegenerate={() => regenerate("summary")}
               regenerating={regenerating.has("summary")}
             />
-            <TipsBlock
+            <TipsPanel
               tips={data.tips}
               onRegenerate={() => regenerate("studyTips")}
               regenerating={regenerating.has("studyTips")}
             />
-            <RecallBlock
+            <RecallPanel
               sessionId={sessionId}
               questions={data.questions}
               onRegenerate={() => regenerate("recallQuestions")}
               regenerating={regenerating.has("recallQuestions")}
             />
-            <ResourcesBlock
+            <ReadsPanel
               resources={data.resources}
-              onRegenerate={() =>
-                regenerate("resourceRecommendations")
-              }
-              regenerating={regenerating.has(
-                "resourceRecommendations",
-              )}
+              onRegenerate={() => regenerate("resourceRecommendations")}
+              regenerating={regenerating.has("resourceRecommendations")}
             />
           </>
         )}
 
-        {d.status !== "completed" && data.urls.length > 0 && !hasArtifacts && (
-          <Section
-            icon={<Sparkles size={14} class="text-mute" />}
-            title="AI insights"
-            subtitle="This session didn't finish — generate its AI summary, study tips, recall questions, and resource recommendations now."
-          >
-            <div class="flex flex-col items-start gap-2">
-              <Button
+        {/* Unfinished + no artifacts: offer a one-shot generate-all */}
+        {!showAiPanels && data.urls.length > 0 && (
+          <div class="panel">
+            <div class="panel-head">
+              <span class="panel-title">
+                <span class="ic">
+                  <Icon id="i-spark" size={15} />
+                </span>{" "}
+                AI insights
+              </span>
+            </div>
+            <p class="panel-sub">
+              This session didn't finish — generate its AI summary, study tips,
+              recall questions, and suggested reads now.
+            </p>
+            <div style="margin-top:14px;display:flex;flex-direction:column;align-items:flex-start;gap:8px">
+              <button
+                type="button"
+                class="btn btn-amber"
                 onClick={generateAll}
-                variant="primary"
-                size="sm"
                 disabled={!aiMasterEnabled || generatingAll}
-                class="gap-1.5"
               >
-                <Sparkles size={12} />
+                <Icon
+                  id={generatingAll ? "i-refresh" : "i-spark"}
+                  size={13}
+                  class={generatingAll ? "spin" : ""}
+                />{" "}
                 {generatingAll ? "Generating…" : "Generate all"}
-              </Button>
+              </button>
               {!aiMasterEnabled && (
-                <p class="text-xs text-mute">
+                <p class="panel-sub" style="margin:0">
                   AI is turned off — enable it in Settings.
                 </p>
               )}
             </div>
-          </Section>
+          </div>
         )}
 
-        <UrlsBlock urls={data.urls} sessionId={sessionId} />
+        {/* URLs visited */}
+        {data.urls.length > 0 && <UrlsPanel urls={data.urls} />}
+      </div>
     </div>
   )
 }

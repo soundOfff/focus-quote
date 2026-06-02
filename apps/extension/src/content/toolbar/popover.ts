@@ -174,11 +174,9 @@ export const openPopover = (opts: OpenOptions): PopoverHandle => {
   position(opts.shell.getSide())
   requestAnimationFrame(() => position(opts.shell.getSide()))
 
-  // The panel grows as its content loads (the Quote+AI summary, sources and
-  // follow-ups stream in after open). Recompute position whenever its size
-  // changes so it re-clamps to the viewport instead of staying pinned to its
-  // initial (too-tall) spot — no manual close + reopen needed. position() only
-  // writes top/left, never the size, so this can't feed back into a loop.
+  // Re-clamp when the panel's own content grows/shrinks (e.g. a streamed AI
+  // reply expands the body). position() only writes top/left/right, never
+  // width/height, so observing the panel can't feed back into a resize loop.
   const resizeObserver =
     typeof ResizeObserver !== "undefined"
       ? new ResizeObserver(() => position(opts.shell.getSide()))

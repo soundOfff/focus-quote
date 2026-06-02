@@ -390,10 +390,15 @@ const checkSelection = () => {
   bar.show(text, rect)
 }
 
+// A shown translation result stays pinned through transient page events
+// (scroll, focus loss, ambient selection collapse). It is dismissed only by an
+// explicit outside click or by starting a brand-new selection.
+const isResultPinned = (): boolean =>
+  !!selectionBar && selectionBar.isVisible() && selectionBar.isResultOpen()
+
 const onMouseUp = (e: MouseEvent) => {
-  // While our own language dropdown is open, picking a row collapses the page
-  // selection (the dropdown's search field steals focus). Don't let that
-  // re-check tear the bar down — the dropdown is part of the translate tool.
+  // The language dropdown owns the interaction while open; focusing its filter
+  // input collapses the page selection, so don't re-run checkSelection here.
   if (selectionBar?.isDropdownOpen()) return
   if (selectionBar && selectionBar.root.contains(e.target as Node)) return
   setTimeout(checkSelection, 0)
@@ -417,9 +422,10 @@ const onKeyUp = (e: KeyboardEvent) => {
 }
 
 const onSelectionChange = () => {
-  // Focusing the dropdown's filter input collapses the page selection. Keep the
-  // bar alive while the dropdown owns the interaction (see onMouseUp).
+  // Keep the bar alive while the dropdown owns the interaction (its filter
+  // input collapses the page selection) or while a translation result is shown.
   if (selectionBar?.isDropdownOpen()) return
+  if (isResultPinned()) return
   const sel = window.getSelection()
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
     hideBar()
@@ -439,12 +445,21 @@ document.addEventListener("mousedown", onMouseDown, true)
 
 const onScrollOrResize = () => {
   if (selectionBar?.isDropdownOpen()) return
+  // Keep a shown translation result readable on scroll/resize (the bar is
+  // position:fixed, so it stays put) instead of dismissing it.
+  if (isResultPinned()) return
+  hideBar()
+}
+
+const onWindowBlur = () => {
+  if (selectionBar?.isDropdownOpen()) return
+  if (isResultPinned()) return
   hideBar()
 }
 
 window.addEventListener("scroll", onScrollOrResize, { passive: true, capture: true })
 window.addEventListener("resize", onScrollOrResize, { passive: true })
-window.addEventListener("blur", hideBar)
+window.addEventListener("blur", onWindowBlur)
 
 subscribeToolState((active) => {
   if (active) hideBar()
