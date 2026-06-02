@@ -372,7 +372,7 @@ export function HomeQuotesPanel() {
                             class="inline-flex items-center gap-0.5 font-medium text-link-blue hover:underline"
                           >
                             {q.sourceTitle ?? q.sourceUrl}
-                            <ExternalLink size={10} aria-hidden />
+                            {/* <ExternalLink size={10} aria-hidden /> */}
                           </a>
                         ) : (
                           <span>{q.sourceTitle}</span>

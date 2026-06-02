@@ -329,7 +329,7 @@ function AppInner() {
               <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto pb-6 pr-2  ">
                 {homeTab === "overview" && (
                   <>
-                    <header class="mb-5 shrink-0 space-y-1">
+                    <header class="mb-6 shrink-0 space-y-1">
                       <p class="text-[10px] font-semibold uppercase tracking-[0.14em] text-mute">
                         {overviewDateLabel}
                       </p>
@@ -366,24 +366,24 @@ function AppInner() {
                   </>
                 )}
                 {homeTab === "sessions" && (
-                  <div class="flex flex-col gap-4 pt-1">
+                  <div class="flex flex-col gap-4">
                     <h1 class="text-xl font-bold text-ink">Sessions</h1>
                     <SessionsSection />
                   </div>
                 )}
                 {homeTab === "quotes" && (
-                  <div class="flex flex-col gap-4 pt-1">
+                  <div class="flex flex-col gap-4">
                     <h1 class="text-xl font-bold text-ink">Quotes</h1>
                     <HomeQuotesPanel />
                   </div>
                 )}
                 {homeTab === "topics" && (
-                  <div class="flex flex-col gap-4 pt-1">
+                  <div class="flex flex-col gap-4">
                     <TopicsSection />
                   </div>
                 )}
                 {homeTab === "history" && (
-                  <div class="flex flex-col gap-4 pt-1">
+                  <div class="flex flex-col gap-4">
                     <h1 class="text-xl font-bold text-ink">History</h1>
                     <HomeHistoryPanel />
                   </div>
