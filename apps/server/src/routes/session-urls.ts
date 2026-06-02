@@ -79,8 +79,10 @@ export const sessionUrlsRoutes = new Hono<{
         .onConflictDoNothing({ target: sessionUrls.id })
     }
 
-    // Kick off async classification — don't block the response.
-    void classifyBatch(userId, urls)
+    // TEMPORARILY DISABLED (distraction detection paused to stop AI token
+    // spend). Re-enable by uncommenting the line below. URLs are still stored
+    // above; they just won't be classified / distraction-scored while paused.
+    // void classifyBatch(userId, urls)
 
     const ids = urls.map((u) => u.id)
     const inserted = await db
