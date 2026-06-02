@@ -164,8 +164,10 @@ function SummaryBlock({
     >
       {summary ? (
         <p class="text-sm leading-relaxed">{summary}</p>
-      ) : (
+      ) : regenerating ? (
         <p class="text-xs opacity-50">Generating… reload in a moment.</p>
+      ) : (
+        <p class="text-xs opacity-50"> No summary generated yet. </p>
       )}
     </Section>
   )
@@ -197,10 +199,12 @@ function TipsBlock({
             </li>
           ))}
         </ul>
-      ) : (
+      ) : regenerating ? (
         <p class="text-xs opacity-50">
           Generating tips… reload in a moment.
         </p>
+      ) : (
+        <p class="text-xs opacity-50"> No tips generated yet. </p>
       )}
     </Section>
   )
@@ -404,10 +408,12 @@ function ResourcesBlock({
             </li>
           ))}
         </ul>
-      ) : (
+      ) : regenerating ? (
         <p class="text-xs opacity-50">
           Generating recommendations… reload in a moment.
         </p>
+      ) : (
+        <p class="text-xs opacity-50"> No recommendations generated yet. </p>
       )}
     </Section>
   )
@@ -518,11 +524,12 @@ function UrlsBlock({
                       {u.category}
                     </Badge>
                   )}
+                  {/* TEMPORARILY DISABLED — distraction score (detection paused).
                   {u.distractionScore !== null && (
                     <span class="shrink-0 text-[10px] text-mute tabular-nums">
                       {u.distractionScore}
                     </span>
-                  )}
+                  )} */}
                 </div>
                 {u.title && (
                   <div class="truncate text-[11px] text-mute">
