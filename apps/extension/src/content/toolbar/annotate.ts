@@ -598,6 +598,38 @@ const createOverlay = (onExit: () => void): OverlayState => {
     void saveComposite(overlay, canvas, controls, saveBtn)
   })
 
+  // Save to Vault (ghost secondary action) -------------------------------
+  const vaultBtn = document.createElement("button")
+  vaultBtn.type = "button"
+  vaultBtn.title = "Save to topic vault"
+  vaultBtn.setAttribute("aria-label", "Save to topic vault")
+  vaultBtn.innerHTML = `${icons.bookmark(12)}<span style="margin-left:6px">Save to Vault</span>`
+  vaultBtn.style.cssText = [
+    "all:unset",
+    "box-sizing:border-box",
+    "display:inline-flex",
+    "align-items:center",
+    "padding:6px 11px",
+    `background:${tokens.paper2}`,
+    `border:1px solid ${tokens.rule}`,
+    `border-radius:${tokens.radius}`,
+    `color:${tokens.ink2}`,
+    "font-size:12px",
+    "font-weight:500",
+    "cursor:pointer",
+    "white-space:nowrap",
+    "transition:background-color 120ms ease",
+  ].join(";")
+  vaultBtn.addEventListener("mouseenter", () => {
+    vaultBtn.style.backgroundColor = tokens.paper
+  })
+  vaultBtn.addEventListener("mouseleave", () => {
+    vaultBtn.style.backgroundColor = tokens.paper2
+  })
+  vaultBtn.addEventListener("click", () => {
+    void saveToVault(overlay, canvas, controls, vaultBtn)
+  })
+
   // Exit (ghost) ---------------------------------------------------------
   const exitBtn = document.createElement("button")
   exitBtn.type = "button"
@@ -641,6 +673,7 @@ const createOverlay = (onExit: () => void): OverlayState => {
     redoBtn,
     clearBtn,
     saveBtn,
+    vaultBtn,
     divider(),
     exitBtn,
   )
@@ -772,6 +805,57 @@ const stampedFilename = (): string => {
   return `focusquote-annotation-${stamp}.png`
 }
 
+/**
+ * Composite the captured viewport + the user's drawing into a single PNG
+ * dataURL. Caller is responsible for hiding the overlay/controls first so they
+ * don't appear in the capture. Throws if the viewport capture fails.
+ */
+const captureCompositeDataUrl = async (
+  canvas: HTMLCanvasElement,
+): Promise<string> => {
+  await new Promise<void>((r) => requestAnimationFrame(() => r()))
+  await new Promise<void>((r) => requestAnimationFrame(() => r()))
+  const dataUrl = await captureViewport()
+  const img = await loadImage(dataUrl)
+  const out = document.createElement("canvas")
+  out.width = img.naturalWidth
+  out.height = img.naturalHeight
+  const octx = out.getContext("2d")
+  if (!octx) throw new Error("2d context unavailable")
+  octx.drawImage(img, 0, 0)
+  octx.drawImage(canvas, 0, 0, out.width, out.height)
+  return out.toDataURL("image/png")
+}
+
+/**
+ * Upload an annotation PNG to the media bucket and record it as a kind="image"
+ * vault item. With an active focus session the item is pending (promoted at
+ * session end); otherwise it lands in "Uncategorized". The page URL/title are
+ * kept for context.
+ */
+const uploadCompositeToVault = async (dataUrl: string): Promise<void> => {
+  const match = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/i.exec(dataUrl)
+  if (!match) return
+  const mimeType = match[1]!.toLowerCase()
+  const dataBase64 = match[2]!
+  const byteSize = Math.floor((dataBase64.length * 3) / 4)
+  const sessionId = await getActiveSessionId()
+  const uploaded = await apiPost<UploadMediaResponse>("/api/media", {
+    kind: "screenshot",
+    mimeType,
+    dataBase64,
+    byteSize,
+    sessionId,
+  })
+  await apiPost("/api/vault/save", {
+    sessionId,
+    kind: "image",
+    body: location.href,
+    title: document.title || null,
+    mediaFileId: uploaded.file.id,
+  })
+}
+
 const saveComposite = async (
   overlay: HTMLDivElement,
   canvas: HTMLCanvasElement,
@@ -784,21 +868,7 @@ const saveComposite = async (
   overlay.style.visibility = "hidden"
   controls.style.visibility = "hidden"
   try {
-    await new Promise<void>((r) => requestAnimationFrame(() => r()))
-    await new Promise<void>((r) => requestAnimationFrame(() => r()))
-
-    const dataUrl = await captureViewport()
-    const img = await loadImage(dataUrl)
-
-    const out = document.createElement("canvas")
-    out.width = img.naturalWidth
-    out.height = img.naturalHeight
-    const octx = out.getContext("2d")
-    if (!octx) throw new Error("2d context unavailable")
-    octx.drawImage(img, 0, 0)
-    octx.drawImage(canvas, 0, 0, out.width, out.height)
-
-    const resultDataUrl = out.toDataURL("image/png")
+    const resultDataUrl = await captureCompositeDataUrl(canvas)
     downloadDataUrl(resultDataUrl, stampedFilename())
     void uploadScreenshot(resultDataUrl).catch((err) =>
       console.warn("[FocusQuote] screenshot upload failed:", err),
@@ -818,6 +888,48 @@ const saveComposite = async (
     controls.style.visibility = "visible"
     trigger.innerHTML = prevLabel
     trigger.style.pointerEvents = "auto"
+  }
+}
+
+const saveToVault = async (
+  overlay: HTMLDivElement,
+  canvas: HTMLCanvasElement,
+  controls: HTMLDivElement,
+  trigger: HTMLButtonElement,
+): Promise<void> => {
+  const prevLabel = trigger.innerHTML
+  trigger.innerHTML = `${icons.bookmark(12)}<span style="margin-left:6px">Saving…</span>`
+  trigger.style.pointerEvents = "none"
+  overlay.style.visibility = "hidden"
+  controls.style.visibility = "hidden"
+  let ok = false
+  try {
+    let dataUrl: string
+    try {
+      dataUrl = await captureCompositeDataUrl(canvas)
+    } catch (err) {
+      // Fall back to the drawing alone if the viewport capture fails.
+      console.warn("[FocusQuote] vault capture failed, saving drawing:", err)
+      dataUrl = canvas.toDataURL("image/png")
+    }
+    await uploadCompositeToVault(dataUrl)
+    ok = true
+  } catch (err) {
+    console.warn("[FocusQuote] save to vault failed:", err)
+  } finally {
+    overlay.style.visibility = "visible"
+    controls.style.visibility = "visible"
+    if (ok) {
+      // Briefly confirm on the button itself, then restore.
+      trigger.innerHTML = `${icons.check(12)}<span style="margin-left:6px">Saved</span>`
+      window.setTimeout(() => {
+        trigger.innerHTML = prevLabel
+        trigger.style.pointerEvents = "auto"
+      }, 1400)
+    } else {
+      trigger.innerHTML = prevLabel
+      trigger.style.pointerEvents = "auto"
+    }
   }
 }
 
