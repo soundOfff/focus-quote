@@ -238,7 +238,14 @@ const generate = async (input: GenInput): Promise<string | null> => {
       }
       const res = await c.chat.completions.create({
         model: env.OPENROUTER_MODEL,
-        max_tokens: input.maxTokens,
+        // Many OpenRouter models prepend a prose preamble (and sometimes
+        // reasoning) before the JSON despite the prompt + prefill. With a tight
+        // cap they run out of budget mid-object and the reply is truncated with
+        // no closing brace — unrecoverable. Give JSON replies a floor so the
+        // object actually finishes; reconstructJson then extracts it.
+        max_tokens: input.expectJson
+          ? Math.max(input.maxTokens, 700)
+          : input.maxTokens,
         messages,
         ...(input.expectJson
           ? { response_format: { type: "json_object" } }

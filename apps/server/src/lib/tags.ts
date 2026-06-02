@@ -278,7 +278,7 @@ const categorizeUntaggedQuotes = async (userId: string): Promise<number> => {
   untagged.sort((a, b) =>
     a.status === b.status ? 0 : a.status === "pending" ? -1 : 1,
   )
-
+  
   // The live Tag list, grown in-memory as we mint new Tags so a later quote in
   // this same sweep reuses one an earlier quote just created.
   const liveTags = await db
