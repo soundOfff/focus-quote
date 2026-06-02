@@ -8,12 +8,17 @@ export default defineManifest({
   version: pkg.version,
   icons: {
     16: "assets/icons/icon-16.png",
+    32: "assets/icons/icon-32.png",
     48: "assets/icons/icon-48.png",
     128: "assets/icons/icon-128.png",
   },
   action: {
     default_popup: "src/popup/index.html",
     default_title: "FocusQuote",
+    default_icon: {
+      16: "assets/icons/icon-16.png",
+      32: "assets/icons/icon-32.png",
+    },
   },
   background: {
     service_worker: "src/background/service-worker.ts",

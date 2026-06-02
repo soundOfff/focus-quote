@@ -39,7 +39,7 @@ import { SessionPanel } from "./components/SessionPanel"
 import { SettingsView } from "./components/SettingsView"
 import { SignIn } from "./components/SignIn"
 import type { Quote, User } from "@focus-quote/shared"
-import { MonoLabel, SkeletonCard } from "../ui/primitives"
+import { BrandMark, MonoLabel, SkeletonCard } from "../ui/primitives"
 import { ToastProvider, useToast } from "../ui/Toast"
 
 const loadQuotes = (query: string) =>
@@ -340,7 +340,8 @@ function AppInner() {
     <div class="flex max-h-[760px] min-h-[460px] w-[380px] flex-col overflow-hidden bg-paper text-ink-2">
       {/* 1. Header bar */}
       <header class="flex shrink-0 items-center justify-between border-b border-rule px-4 pb-3 pt-[14px]">
-        <div class="flex items-baseline gap-2">
+        <div class="flex items-center gap-2">
+          <BrandMark size={24} />
           <h1 class="font-serif text-[18px] font-semibold tracking-[-0.01em] text-ink">
             Focus<span class="text-amber-deep">Quote</span>
           </h1>

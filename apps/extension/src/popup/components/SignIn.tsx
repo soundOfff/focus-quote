@@ -3,7 +3,7 @@ import { Effect } from "effect"
 import { ArrowLeft, LogIn, Mail } from "lucide-preact"
 import { AuthService } from "../../services/auth"
 import { runP } from "../runtime"
-import { Button, MonoLabel } from "../../ui/primitives"
+import { BrandMark, Button, MonoLabel } from "../../ui/primitives"
 
 interface Props {
   onSignedIn: () => void
@@ -75,6 +75,7 @@ export function SignIn({ onSignedIn }: Props) {
   return (
     <div class="flex flex-col gap-4 px-5 py-6">
       <header class="space-y-2">
+        <BrandMark size={40} />
         <MonoLabel tone="info">Welcome</MonoLabel>
         <h1 class="font-serif text-[20px] font-semibold tracking-[-0.01em] text-ink">
           Sign in to Focus

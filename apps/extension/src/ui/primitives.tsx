@@ -99,6 +99,64 @@ export function MonoLabel({
   )
 }
 
+// Each rendered mark needs its own gradient id so multiple marks on one
+// surface don't share (and clobber) a single <radialGradient> definition.
+let brandMarkSeq = 0
+
+/**
+ * The FocusQuote mark — a warm amber tile with a serif opening quotation cut
+ * in cream and a focus underline (Direction A). Mirrors `assets/icons/icon.svg`
+ * so the in-app logo and the extension/favicon icons stay identical. `size` is
+ * the rendered edge length in px (the tile is square).
+ */
+export function BrandMark({
+  size = 24,
+  title = "FocusQuote",
+  class: className,
+}: {
+  size?: number
+  title?: string
+  class?: string
+}) {
+  const gradId = `fq-mark-${(brandMarkSeq += 1)}`
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 88 88"
+      role="img"
+      aria-label={title}
+      class={cx("shrink-0", className)}
+    >
+      <defs>
+        <radialGradient id={gradId} cx="0.3" cy="0.18" r="1.05">
+          <stop offset="0" stop-color="#F7B45C" />
+          <stop offset="0.46" stop-color="#F2A03C" />
+          <stop offset="1" stop-color="#E08E2A" />
+        </radialGradient>
+      </defs>
+      <rect width="88" height="88" rx="21.12" ry="21.12" fill={`url(#${gradId})`} />
+      <g fill="#FBFAF6">
+        <path d="M30 24 c-7.2 0-13 5.4-13 12.4 0 6.4 4.8 11.2 11 11.2 1.2 0 2.4-.2 3.3-.5 -.9 4.6-4.6 8.2-9.4 9.7-1.3.4-2 .9-2 2 0 1.3 1 2.2 2.5 2 C32 61.6 39 53.4 39 41.3 39 31.2 35.6 24 30 24Z" />
+        <path d="M61 24 c-7.2 0-13 5.4-13 12.4 0 6.4 4.8 11.2 11 11.2 1.2 0 2.4-.2 3.3-.5 -.9 4.6-4.6 8.2-9.4 9.7-1.3.4-2 .9-2 2 0 1.3 1 2.2 2.5 2 C63 61.6 70 53.4 70 41.3 70 31.2 66.6 24 61 24Z" />
+      </g>
+      <rect x="30" y="66" width="28" height="3.4" rx="1.7" fill="#FBFAF6" opacity="0.92" />
+      <rect
+        x="0.5"
+        y="0.5"
+        width="87"
+        height="87"
+        rx="20.62"
+        ry="20.62"
+        fill="none"
+        stroke="#784810"
+        stroke-opacity="0.45"
+        stroke-width="0.9"
+      />
+    </svg>
+  )
+}
+
 /**
  * Pill chip. Used in saved-quote cards for the tag. See `.chip` in
  * COMPONENTS.md generic primitives.
