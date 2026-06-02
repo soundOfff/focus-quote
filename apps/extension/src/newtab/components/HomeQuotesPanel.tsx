@@ -363,10 +363,6 @@ export function HomeQuotesPanel() {
                           </button>
                         </span>
                       ))}
-                      {qTags.length === 0 &&
-                        q.categorizationStatus === "pending" && (
-                          <span class="text-[11px] italic text-mute">Filing…</span>
-                        )}
                       {editing ? (
                         <input
                           type="text"

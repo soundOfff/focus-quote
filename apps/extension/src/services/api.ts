@@ -29,6 +29,7 @@ import type {
   RecallGradeResponse,
   ListTopicsResponse,
   RenameTopicResponse,
+  CreateTopicResponse,
   TagGraphResponse,
   ConsolidateTagsResponse,
   ListVaultItemsResponse,
@@ -223,6 +224,11 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
           { method: "POST", json: body },
         ),
       listTopics: () => request<ListTopicsResponse>("/api/topics"),
+      createTopic: (name: string) =>
+        request<CreateTopicResponse>("/api/topics", {
+          method: "POST",
+          json: { name },
+        }),
       renameTopic: (id: string, name: string) =>
         request<RenameTopicResponse>(`/api/topics/${encodeURIComponent(id)}`, {
           method: "PATCH",

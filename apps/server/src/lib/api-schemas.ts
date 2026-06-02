@@ -284,3 +284,10 @@ export const PutToolbarStateInput = z.object({
   payload: z.string().min(0).max(200_000),
 })
 export type PutToolbarStateInput = z.infer<typeof PutToolbarStateInput>
+
+// ---- Topics ----
+
+export const CreateTopicInput = z.object({
+  name: z.string().trim().min(1).max(60),
+})
+export type CreateTopicInput = z.infer<typeof CreateTopicInput>

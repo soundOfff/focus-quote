@@ -379,7 +379,6 @@ function AppInner() {
                 )}
                 {homeTab === "topics" && (
                   <div class="flex flex-col gap-4 pt-1">
-                    <h1 class="text-xl font-bold text-ink">Topics</h1>
                     <TopicsSection />
                   </div>
                 )}

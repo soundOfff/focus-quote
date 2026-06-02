@@ -16,6 +16,7 @@ import {
   type RequireUserVariables,
 } from "../middleware/require-user"
 import { listTopics } from "../lib/topic"
+import { CreateTopicInput } from "../lib/api-schemas"
 
 const AttachTopicMediaInput = z.object({
   fileId: z.string().min(1).max(120),
@@ -40,6 +41,45 @@ export const topicsRoutes = new Hono<{ Variables: RequireUserVariables }>()
     const userId = c.get("user").id
     const list = await listTopics(userId)
     return c.json({ topics: list })
+  })
+  // Create a Topic up-front (topics are otherwise auto-derived from sessions).
+  // Brand-new topics have no sessions yet, so their counters start at zero.
+  .post("/", zValidator("json", CreateTopicInput), async (c) => {
+    const userId = c.get("user").id
+    const name = c.req.valid("json").name.trim()
+    const [clash] = await db
+      .select({ id: topics.id })
+      .from(topics)
+      .where(and(eq(topics.userId, userId), eq(topics.name, name)))
+      .limit(1)
+    if (clash) {
+      return c.json(
+        { error: "A topic with that name already exists", code: "DUPLICATE" },
+        409,
+      )
+    }
+    const id = randomUUID()
+    const createdAt = new Date().toISOString()
+    await db.insert(topics).values({
+      id,
+      userId,
+      name,
+      createdAt,
+      updatedAt: createdAt,
+    })
+    return c.json(
+      {
+        topic: {
+          id,
+          name,
+          sessionCount: 0,
+          completedCount: 0,
+          totalActualMs: 0,
+          lastUsedAt: createdAt,
+        },
+      },
+      201,
+    )
   })
   // Rename a Topic by its stable id. The legacy text label is cascaded onto the
   // user's focus sessions + topic media so label-keyed lookups stay consistent.

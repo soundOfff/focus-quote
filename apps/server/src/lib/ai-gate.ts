@@ -27,8 +27,6 @@ export const loadAiGateSettings = async (
   if (!row) return { masterEnabled: true }
   return {
     masterEnabled: row.aiMasterEnabled,
-    // Generic per-feature overrides, with autoTitle's dedicated column (issue
-    // #9) authoritative for that one feature.
     featureOverrides: {
       ...row.aiFeatureOverrides,
       autoTitle: row.autoTitleEnabled,

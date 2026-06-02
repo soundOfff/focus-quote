@@ -169,6 +169,14 @@ export interface RenameTopicResponse {
   topic: { id: string; name: string }
 }
 
+export interface CreateTopicRequest {
+  name: string
+}
+
+export interface CreateTopicResponse {
+  topic: Topic
+}
+
 export type VaultItemKind = "note" | "url"
 
 export interface VaultItem {

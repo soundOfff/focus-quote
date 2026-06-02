@@ -97,7 +97,7 @@ export function QuoteList({ quotes, tagsByQuote, onDelete }: Props) {
                 </span>
               ) : q.categorizationStatus === "pending" ? (
                 <span class="font-mono text-[9.5px] uppercase tracking-mono-tight text-muted-2">
-                  Filing…
+                  Pending...
                 </span>
               ) : (
                 <span class="text-[10.5px] text-muted-2">·</span>
