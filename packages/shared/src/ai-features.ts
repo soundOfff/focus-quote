@@ -20,7 +20,7 @@ export type AiFeature =
   // ADR 0003: the manual "Tidy now" Consolidation pass (merge/rename/re-parent).
   | "tagConsolidation"
   // Drafts an answer to a selected application question from the user's local
-  // CV + Answer Bank during a Job Application Session (ADR 0004).
+  // CV + Answer Bank, offered from the in-page selection toolbar (ADR 0004).
   | "jobAnswer"
 
 /**

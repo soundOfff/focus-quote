@@ -21,7 +21,20 @@ export interface SelectionBar {
   getToLang: () => string
   showSavedState: () => void
   isDropdownOpen: () => boolean
+  /** True while a Draft answer panel is open; the bar stays pinned. */
+  isDraftOpen: () => boolean
   destroy: () => void
+}
+
+export interface DraftAnswerContext {
+  /** The selected text (the application question). */
+  text: string
+  /** Element to render the draft into; its children are owned by the impl. */
+  mount: HTMLElement
+  /** Call after content changes so the bar can re-anchor to the selection. */
+  onLayout: () => void
+  /** Aborted when the draft panel closes; the impl must tear down on abort. */
+  signal: AbortSignal
 }
 
 export interface SelectionBarOptions {
@@ -40,6 +53,19 @@ export interface SelectionBarOptions {
   onLanguageChange: (from: string, to: string) => void
   initialFromLang: string
   initialToLang: string
+  /**
+   * Whether to offer the "Draft answer" action. Read per `show()` so the
+   * button tracks the AI feature flag without re-creating the bar. Absent or
+   * returning false hides the button entirely.
+   */
+  isDraftAnswerEnabled?: () => boolean
+  /**
+   * Render a draft for the selected question. The bar owns the panel chrome
+   * (open/close, positioning, pinning) and aborts via `ctx.signal` when the
+   * panel closes; the impl reads the local profile and renders into
+   * `ctx.mount`. Required for the Draft answer button to do anything.
+   */
+  onDraftAnswer?: (ctx: DraftAnswerContext) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +167,128 @@ const createSaveButton = (onClick: () => void): SaveButtonHandle => {
       else applyDefault()
     },
   }
+}
+
+// ---------------------------------------------------------------------------
+// Draft answer button (secondary action; sibling of Save quote)
+// ---------------------------------------------------------------------------
+
+const createDraftButton = (onClick: () => void): HTMLButtonElement => {
+  const btn = document.createElement("button")
+  btn.type = "button"
+  btn.setAttribute("aria-label", "Draft answer")
+  btn.title = "Draft an answer from your CV & Answer Bank"
+  btn.style.cssText = [
+    "all:unset",
+    "box-sizing:border-box",
+    "display:none", // shown per-selection when the AI feature is enabled
+    "align-items:center",
+    "gap:6px",
+    "border-radius:7px",
+    "padding:7px 11px 7px 9px",
+    "font-size:12.5px",
+    "font-weight:600",
+    "letter-spacing:-0.005em",
+    "white-space:nowrap",
+    "cursor:pointer",
+    `font-family:${FONT_SANS}`,
+    `background:${tokens.paper2}`,
+    `color:${tokens.ink2}`,
+    `border:1px solid ${tokens.rule}`,
+    "transition:background-color 120ms ease,border-color 120ms ease",
+  ].join(";")
+  btn.innerHTML = `${icons.sparkle(13, 1.8)}<span>Draft answer</span>`
+  btn.addEventListener("mouseenter", () => {
+    btn.style.background = tokens.paper
+    btn.style.borderColor = tokens.rule2
+  })
+  btn.addEventListener("mouseleave", () => {
+    btn.style.background = tokens.paper2
+    btn.style.borderColor = tokens.rule
+  })
+  btn.addEventListener("click", onClick)
+  return btn
+}
+
+// ---------------------------------------------------------------------------
+// Draft answer panel (expands below the frame; the impl renders into `body`)
+// ---------------------------------------------------------------------------
+
+interface DraftPanelHandle {
+  el: HTMLDivElement
+  body: HTMLDivElement
+}
+
+const createDraftPanel = (onClose: () => void): DraftPanelHandle => {
+  const el = document.createElement("div")
+  el.setAttribute("data-fq-scrollbar", "")
+  el.style.cssText = [
+    "display:none",
+    "width:100%",
+    "box-sizing:border-box",
+    "margin-top:6px",
+    `background:${tokens.paper}`,
+    `border:1px solid ${tokens.popupBorder}`,
+    `border-radius:${tokens.radiusMd}`,
+    "padding:10px 12px",
+    "max-height:52vh",
+    "overflow:auto",
+    `box-shadow:${tokens.shadowToolbar}`,
+  ].join(";")
+
+  const header = document.createElement("div")
+  header.style.cssText =
+    "display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px"
+
+  const kicker = document.createElement("span")
+  kicker.style.cssText = [
+    `font:${tokens.fontMono}`,
+    "font-size:10px",
+    "font-weight:600",
+    "letter-spacing:0.12em",
+    "text-transform:uppercase",
+    `color:${tokens.amberDeep}`,
+    "display:inline-flex",
+    "align-items:center",
+    "gap:6px",
+  ].join(";")
+  const dot = document.createElement("span")
+  dot.style.cssText = `width:5px;height:5px;border-radius:${tokens.radiusPill};background:${tokens.amber}`
+  const kickerText = document.createElement("span")
+  kickerText.textContent = "Draft answer"
+  kicker.append(dot, kickerText)
+
+  const close = document.createElement("button")
+  close.type = "button"
+  close.setAttribute("aria-label", "Close draft")
+  close.style.cssText = [
+    "all:unset",
+    "cursor:pointer",
+    `color:${tokens.muted}`,
+    "display:grid",
+    "place-items:center",
+    "width:22px",
+    "height:22px",
+    "border-radius:5px",
+    "transition:background-color 120ms ease,color 120ms ease",
+  ].join(";")
+  close.innerHTML = icons.x(12)
+  close.addEventListener("mouseenter", () => {
+    close.style.backgroundColor = tokens.paper2
+    close.style.color = tokens.ink2
+  })
+  close.addEventListener("mouseleave", () => {
+    close.style.backgroundColor = "transparent"
+    close.style.color = tokens.muted
+  })
+  close.addEventListener("click", onClose)
+  header.append(kicker, close)
+
+  const body = document.createElement("div")
+  body.style.cssText = "display:flex;flex-direction:column;width:100%"
+
+  el.append(header, body)
+  return { el, body }
 }
 
 // ---------------------------------------------------------------------------
@@ -395,6 +543,8 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
     onLanguageChange,
     initialFromLang,
     initialToLang,
+    isDraftAnswerEnabled,
+    onDraftAnswer,
   } = opts
 
   let pendingText = ""
@@ -403,6 +553,8 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
   let translateAbort: AbortController | null = null
   let currentDropdown: LangDropdownHandle | null = null
   let lastRect: DOMRect | null = null
+  let draftAbort: AbortController | null = null
+  let draftOpen = false
 
   // ---- Root ----
   const root = document.createElement("div")
@@ -423,6 +575,10 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
   ].join(";")
 
   root.addEventListener("mousedown", (e) => {
+    // The frame preventDefaults to keep the page selection alive while the user
+    // clicks Save/translate. The draft panel holds an editable textarea, though,
+    // so clicks there must behave normally (caret placement, drag-select).
+    if (draftPanel.el.contains(e.target as Node)) return
     e.preventDefault()
     e.stopPropagation()
   })
@@ -450,6 +606,20 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
     if (!pendingText) return
     onSave(pendingText)
     showSavedState()
+  })
+
+  const draftButton = createDraftButton(() => {
+    if (draftOpen) {
+      closeDraft()
+      return
+    }
+    openDraft()
+  })
+
+  const draftPanel = createDraftPanel(() => {
+    // Header close button: tear the draft down and dismiss the bar entirely.
+    closeDraft()
+    hide()
   })
 
   const fromChip = createLangChip("From", () => {
@@ -501,6 +671,7 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
   const arrowCap = createArrowCap()
 
   frame.appendChild(saveButton.el)
+  frame.appendChild(draftButton)
   frame.appendChild(createHairline())
   frame.appendChild(fromChip.el)
   frame.appendChild(arrowCap)
@@ -513,6 +684,9 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
   frame.appendChild(caret.el)
 
   root.appendChild(frame)
+
+  // ---- Draft answer panel (expands below the frame) ----
+  root.appendChild(draftPanel.el)
 
   // ---- Result card ----
   const resultCard = createResultCard()
@@ -532,7 +706,11 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
       resultCard.style.display !== "none"
         ? resultCard.getBoundingClientRect().height + 6
         : 0
-    const totalH = frameH + caretDiag + resultH
+    const draftH =
+      draftPanel.el.style.display !== "none"
+        ? draftPanel.el.getBoundingClientRect().height + 6
+        : 0
+    const totalH = frameH + caretDiag + resultH + draftH
 
     const aboveTop = rect.top - totalH - margin
     const useAbove = aboveTop > 8
@@ -596,10 +774,50 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
       })
   }
 
+  // ---- Draft answer ----
+
+  const openDraft = () => {
+    if (!pendingText || !onDraftAnswer) return
+    // Only one expandable surface at a time — collapse any translate result.
+    resultCard.style.display = "none"
+    resultCard.textContent = ""
+    translateAbort?.abort()
+    translateAbort = null
+
+    draftAbort?.abort()
+    draftAbort = new AbortController()
+    draftOpen = true
+    draftPanel.body.replaceChildren()
+    draftPanel.el.style.display = "block"
+
+    const reposition = () => {
+      if (lastRect) requestAnimationFrame(() => position(lastRect!))
+    }
+    onDraftAnswer({
+      text: pendingText,
+      mount: draftPanel.body,
+      onLayout: reposition,
+      signal: draftAbort.signal,
+    })
+    reposition()
+  }
+
+  const closeDraft = () => {
+    if (!draftOpen) return
+    draftAbort?.abort()
+    draftAbort = null
+    draftOpen = false
+    draftPanel.el.style.display = "none"
+    draftPanel.body.replaceChildren()
+    if (lastRect) requestAnimationFrame(() => position(lastRect!))
+  }
+
   // ---- Public API ----
 
   const show = (text: string, rect: DOMRect) => {
     pendingText = text
+    draftButton.style.display =
+      onDraftAnswer && (isDraftAnswerEnabled?.() ?? false) ? "inline-flex" : "none"
     position(rect)
     requestAnimationFrame(() => position(rect))
     root.style.opacity = "1"
@@ -619,6 +837,12 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
     resultCard.textContent = ""
     translateAbort?.abort()
     translateAbort = null
+    // Tear down any open draft so the panel never lingers after dismissal.
+    draftAbort?.abort()
+    draftAbort = null
+    draftOpen = false
+    draftPanel.el.style.display = "none"
+    draftPanel.body.replaceChildren()
     if (savedTimeout) {
       clearTimeout(savedTimeout)
       savedTimeout = null
@@ -654,6 +878,7 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
     getToLang: () => toChip.getLang(),
     showSavedState,
     isDropdownOpen: () => currentDropdown !== null,
+    isDraftOpen: () => draftOpen,
     destroy,
   }
 }

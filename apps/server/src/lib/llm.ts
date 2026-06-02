@@ -181,6 +181,66 @@ const getOpenRouter = (): OpenAI | null => {
   return openrouterClient
 }
 
+// ---------------------------------------------------------------------------
+// OpenRouter thinking-model guardrails.
+//
+// Some gateway models (e.g. google/gemini-3.5-flash) are *thinking* models:
+// reasoning is mandatory, billed and counted against `max_tokens`, and — left
+// unbounded — it consumes the whole budget so the visible JSON answer is cut
+// off mid-string. The request then finishes with finish_reason="length" and
+// JSON.parse throws "Unterminated string" downstream. Two-part guard:
+//   1. Cap thinking to "low" effort — cheaper, and a much smaller reasoning
+//      floor (this model: ~670 reasoning tokens unbounded vs ~280 at low).
+//   2. Pad `max_tokens` with headroom so the answer is never starved; our
+//      per-call budgets describe the OUTPUT we want, not output + thinking.
+// Non-thinking models report zero reasoning tokens and never touch the extra
+// ceiling (you only pay for tokens generated), so this is safe for whatever
+// model the OPENROUTER_MODEL slug currently points at.
+const REASONING_HEADROOM_TOKENS = 1024
+
+// `reasoning` is an OpenRouter extension absent from the OpenAI SDK types.
+type OpenRouterReasoning = {
+  effort?: "low" | "medium" | "high"
+  max_tokens?: number
+  enabled?: boolean
+}
+type OpenRouterChatParams =
+  OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming & {
+    reasoning?: OpenRouterReasoning
+  }
+type SimpleChatMessage = {
+  role: "system" | "user" | "assistant"
+  content: string
+}
+
+const buildOpenRouterChat = (params: {
+  maxTokens: number
+  messages: SimpleChatMessage[]
+  expectJson: boolean
+}): OpenRouterChatParams => ({
+  model: env.OPENROUTER_MODEL,
+  max_tokens: params.maxTokens + REASONING_HEADROOM_TOKENS,
+  // Plain {role, content} messages are all well-formed OpenAI messages, but the
+  // SDK's discriminated union rejects a role typed as a union — cast once here.
+  messages:
+    params.messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+  ...(params.expectJson
+    ? { response_format: { type: "json_object" as const } }
+    : {}),
+  reasoning: { effort: "low" },
+})
+
+const warnIfTruncated = (
+  finishReason: string | null | undefined,
+  where: string,
+): void => {
+  if (finishReason === "length") {
+    console.warn(
+      `[llm/openrouter] ${where}: hit max_tokens (finish_reason=length, model=${env.OPENROUTER_MODEL}) — output may be truncated; raise this call's maxTokens or REASONING_HEADROOM_TOKENS`,
+    )
+  }
+}
+
 interface GenInput {
   system: string
   user: string
@@ -215,17 +275,17 @@ const generate = async (input: GenInput): Promise<string | null> => {
     const c = getOpenRouter()
     if (!c) return null
     try {
-      const res = await c.chat.completions.create({
-        model: env.OPENROUTER_MODEL,
-        max_tokens: input.maxTokens,
-        messages: [
-          { role: "system", content: input.system },
-          { role: "user", content: input.user },
-        ],
-        ...(input.expectJson
-          ? { response_format: { type: "json_object" } }
-          : {}),
-      })
+      const res = await c.chat.completions.create(
+        buildOpenRouterChat({
+          maxTokens: input.maxTokens,
+          messages: [
+            { role: "system", content: input.system },
+            { role: "user", content: input.user },
+          ],
+          expectJson: input.expectJson,
+        }),
+      )
+      warnIfTruncated(res.choices[0]?.finish_reason, "generate")
       return res.choices[0]?.message?.content ?? null
     } catch (err) {
       logOpenRouterError(err, {
@@ -1046,10 +1106,7 @@ export const generateQuoteAssistantReply = async (input: {
       // OpenRouter / OpenAI-compatible.
       const c = getOpenRouter()
       if (!c) return null
-      const messages: Array<{
-        role: "system" | "user" | "assistant"
-        content: string
-      }> = [
+      const messages: SimpleChatMessage[] = [
         { role: "system", content: SYSTEM_QUOTE_ASSISTANT },
         { role: "user", content: contextHeader },
         { role: "assistant", content: seedAck },
@@ -1058,12 +1115,13 @@ export const generateQuoteAssistantReply = async (input: {
         messages.push({ role: turn.role, content: turn.content.slice(0, 4000) })
       }
       messages.push({ role: "user", content: finalUser })
-      const res = await c.chat.completions.create({
-        model: env.OPENROUTER_MODEL,
-        max_tokens: 900,
-        messages,
-        response_format: { type: "json_object" },
-      })
+      const res = await c.chat.completions.create(
+        buildOpenRouterChat({ maxTokens: 900, messages, expectJson: true }),
+      )
+      warnIfTruncated(
+        res.choices[0]?.finish_reason,
+        "generateQuoteAssistantReply",
+      )
       rawText = res.choices[0]?.message?.content ?? null
     }
 

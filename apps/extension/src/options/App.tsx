@@ -109,7 +109,7 @@ const AI_FEATURE_CONTROLS: ReadonlyArray<{
     feature: "jobAnswer",
     label: "Draft answer",
     description:
-      "Drafts an answer to a selected question from your CV and Answer Bank during a Job application session.",
+      "Adds a Draft answer action to the selection toolbar: highlight an application question and draft a reply from your CV and Answer Bank — no session needed.",
   },
 ]
 

@@ -16,6 +16,12 @@ import {
 import { injectHostScrollbarStyles } from "./inject-scrollbar"
 import { injectHostFonts } from "./inject-fonts"
 import { createSelectionBar, type SelectionBar } from "./toolbar/selection-bar"
+import { aiFeatureEnabled } from "./toolbar/ai-gate"
+import {
+  detectCompany,
+  mountDraftAnswer,
+  readJobProfile,
+} from "./toolbar/draft-answer-core"
 
 // Themed scrollbars for in-page UI (save row, Quote+AI, debug panel, etc.)
 injectHostScrollbarStyles()
@@ -42,6 +48,17 @@ let prefs: Prefs = {
   translateToLang: defaultPrefs.translateToLang,
 }
 let selectionBar: SelectionBar | null = null
+
+// Whether the always-on "Draft answer" selection action is offered. Gated only
+// by the jobAnswer AI feature flag (on by default) — no session required.
+let draftAnswerEnabled = false
+const refreshDraftAnswerGate = async () => {
+  try {
+    draftAnswerEnabled = await aiFeatureEnabled("jobAnswer")
+  } catch {
+    draftAnswerEnabled = false
+  }
+}
 
 const isBlockedHost = (hostname: string): boolean => {
   const h = hostname.toLowerCase()
@@ -149,6 +166,7 @@ const unmountActionCapture = mountActionCapture({
 void refreshSessionAndPrivacy().then(() => {
   if (activeSession) sendSpaNav(location.href)
 })
+void refreshDraftAnswerGate()
 // Watch the three local keys this content script cares about. Any other
 // chrome.storage.local key change (e.g. focusquote.openrouter-key) must NOT
 // re-run refreshSessionAndPrivacy — it does session-boundary detection that
@@ -165,6 +183,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
   if (!relevant) return
   void refreshSessionAndPrivacy()
+  // The Draft answer gate only depends on the prefs (AI master + overrides).
+  if (PREFS_KEY in changes) void refreshDraftAnswerGate()
 })
 window.addEventListener("beforeunload", () => {
   unmountActionCapture()
@@ -339,6 +359,25 @@ const ensureBar = (): SelectionBar => {
     onLanguageChange: persistTranslatePrefs,
     initialFromLang: initial.from,
     initialToLang: initial.to,
+    isDraftAnswerEnabled: () => draftAnswerEnabled,
+    onDraftAnswer: ({ text, mount, onLayout, signal }) => {
+      void (async () => {
+        const profile = await readJobProfile()
+        if (signal.aborted) return
+        const handle = mountDraftAnswer({
+          container: mount,
+          question: text,
+          profile,
+          company: detectCompany(text),
+          sourceUrl: location.href,
+          onLayout,
+        })
+        // The panel may have closed during the profile read; an already-aborted
+        // signal won't fire its listener, so check explicitly after wiring it.
+        signal.addEventListener("abort", () => handle.destroy(), { once: true })
+        if (signal.aborted) handle.destroy()
+      })()
+    },
   })
   ;(document.documentElement || document.body).appendChild(selectionBar.root)
   void selectionBar.root.offsetWidth
@@ -364,6 +403,9 @@ const isInsideOurUI = (node: Node | null): boolean => {
 }
 
 const checkSelection = () => {
+  // While a draft is open the bar is pinned — ignore new selections so the
+  // panel never moves or gets replaced out from under the user.
+  if (selectionBar?.isDraftOpen()) return
   if (isAnyToolActive()) {
     hideBar()
     return
@@ -412,6 +454,7 @@ const onKeyUp = (e: KeyboardEvent) => {
 }
 
 const onSelectionChange = () => {
+  if (selectionBar?.isDraftOpen()) return
   const sel = window.getSelection()
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
     hideBar()
@@ -421,24 +464,41 @@ const onSelectionChange = () => {
 const onMouseDown = (e: MouseEvent) => {
   if (selectionBar && selectionBar.root.contains(e.target as Node)) return
   if (isInsideOurUI(e.target as Node)) return
+  // Pinned while a draft is open: only the panel's own close button dismisses
+  // it, so an accidental click on the page won't discard an edited draft.
+  if (selectionBar?.isDraftOpen()) return
   hideBar()
+}
+
+const onEscape = (e: KeyboardEvent) => {
+  if (e.key === "Escape" && selectionBar?.isDraftOpen()) selectionBar.hide()
 }
 
 document.addEventListener("mouseup", onMouseUp)
 document.addEventListener("keyup", onKeyUp)
+document.addEventListener("keydown", onEscape)
 document.addEventListener("selectionchange", onSelectionChange)
 document.addEventListener("mousedown", onMouseDown, true)
 
 const onScrollOrResize = () => {
   if (selectionBar?.isDropdownOpen()) return
+  // A draft is pinned: the panel is position:fixed, so leave it where it is on
+  // scroll/resize rather than dismissing it out from under the user.
+  if (selectionBar?.isDraftOpen()) return
+  hideBar()
+}
+
+const onWindowBlur = () => {
+  if (selectionBar?.isDraftOpen()) return
   hideBar()
 }
 
 window.addEventListener("scroll", onScrollOrResize, { passive: true, capture: true })
 window.addEventListener("resize", onScrollOrResize, { passive: true })
-window.addEventListener("blur", hideBar)
+window.addEventListener("blur", onWindowBlur)
 
 subscribeToolState((active) => {
+  if (selectionBar?.isDraftOpen()) return
   if (active) hideBar()
   else setTimeout(checkSelection, 0)
 })
