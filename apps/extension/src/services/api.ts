@@ -30,11 +30,18 @@ import type {
   ListTopicsResponse,
   RenameTopicResponse,
   CreateTopicResponse,
+  DeleteTopicResponse,
   TagGraphResponse,
   ConsolidateTagsResponse,
   ListVaultItemsResponse,
   CreateVaultItemRequest,
   CreateVaultItemResponse,
+  ListPendingVaultItemsResponse,
+  SaveSessionVaultLinkResponse,
+  SaveVaultItemRequest,
+  SaveVaultItemResponse,
+  MoveVaultItemResponse,
+  AssignSessionTopicResponse,
   SyncBatchRequest,
   SyncBatchResponse,
   MeResponse,
@@ -209,10 +216,28 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
         sessionId: string,
         body: { url: string; title?: string | null },
       ) =>
-        request<CreateVaultItemResponse>(
+        request<SaveSessionVaultLinkResponse>(
           `/api/focus-sessions/${sessionId}/vault-link`,
           { method: "POST", json: body },
         ),
+      // Pending vault items saved during a session before it has a topic.
+      listSessionVaultPending: (sessionId: string) =>
+        request<ListPendingVaultItemsResponse>(
+          `/api/focus-sessions/${sessionId}/vault-pending`,
+        ),
+      // Manually assign a session to an existing topic (promotes pending items).
+      assignSessionTopic: (sessionId: string, topicId: string) =>
+        request<AssignSessionTopicResponse>(
+          `/api/focus-sessions/${sessionId}/topic`,
+          { method: "POST", json: { topicId } },
+        ),
+      // General quick-save (images): session-scoped when sessionId is set, else
+      // filed under "Uncategorized".
+      saveVaultItem: (body: SaveVaultItemRequest) =>
+        request<SaveVaultItemResponse>("/api/vault/save", {
+          method: "POST",
+          json: body,
+        }),
       regenerateArtifact: (sessionId: string, body: RegenerateRequest) =>
         request<RegenerateResponse>(
           `/api/focus-sessions/${sessionId}/regenerate`,
@@ -233,6 +258,10 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
         request<RenameTopicResponse>(`/api/topics/${encodeURIComponent(id)}`, {
           method: "PATCH",
           json: { name },
+        }),
+      deleteTopic: (id: string) =>
+        request<DeleteTopicResponse>(`/api/topics/${encodeURIComponent(id)}`, {
+          method: "DELETE",
         }),
       listTopicMedia: (label: string) =>
         request<{
@@ -273,6 +302,16 @@ export class ApiService extends Effect.Service<ApiService>()("ApiService", {
         request<{ ok: boolean }>(
           `/api/topics/${encodeURIComponent(topicId)}/vault/${itemId}`,
           { method: "DELETE" },
+        ),
+      // Move a committed vault item from one topic to another.
+      moveTopicVaultItem: (
+        topicId: string,
+        itemId: string,
+        targetTopicId: string,
+      ) =>
+        request<MoveVaultItemResponse>(
+          `/api/topics/${encodeURIComponent(topicId)}/vault/${itemId}`,
+          { method: "PATCH", json: { topicId: targetTopicId } },
         ),
 
       // Session URLs (AI analysis)
