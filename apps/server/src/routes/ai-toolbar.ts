@@ -18,20 +18,31 @@ import { tryConsume } from "../lib/rate-limit"
  * primary motivation — see [`apps/extension/src/content/toolbar/api.ts`].
  */
 
-const QuoteAssistantInput = z.object({
-  passage: z.string().min(1).max(8000),
-  sourceUrl: z.string().max(2048).nullable().optional(),
-  history: z
-    .array(
-      z.object({
-        role: z.enum(["user", "assistant"]),
-        content: z.string().min(1).max(4000),
-      }),
-    )
-    .max(20)
-    .optional(),
-  userMessage: z.string().max(2000).optional(),
-})
+const QuoteAssistantInput = z
+  .object({
+    // Optional so whole-page mode (no highlight) is allowed; `.refine` below
+    // still requires SOME context. `pageContent` carries the full page text
+    // when the user didn't highlight anything.
+    passage: z.string().max(8000).optional(),
+    pageContent: z.string().max(20000).nullable().optional(),
+    sourceUrl: z.string().max(2048).nullable().optional(),
+    history: z
+      .array(
+        z.object({
+          role: z.enum(["user", "assistant"]),
+          content: z.string().min(1).max(4000),
+        }),
+      )
+      .max(20)
+      .optional(),
+    userMessage: z.string().max(2000).optional(),
+  })
+  .refine(
+    (b) =>
+      (b.passage?.trim().length ?? 0) > 0 ||
+      (b.pageContent?.trim().length ?? 0) > 0,
+    { message: "Either passage or pageContent is required" },
+  )
 
 // One real interactive element captured from the user's page. `label`/`role`
 // are untrusted page text; lengths are capped so a hostile page can't bloat the
@@ -69,19 +80,20 @@ export const aiToolbarRoutes = new Hono<{ Variables: RequireUserVariables }>()
       return c.json({ error: "AI is turned off", code: "AI_DISABLED" }, 403)
     }
     const body = c.req.valid("json")
-    const reply = await generateQuoteAssistantReply({
-      passage: body.passage,
+    const result = await generateQuoteAssistantReply({
+      passage: body.passage ?? "",
+      pageContent: body.pageContent ?? null,
       sourceUrl: body.sourceUrl ?? null,
       history: body.history ?? [],
       userMessage: body.userMessage ?? "",
     })
-    if (!reply) {
+    if (!result) {
       return c.json(
         { error: "AI provider unavailable", code: "LLM_UNAVAILABLE" },
         503,
       )
     }
-    return c.json({ reply })
+    return c.json({ reply: result.reply, sources: result.sources })
   })
   .post("/guide-steps", zValidator("json", GuideStepsInput), async (c) => {
     const userId = c.get("user").id

@@ -417,8 +417,17 @@ export interface QuoteAssistantTurn {
 }
 
 export interface QuoteAssistantRequest {
-  /** The passage the user highlighted on the page. Required. */
-  passage: string
+  /**
+   * The passage the user highlighted on the page. Empty/omitted in whole-page
+   * mode, where `pageContent` carries the context instead. At least one of
+   * `passage` / `pageContent` must be present.
+   */
+  passage?: string
+  /**
+   * Full-page text used when the user opens Quote+AI without highlighting
+   * anything (whole-page mode). Captured by the content script.
+   */
+  pageContent?: string | null
   /** Source page URL (for context only, optional). */
   sourceUrl?: string | null
   /** Conversation history excluding the latest user turn. */
@@ -427,8 +436,20 @@ export interface QuoteAssistantRequest {
   userMessage?: string
 }
 
+/** A suggested source the assistant offers so the user can go deeper. */
+export interface QuoteAssistantSource {
+  /** Short human-readable title for the link. */
+  title: string
+  /** Absolute http(s) URL. Server-validated to be reachable before returning. */
+  url: string
+  /** One short sentence on why the source is relevant. */
+  snippet: string
+}
+
 export interface QuoteAssistantResponse {
   reply: string
+  /** Suggested sources to visit. Absent/empty when none were warranted. */
+  sources?: ReadonlyArray<QuoteAssistantSource>
 }
 
 /**

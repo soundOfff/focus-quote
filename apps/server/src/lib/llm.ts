@@ -83,13 +83,18 @@ Reply with strict JSON: {"verdict": "correct" | "partial" | "incorrect", "feedba
 - "feedback": one or two sentences in the student's language. Be encouraging but honest. If partial/incorrect, point at the specific gap.
 No prose outside JSON, no markdown fences.`
 
-const SYSTEM_QUOTE_ASSISTANT = `You are a helpful reading assistant. The user has highlighted a passage on a web page and wants help with it.
-- If they haven't asked a specific question yet, give a concise, high-signal summary of the passage, then suggest 2-3 short follow-up questions.
-- If they ask a question, answer from the passage first. When the passage fully answers it, ground your answer in the passage.
-- When the answer is NOT in the passage (including follow-up questions the passage doesn't cover), say so briefly, then point them to relevant external sources: name 1-3 trustworthy, well-known resources and include each full URL inline as plain https://... text (official docs, canonical references, established sites). Only give URLs you are highly confident are real and stable — never invent or guess one; if unsure, name the source without a link. Keep links inside the answer paragraph, never as a trailing list.
-- Put any suggested follow-up questions LAST, as a numbered list with one question per line ("1. ...", "2. ..."), and put nothing after that list.
-- Keep replies short (under 180 words) and well-structured. No markdown headings and no markdown links — short paragraphs and plain text only.
-- Respond in the user's language.`
+const SYSTEM_QUOTE_ASSISTANT = `You are a helpful reading assistant for a web page. The user gives you EITHER a highlighted passage OR the full text of the page they're reading — use whichever context is provided as your grounding.
+- If they haven't asked a specific question yet, give a concise, high-signal summary of the context.
+- If they ask a question, answer from the provided context. If the context isn't enough, say so plainly and lean on "sources" to point them somewhere useful.
+- Keep the reply short (under 180 words) and well-structured. No markdown headings — short paragraphs only.
+- When helpful, end the reply with 2-3 short suggested follow-up questions as a numbered list ("1. …", "2. …").
+- Respond in the user's language.
+
+Also return up to 3 "sources": real, well-known, canonical URLs (official docs, Wikipedia, established references) where the user can go deeper — especially when the provided context doesn't fully answer them. Do NOT fabricate URLs; only include links you are highly confident exist. Prefer stable canonical pages. Use an empty array when none are warranted.
+
+Reply with STRICT JSON only — no prose outside it, no markdown fences:
+{"reply": string, "sources": [{"title": string, "url": string, "snippet": string}]}
+where each source's "snippet" is one short sentence on why it is relevant.`
 
 // Legacy prompt: used only when the client could not capture the page's real
 // elements (e.g. a canvas app). Coordinates are necessarily guesses.
@@ -980,98 +985,176 @@ export interface QuoteAssistantTurn {
   content: string
 }
 
+export interface QuoteAssistantSource {
+  title: string
+  url: string
+  snippet: string
+}
+
+export interface QuoteAssistantOutput {
+  reply: string
+  sources: QuoteAssistantSource[]
+}
+
+// How much page text we forward in whole-page mode. Larger than the 4k passage
+// cap so a full article fits, but bounded to keep prompt cost predictable.
+const PAGE_CONTENT_LIMIT = 16000
+
 /**
- * Conversational helper for the Quote+AI toolbar button. We always include
- * the highlighted passage as the system "context" and forward the full
- * conversation so follow-ups are coherent.
+ * Parse the model's JSON answer into `{ reply, sources }`. Tolerant by design:
+ * - strips ```json fences (the model occasionally adds them),
+ * - drops malformed / non-http source entries,
+ * - falls back to treating the whole output as the reply (no sources) when the
+ *   model returns prose instead of JSON, so a formatting slip never blanks the
+ *   panel.
+ * URL reachability is NOT checked here — that's a network concern handled by
+ * `generateQuoteAssistantReply` so this stays a pure, unit-testable function.
+ */
+export const parseQuoteAssistantOutput = (text: string): QuoteAssistantOutput => {
+  const raw = text.trim()
+  if (!raw) return { reply: "", sources: [] }
+  try {
+    const parsed = JSON.parse(stripFences(raw)) as {
+      reply?: unknown
+      sources?: unknown
+    }
+    if (parsed && typeof parsed.reply === "string") {
+      const sources = Array.isArray(parsed.sources)
+        ? parsed.sources
+            .flatMap((s): QuoteAssistantSource[] => {
+              if (typeof s !== "object" || s === null) return []
+              const o = s as Record<string, unknown>
+              if (typeof o.url !== "string" || !/^https?:\/\//i.test(o.url)) {
+                return []
+              }
+              const title =
+                typeof o.title === "string" && o.title.trim()
+                  ? o.title.trim()
+                  : o.url
+              const snippet =
+                typeof o.snippet === "string" ? o.snippet.trim() : ""
+              return [{ title, url: o.url, snippet }]
+            })
+            .slice(0, 3)
+        : []
+      return { reply: parsed.reply.trim(), sources }
+    }
+  } catch {
+    /* not JSON — treat the raw text as a prose reply below */
+  }
+  return { reply: stripFences(raw), sources: [] }
+}
+
+/** Drop sources whose URL doesn't resolve, so we never surface a dead link. */
+const keepReachableSources = async (
+  sources: QuoteAssistantSource[],
+): Promise<QuoteAssistantSource[]> => {
+  if (sources.length === 0) return []
+  const checks = await Promise.all(
+    sources.map(async (s) => ((await checkUrl(s.url)) ? s : null)),
+  )
+  return checks.filter((s): s is QuoteAssistantSource => s !== null)
+}
+
+/**
+ * Conversational helper for the Quote+AI toolbar button. Works in two modes:
+ * a highlighted *passage*, or — when the user opens it without selecting —
+ * the *full page* text. We pin whichever context is present as the first
+ * user turn and forward the running chat so follow-ups stay coherent. The
+ * model answers in strict JSON so we can return suggested `sources` alongside
+ * the prose reply.
  */
 export const generateQuoteAssistantReply = async (input: {
-  passage: string
+  passage?: string
+  pageContent?: string | null
   sourceUrl?: string | null
   history: ReadonlyArray<QuoteAssistantTurn>
   userMessage: string
-}): Promise<string | null> => {
+}): Promise<QuoteAssistantOutput | null> => {
   const provider = pickProvider()
   if (provider === "none") return null
 
-  // Build a "user message" that pins the passage, then the running chat.
-  const contextHeader = [
-    `Highlighted passage:`,
-    `"""${input.passage.slice(0, 4000)}"""`,
-    input.sourceUrl ? `Source URL: ${input.sourceUrl}` : null,
-  ]
+  const passage = (input.passage ?? "").trim()
+  const pageContent = (input.pageContent ?? "").trim()
+  const wholePage = passage.length === 0 && pageContent.length > 0
+
+  // Build a "user message" that pins the context, then the running chat.
+  const contextHeader = (
+    wholePage
+      ? [
+          `Full page content (the user did NOT highlight anything — answer from the whole page):`,
+          `"""${pageContent.slice(0, PAGE_CONTENT_LIMIT)}"""`,
+          input.sourceUrl ? `Source URL: ${input.sourceUrl}` : null,
+        ]
+      : [
+          `Highlighted passage:`,
+          `"""${passage.slice(0, 4000)}"""`,
+          input.sourceUrl ? `Source URL: ${input.sourceUrl}` : null,
+        ]
+  )
     .filter(Boolean)
     .join("\n")
 
+  const seedAck = "Got it — I have the context. What would you like me to do?"
+  const defaultAsk = wholePage
+    ? "Summarize this page and suggest 2-3 follow-up questions I could ask."
+    : "Summarize this passage and suggest 2-3 follow-up questions I could ask."
   const userMessage = input.userMessage.trim()
+  const finalUser = userMessage.length > 0 ? userMessage : defaultAsk
 
   try {
+    let rawText: string | null = null
     if (provider === "anthropic") {
       const c = getAnthropic()
       if (!c) return null
       const messages: Anthropic.MessageParam[] = []
-      // Seed the conversation with the highlighted passage as the first user turn.
+      // Seed the conversation with the context as the first user turn.
       messages.push({ role: "user", content: contextHeader })
-      messages.push({
-        role: "assistant",
-        content:
-          "Got it — I have the passage. What would you like me to do with it?",
-      })
+      messages.push({ role: "assistant", content: seedAck })
       for (const turn of input.history) {
-        messages.push({
-          role: turn.role,
-          content: turn.content.slice(0, 4000),
-        })
+        messages.push({ role: turn.role, content: turn.content.slice(0, 4000) })
       }
-      messages.push({
-        role: "user",
-        content:
-          userMessage.length > 0
-            ? userMessage
-            : "Summarize this passage and suggest 2-3 follow-up questions I could ask.",
-      })
+      messages.push({ role: "user", content: finalUser })
       const res = await c.messages.create({
         model: ANTHROPIC_SONNET,
-        max_tokens: 800,
+        max_tokens: 900,
         system: SYSTEM_QUOTE_ASSISTANT,
         messages,
       })
-      const text = res.content
+      rawText = res.content
         .filter((b): b is Anthropic.TextBlock => b.type === "text")
         .map((b) => b.text)
         .join("")
-      return text.trim() || null
-    }
-
-    // OpenRouter / OpenAI-compatible.
-    const c = getOpenRouter()
-    if (!c) return null
-    const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> =
-      [
+    } else {
+      // OpenRouter / OpenAI-compatible.
+      const c = getOpenRouter()
+      if (!c) return null
+      const messages: Array<{
+        role: "system" | "user" | "assistant"
+        content: string
+      }> = [
         { role: "system", content: SYSTEM_QUOTE_ASSISTANT },
         { role: "user", content: contextHeader },
-        {
-          role: "assistant",
-          content:
-            "Got it — I have the passage. What would you like me to do with it?",
-        },
+        { role: "assistant", content: seedAck },
       ]
-    for (const turn of input.history) {
-      messages.push({ role: turn.role, content: turn.content.slice(0, 4000) })
+      for (const turn of input.history) {
+        messages.push({ role: turn.role, content: turn.content.slice(0, 4000) })
+      }
+      messages.push({ role: "user", content: finalUser })
+      const res = await c.chat.completions.create({
+        model: env.OPENROUTER_MODEL,
+        max_tokens: 900,
+        messages,
+        response_format: { type: "json_object" },
+      })
+      rawText = res.choices[0]?.message?.content ?? null
     }
-    messages.push({
-      role: "user",
-      content:
-        userMessage.length > 0
-          ? userMessage
-          : "Summarize this passage and suggest 2-3 follow-up questions I could ask.",
-    })
-    const res = await c.chat.completions.create({
-      model: env.OPENROUTER_MODEL,
-      max_tokens: 800,
-      messages,
-    })
-    return res.choices[0]?.message?.content?.trim() || null
+
+    if (!rawText) return null
+    const parsed = parseQuoteAssistantOutput(rawText)
+    if (!parsed.reply) return null
+    const sources = await keepReachableSources(parsed.sources)
+    return { reply: parsed.reply, sources }
   } catch (err) {
     console.warn("[llm] generateQuoteAssistantReply failed:", err)
     return null
