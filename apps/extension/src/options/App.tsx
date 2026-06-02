@@ -1,3 +1,4 @@
+import type { ComponentChildren } from "preact"
 import { useEffect, useRef, useState } from "preact/hooks"
 import { Effect } from "effect"
 import {
@@ -686,37 +687,41 @@ function AppInner() {
                 </Surface>
 
                 <Surface>
-                  <SectionHeader
-                    title="Per-feature controls"
-                    subtitle="Turn individual AI features on or off. Each only spends tokens when enabled and the master switch above is on."
-                  />
-                  <div class="flex flex-col gap-3">
-                    {AI_FEATURE_CONTROLS.map((control) => {
-                      const enabled =
-                        prefs.aiFeatureOverrides[control.feature] ??
-                        aiFeatureDefault(control.feature)
-                      return (
-                        <div
-                          key={control.feature}
-                          class="flex items-start justify-between gap-3"
-                        >
-                          <div class="min-w-0">
-                            <p class="text-[13px] text-ink-2">{control.label}</p>
-                            <p class="text-[11px] text-muted">
-                              {control.description}
-                            </p>
+                  <AiGate disabled={!prefs.aiMasterEnabled}>
+                    <SectionHeader
+                      title="Per-feature controls"
+                      subtitle="Turn individual AI features on or off. Each only spends tokens when enabled and the master switch above is on."
+                    />
+                    <div class="flex flex-col gap-3">
+                      {AI_FEATURE_CONTROLS.map((control) => {
+                        const enabled =
+                          prefs.aiFeatureOverrides[control.feature] ??
+                          aiFeatureDefault(control.feature)
+                        return (
+                          <div
+                            key={control.feature}
+                            class="flex items-start justify-between gap-3"
+                          >
+                            <div class="min-w-0">
+                              <p class="text-[13px] text-ink-2">
+                                {control.label}
+                              </p>
+                              <p class="text-[11px] text-muted">
+                                {control.description}
+                              </p>
+                            </div>
+                            <Toggle
+                              enabled={enabled}
+                              onToggle={() =>
+                                setFeatureOverride(control.feature, !enabled)
+                              }
+                              ariaLabel={`Toggle ${control.label}`}
+                            />
                           </div>
-                          <Toggle
-                            enabled={enabled}
-                            onToggle={() =>
-                              setFeatureOverride(control.feature, !enabled)
-                            }
-                            ariaLabel={`Toggle ${control.label}`}
-                          />
-                        </div>
-                      )
-                    })}
-                  </div>
+                        )
+                      })}
+                    </div>
+                  </AiGate>
                   {!prefs.aiMasterEnabled && (
                     <p class="mt-2 text-[11px] text-muted">
                       Turn on AI assistance above for these to take effect.
@@ -725,19 +730,21 @@ function AppInner() {
                 </Surface>
 
                 <Surface>
-                  <SectionHeader
-                    title="Auto-title sessions"
-                    subtitle="When you start a session without a goal, FocusQuote can name it for you from its topic and the pages you visited. Off by default — it spends a few tokens per session."
-                    action={
-                      <Toggle
-                        enabled={prefs.autoTitleEnabled}
-                        onToggle={() =>
-                          setAutoTitleEnabled(!prefs.autoTitleEnabled)
-                        }
-                        ariaLabel="Toggle auto-title"
-                      />
-                    }
-                  />
+                  <AiGate disabled={!prefs.aiMasterEnabled}>
+                    <SectionHeader
+                      title="Auto-title sessions"
+                      subtitle="When you start a session without a goal, FocusQuote can name it for you from its topic and the pages you visited. Off by default — it spends a few tokens per session."
+                      action={
+                        <Toggle
+                          enabled={prefs.autoTitleEnabled}
+                          onToggle={() =>
+                            setAutoTitleEnabled(!prefs.autoTitleEnabled)
+                          }
+                          ariaLabel="Toggle auto-title"
+                        />
+                      }
+                    />
+                  </AiGate>
                   {!prefs.aiMasterEnabled && (
                     <p class="mt-2 text-[11px] text-muted">
                       Turn on AI assistance above for this to take effect.
@@ -746,63 +753,87 @@ function AppInner() {
                 </Surface>
 
                 <Surface>
-                  <SectionHeader
-                    title="Recall questions"
-                    subtitle="After a session, generate quiz questions from the material you captured — and optionally grade your answers."
-                  />
-                  <div class="mb-3 flex flex-col gap-3">
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="min-w-0">
-                        <p class="text-[13px] text-ink-2">Recall questions</p>
-                        <p class="text-[11px] text-muted">
-                          Writes quiz questions from the material you captured.
-                        </p>
-                      </div>
-                      <Toggle
-                        enabled={recallEnabled}
-                        onToggle={() =>
-                          setFeatureOverride("recallQuestions", !recallEnabled)
-                        }
-                        ariaLabel="Toggle recall questions"
-                      />
-                    </div>
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="min-w-0">
-                        <p class="text-[13px] text-ink-2">Recall grading</p>
-                        <p class="text-[11px] text-muted">
-                          Grades your answers to recall questions.
-                        </p>
-                      </div>
-                      <Toggle
-                        enabled={recallGradingEnabled}
-                        onToggle={() =>
-                          setFeatureOverride("recallGrading", !recallGradingEnabled)
-                        }
-                        ariaLabel="Toggle recall grading"
-                      />
-                    </div>
-                  </div>
-                  <div class="grid grid-cols-2 gap-2">
-                    <NumberField
-                      label="Question count (max 15)"
-                      value={prefs.recallQuestionCount}
-                      min={1}
-                      max={15}
-                      onCommit={setRecallQuestionCount}
+                  <AiGate disabled={!prefs.aiMasterEnabled}>
+                    <SectionHeader
+                      title="Recall questions"
+                      subtitle="After a session, generate quiz questions from the material you captured — and optionally grade your answers."
                     />
-                    <div class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
-                      <MonoLabel as="span" class="text-[9.5px]">
-                        Difficulty
-                      </MonoLabel>
-                      <Dropdown<RecallDepth>
-                        value={prefs.recallDepth}
-                        onChange={setRecallDepth}
-                        ariaLabel="Difficulty"
-                        triggerClass="h-9 rounded-control border border-rule-2 bg-paper px-[11px] text-[12.5px] text-ink aria-expanded:border-amber-deep"
-                        options={DIFFICULTY_OPTIONS}
-                      />
+                    <div class="flex flex-col gap-3">
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                          <p class="text-[13px] text-ink-2">Recall questions</p>
+                          <p class="text-[11px] text-muted">
+                            Writes quiz questions from the material you captured.
+                          </p>
+                        </div>
+                        <Toggle
+                          enabled={recallEnabled}
+                          onToggle={() =>
+                            setFeatureOverride("recallQuestions", !recallEnabled)
+                          }
+                          ariaLabel="Toggle recall questions"
+                        />
+                      </div>
+                      {/* Grading, count and difficulty only apply when recall
+                          questions are on, so they follow that toggle. */}
+                      <AiGate disabled={!recallEnabled}>
+                        <div class="flex flex-col gap-3">
+                          <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                              <p class="text-[13px] text-ink-2">
+                                Recall grading
+                              </p>
+                              <p class="text-[11px] text-muted">
+                                Grades your answers to recall questions.
+                              </p>
+                            </div>
+                            <Toggle
+                              enabled={recallGradingEnabled}
+                              onToggle={() =>
+                                setFeatureOverride(
+                                  "recallGrading",
+                                  !recallGradingEnabled,
+                                )
+                              }
+                              ariaLabel="Toggle recall grading"
+                            />
+                          </div>
+                          <div class="grid grid-cols-2 gap-2">
+                            <NumberField
+                              label="Question count (max 15)"
+                              value={prefs.recallQuestionCount}
+                              min={1}
+                              max={15}
+                              onCommit={setRecallQuestionCount}
+                            />
+                            <div class="flex flex-col gap-1.5 rounded-card border border-rule bg-paper-2 px-[11px] py-[7px]">
+                              <MonoLabel as="span" class="text-[9.5px]">
+                                Difficulty
+                              </MonoLabel>
+                              <Dropdown<RecallDepth>
+                                value={prefs.recallDepth}
+                                onChange={setRecallDepth}
+                                ariaLabel="Difficulty"
+                                triggerClass="h-9 rounded-control border border-rule-2 bg-paper px-[11px] text-[12.5px] text-ink aria-expanded:border-amber-deep"
+                                options={DIFFICULTY_OPTIONS}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </AiGate>
                     </div>
-                  </div>
+                  </AiGate>
+                  {!prefs.aiMasterEnabled && (
+                    <p class="mt-2 text-[11px] text-muted">
+                      Turn on AI assistance above for these to take effect.
+                    </p>
+                  )}
+                  {prefs.aiMasterEnabled && !recallEnabled && (
+                    <p class="mt-2 text-[11px] text-muted">
+                      Turn on recall questions to set grading, count and
+                      difficulty.
+                    </p>
+                  )}
                 </Surface>
 
                 <Surface>
@@ -925,6 +956,39 @@ function InputField({
         }`}
       />
     </label>
+  )
+}
+
+/**
+ * Wraps AI-dependent controls so they go fully inert when the AI master switch
+ * is off: dimmed, non-clickable, and removed from tab order / the a11y tree via
+ * the `inert` attribute. The "turn on AI assistance" hint is kept outside the
+ * gate so it stays legible.
+ */
+function AiGate({
+  disabled,
+  children,
+}: {
+  disabled: boolean
+  children: ComponentChildren
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    // `inert` blocks focus + pointer + a11y for the whole subtree. Typed via an
+    // intersection so it compiles regardless of the DOM lib version.
+    const el = ref.current as (HTMLDivElement & { inert: boolean }) | null
+    if (el) el.inert = disabled
+  }, [disabled])
+  return (
+    <div
+      ref={ref}
+      aria-disabled={disabled}
+      class={`transition-opacity duration-150 ${
+        disabled ? "pointer-events-none select-none opacity-50" : ""
+      }`}
+    >
+      {children}
+    </div>
   )
 }
 
