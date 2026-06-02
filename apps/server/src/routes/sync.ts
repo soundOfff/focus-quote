@@ -19,6 +19,7 @@ import {
   maybeGenerateStudyTips,
 } from "../lib/study-artifacts"
 import { maybeGenerateTitle, maybeGenerateTopic } from "../lib/topic"
+import { flushPendingSessionVault } from "../lib/vault"
 import {
   attachQuoteTag,
   deleteTag,
@@ -76,7 +77,11 @@ export const syncRoutes = new Hono<{ Variables: RequireUserVariables }>()
       void maybeGenerateStudyTips(userId, id)
       void maybeGenerateRecallQuestions(userId, id)
       void maybeGenerateResourceRecommendations(userId, id)
+      // Resolve the topic, THEN promote any pending vault items into it (or
+      // "Uncategorized"). Sequenced so the flush sees the resolved topicId.
       void maybeGenerateTopic(userId, id)
+        .then(() => flushPendingSessionVault(userId, id))
+        .catch(() => {})
       // Self-gated + only writes when the goal is empty (issue #9).
       void maybeGenerateTitle(userId, id)
     }

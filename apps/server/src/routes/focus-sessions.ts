@@ -8,7 +8,8 @@ import {
   recallAttempts,
   sessionActions,
   sessionUrls,
-  topicVaultItems,
+  sessionVaultItems,
+  topics,
 } from "../db/schema"
 import { requireUser, type RequireUserVariables } from "../middleware/require-user"
 import { z } from "zod"
@@ -24,17 +25,24 @@ import {
   parseStudyTips,
 } from "../lib/study-artifacts"
 import {
-  ensureTopicId,
   maybeAutoDeriveGoal,
   maybeGenerateTitle,
   maybeGenerateTopic,
 } from "../lib/topic"
+import {
+  flushPendingSessionVault,
+  saveSessionVaultItem,
+} from "../lib/vault"
 import { aiFeatureEnabledForUser } from "../lib/ai-gate"
 import { gradeRecallAnswer } from "../lib/llm"
 
 const VaultLinkInput = z.object({
   url: z.string().min(1).max(2000),
   title: z.string().max(200).nullable().optional(),
+})
+
+const AssignTopicInput = z.object({
+  topicId: z.string().min(1).max(120),
 })
 
 export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>()
@@ -55,74 +63,81 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
     const userId = c.get("user").id
     const id = c.req.param("id")
     const { url, title } = c.req.valid("json")
-    const [session] = await db
+    // No AI on the save path: if the session already has a topic the link lands
+    // directly in that Topic Vault; otherwise it is stashed as a PENDING session
+    // item and promoted when the session resolves its topic at completion (or to
+    // "Uncategorized"). Keeps the save instant and never blocks/fails on topic
+    // detection — the user can rename/migrate the resulting topic afterwards.
+    const saved = await saveSessionVaultItem(userId, id, {
+      kind: "url",
+      body: url,
+      title: title ?? null,
+    })
+    if (!saved) {
+      return c.json({ error: "Not found", code: "NOT_FOUND" }, 404)
+    }
+    return c.json({ item: saved }, 201)
+  })
+  // Pending vault items saved during the session before it has a topic. These
+  // are promoted into the session's topic (or "Uncategorized") at completion.
+  .get("/:id/vault-pending", async (c) => {
+    const userId = c.get("user").id
+    const id = c.req.param("id")
+    const items = await db
       .select({
-        id: focusSessions.id,
-        topicId: focusSessions.topicId,
-        topic: focusSessions.topic,
-        goal: focusSessions.goal,
+        id: sessionVaultItems.id,
+        sessionId: sessionVaultItems.sessionId,
+        kind: sessionVaultItems.kind,
+        body: sessionVaultItems.body,
+        title: sessionVaultItems.title,
+        mediaFileId: sessionVaultItems.mediaFileId,
+        createdAt: sessionVaultItems.createdAt,
       })
+      .from(sessionVaultItems)
+      .where(
+        and(
+          eq(sessionVaultItems.userId, userId),
+          eq(sessionVaultItems.sessionId, id),
+        ),
+      )
+      .orderBy(desc(sessionVaultItems.createdAt))
+      .limit(100)
+    return c.json({ items })
+  })
+  // Manually assign the session to an existing Topic. Cascades the label onto
+  // the session and promotes any pending vault items into that topic.
+  .post("/:id/topic", zValidator("json", AssignTopicInput), async (c) => {
+    const userId = c.get("user").id
+    const id = c.req.param("id")
+    const { topicId } = c.req.valid("json")
+    const [session] = await db
+      .select({ id: focusSessions.id })
       .from(focusSessions)
       .where(and(eq(focusSessions.id, id), eq(focusSessions.userId, userId)))
       .limit(1)
     if (!session) {
       return c.json({ error: "Not found", code: "NOT_FOUND" }, 404)
     }
-    let topicId = session.topicId
-    if (!topicId) {
-      let topicName = session.topic
-      // A live (in-progress) session usually has no topic yet — topics are
-      // derived at completion. Try to derive one on demand; otherwise fall back
-      // to the session goal so the link still lands under a sensible topic
-      // instead of failing for every page.
-      if (!topicName) {
-        await maybeGenerateTopic(userId, id)
-        const [refreshed] = await db
-          .select({ topicId: focusSessions.topicId, topic: focusSessions.topic })
-          .from(focusSessions)
-          .where(and(eq(focusSessions.id, id), eq(focusSessions.userId, userId)))
-          .limit(1)
-        if (refreshed?.topicId) topicId = refreshed.topicId
-        else topicName = refreshed?.topic ?? session.goal?.trim() ?? null
-      }
-      if (!topicId) {
-        if (!topicName) {
-          return c.json(
-            { error: "Session has no topic to attach to", code: "BAD_REQUEST" },
-            400,
-          )
-        }
-        topicId = await ensureTopicId(userId, topicName)
-        await db
-          .update(focusSessions)
-          .set({ topic: topicName, topicId })
-          .where(and(eq(focusSessions.id, id), eq(focusSessions.userId, userId)))
-      }
+    const [topic] = await db
+      .select({ id: topics.id, name: topics.name })
+      .from(topics)
+      .where(and(eq(topics.id, topicId), eq(topics.userId, userId)))
+      .limit(1)
+    if (!topic) {
+      return c.json({ error: "Topic not found", code: "NOT_FOUND" }, 404)
     }
-    const itemId = randomUUID()
-    const createdAt = new Date().toISOString()
-    await db.insert(topicVaultItems).values({
-      id: itemId,
-      userId,
-      topicId,
-      kind: "url",
-      body: url,
-      title: title ?? null,
-      createdAt,
-    })
-    return c.json(
-      {
-        item: {
-          id: itemId,
-          topicId,
-          kind: "url",
-          body: url,
-          title: title ?? null,
-          createdAt,
-        },
-      },
-      201,
-    )
+    await db
+      .update(focusSessions)
+      .set({ topic: topic.name, topicId: topic.id })
+      .where(and(eq(focusSessions.id, id), eq(focusSessions.userId, userId)))
+    // Pending items now belong to the chosen topic.
+    await flushPendingSessionVault(userId, id)
+    const [row] = await db
+      .select()
+      .from(focusSessions)
+      .where(and(eq(focusSessions.id, id), eq(focusSessions.userId, userId)))
+      .limit(1)
+    return c.json({ session: toSessionDTO(row!) })
   })
   .post("/", zValidator("json", UpsertFocusSessionInput), async (c) => {
     const userId = c.get("user").id
@@ -184,8 +199,12 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
           if (!row.topic) await maybeGenerateTopic(userId, row.id)
           await maybeGenerateTitle(userId, row.id)
         } else if (!row.topic) {
-          void maybeGenerateTopic(userId, row.id)
+          await maybeGenerateTopic(userId, row.id)
         }
+        // Topic is now resolved (or stayed empty) — promote any vault items the
+        // user saved during the session into its topic, falling back to
+        // "Uncategorized" so nothing saved mid-session is ever lost.
+        await flushPendingSessionVault(userId, row.id)
       }
       void downstream()
     }
