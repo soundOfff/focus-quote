@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { zValidator } from "@hono/zod-validator"
 import { z } from "zod"
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, or } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { db } from "../db/client"
 import {
@@ -28,9 +28,15 @@ const RenameTopicInput = z.object({
 })
 
 const CreateVaultItemInput = z.object({
-  kind: z.enum(["note", "url"]),
+  kind: z.enum(["note", "url", "image"]),
   body: z.string().min(1).max(2000),
   title: z.string().max(200).nullable().optional(),
+  // media_bucket_files id — required in practice for kind "image".
+  mediaFileId: z.string().min(1).max(120).nullable().optional(),
+})
+
+const MoveVaultItemInput = z.object({
+  topicId: z.string().min(1).max(120),
 })
 
 const decodeTopic = (raw: string) => decodeURIComponent(raw).slice(0, 60)
@@ -124,6 +130,49 @@ export const topicsRoutes = new Hono<{ Variables: RequireUserVariables }>()
       .where(and(eq(topicMedia.userId, userId), eq(topicMedia.topicId, id)))
     return c.json({ topic: { id, name } })
   })
+  // Delete a Topic by its stable id. Sessions are preserved but unlinked
+  // (topic_id -> null), mirroring the schema's onDelete: "set null". The topic's
+  // own Vault items and attached media are removed. FK cascade isn't relied on
+  // (no PRAGMA foreign_keys), and label-keyed media carry a null topic_id, so we
+  // clean up explicitly and scope every delete by userId.
+  .delete("/:id", async (c) => {
+    const userId = c.get("user").id
+    const id = c.req.param("id")
+    const [topic] = await db
+      .select({ id: topics.id, name: topics.name })
+      .from(topics)
+      .where(and(eq(topics.id, id), eq(topics.userId, userId)))
+      .limit(1)
+    if (!topic) {
+      return c.json({ error: "Topic not found", code: "NOT_FOUND" }, 404)
+    }
+    await db
+      .update(focusSessions)
+      .set({ topicId: null })
+      .where(
+        and(eq(focusSessions.userId, userId), eq(focusSessions.topicId, id)),
+      )
+    await db
+      .delete(topicVaultItems)
+      .where(
+        and(
+          eq(topicVaultItems.userId, userId),
+          eq(topicVaultItems.topicId, id),
+        ),
+      )
+    await db
+      .delete(topicMedia)
+      .where(
+        and(
+          eq(topicMedia.userId, userId),
+          or(eq(topicMedia.topicId, id), eq(topicMedia.topic, topic.name)),
+        ),
+      )
+    await db
+      .delete(topics)
+      .where(and(eq(topics.id, id), eq(topics.userId, userId)))
+    return c.json({ ok: true })
+  })
   .get("/:label/media", async (c) => {
     const userId = c.get("user").id
     const topic = decodeTopic(c.req.param("label"))
@@ -191,6 +240,7 @@ export const topicsRoutes = new Hono<{ Variables: RequireUserVariables }>()
         kind: topicVaultItems.kind,
         body: topicVaultItems.body,
         title: topicVaultItems.title,
+        mediaFileId: topicVaultItems.mediaFileId,
         createdAt: topicVaultItems.createdAt,
       })
       .from(topicVaultItems)
@@ -225,6 +275,7 @@ export const topicsRoutes = new Hono<{ Variables: RequireUserVariables }>()
       kind: body.kind,
       body: body.body,
       title: body.title ?? null,
+      mediaFileId: body.mediaFileId ?? null,
       createdAt,
     })
     return c.json(
@@ -235,11 +286,45 @@ export const topicsRoutes = new Hono<{ Variables: RequireUserVariables }>()
           kind: body.kind,
           body: body.body,
           title: body.title ?? null,
+          mediaFileId: body.mediaFileId ?? null,
           createdAt,
         },
       },
       201,
     )
+  })
+  // Migrate a committed vault item to another Topic ("move to topic"). Scoped by
+  // userId on both the item and the destination topic. Only the item's topic
+  // link changes — id, kind, body, media and timestamp are preserved.
+  .patch("/:id/vault/:itemId", zValidator("json", MoveVaultItemInput), async (c) => {
+    const userId = c.get("user").id
+    const itemId = c.req.param("itemId")
+    const targetTopicId = c.req.valid("json").topicId
+    const [target] = await db
+      .select({ id: topics.id })
+      .from(topics)
+      .where(and(eq(topics.id, targetTopicId), eq(topics.userId, userId)))
+      .limit(1)
+    if (!target) {
+      return c.json({ error: "Topic not found", code: "NOT_FOUND" }, 404)
+    }
+    const [item] = await db
+      .select({ id: topicVaultItems.id })
+      .from(topicVaultItems)
+      .where(
+        and(eq(topicVaultItems.id, itemId), eq(topicVaultItems.userId, userId)),
+      )
+      .limit(1)
+    if (!item) {
+      return c.json({ error: "Item not found", code: "NOT_FOUND" }, 404)
+    }
+    await db
+      .update(topicVaultItems)
+      .set({ topicId: targetTopicId })
+      .where(
+        and(eq(topicVaultItems.id, itemId), eq(topicVaultItems.userId, userId)),
+      )
+    return c.json({ ok: true, itemId, topicId: targetTopicId })
   })
   .delete("/:id/vault/:itemId", async (c) => {
     const userId = c.get("user").id
