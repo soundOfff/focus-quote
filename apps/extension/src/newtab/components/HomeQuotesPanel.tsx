@@ -5,6 +5,7 @@ import {
   ExternalLink,
   Plus,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-preact"
 import { useEffect, useMemo, useState } from "preact/hooks"
@@ -43,6 +44,12 @@ const detachEff = (quoteId: QuoteId, tagId: TagId) =>
   Effect.gen(function* () {
     const tags = yield* TagsService
     return yield* tags.detach(quoteId, tagId)
+  })
+
+const removeQuoteEff = (quoteId: QuoteId) =>
+  Effect.gen(function* () {
+    const quotes = yield* QuotesService
+    return yield* quotes.remove(quoteId)
   })
 
 const consolidateEff = Effect.gen(function* () {
@@ -111,6 +118,12 @@ export function HomeQuotesPanel() {
   }
   const detach = (quoteId: QuoteId, tagId: TagId) => {
     runP(detachEff(quoteId, tagId)).then(reload).catch(() => {})
+  }
+  // Deletes the Quote entirely (distinct from the per-chip ✕, which only removes
+  // a tag). Irreversible, so confirm first.
+  const deleteQuote = (quoteId: QuoteId) => {
+    if (!window.confirm("Delete this quote? This can't be undone.")) return
+    runP(removeQuoteEff(quoteId)).then(reload).catch(() => {})
   }
 
   const tidyNow = () => {
@@ -299,11 +312,21 @@ export function HomeQuotesPanel() {
               return (
                 <li
                   key={q.id}
-                  class="rounded-md border border-hairline bg-surface px-4 py-3"
+                  class="group rounded-md border border-hairline bg-surface px-4 py-3"
                 >
-                  <blockquote class="font-serif text-sm font-medium leading-snug text-ink">
-                    {q.text}
-                  </blockquote>
+                  <div class="flex items-start gap-2">
+                    <blockquote class="flex-1 font-serif text-sm font-medium leading-snug text-ink">
+                      {q.text}
+                    </blockquote>
+                    <button
+                      type="button"
+                      onClick={() => deleteQuote(q.id)}
+                      aria-label="Delete quote"
+                      class="shrink-0 rounded p-1 text-mute opacity-0 transition-opacity hover:text-accent-red focus-visible:opacity-100 group-hover:opacity-100"
+                    >
+                      <Trash2 size={13} aria-hidden />
+                    </button>
+                  </div>
                   <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                     {(q.sourceTitle || q.sourceUrl) && (
                       <div class="flex items-center gap-1 text-[11px] text-mute">

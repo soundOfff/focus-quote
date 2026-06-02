@@ -174,6 +174,15 @@ export const openPopover = (opts: OpenOptions): PopoverHandle => {
   position(opts.shell.getSide())
   requestAnimationFrame(() => position(opts.shell.getSide()))
 
+  // Re-clamp when the panel's own content grows/shrinks (e.g. a streamed AI
+  // reply expands the body). position() only writes top/left/right, never
+  // width/height, so observing the panel can't feed back into a resize loop.
+  const resizeObserver =
+    typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => position(opts.shell.getSide()))
+      : null
+  resizeObserver?.observe(panel)
+
   let unsubSide: (() => void) | null = opts.shell.onSideChange((s) =>
     position(s),
   )
@@ -203,6 +212,7 @@ export const openPopover = (opts: OpenOptions): PopoverHandle => {
     }
     document.removeEventListener("keydown", onKey)
     window.removeEventListener("resize", onResize)
+    resizeObserver?.disconnect()
     unsubSide?.()
     unsubSide = null
     panel.remove()

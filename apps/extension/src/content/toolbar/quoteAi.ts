@@ -96,12 +96,20 @@ const parseReply = (text: string): ParsedReply => {
     break
   }
 
-  if (followUps.length < 2) {
+  if (followUps.length < 1) {
     return { summary: trimmed, followUps: [] }
   }
-  const summary = lines.slice(0, cut).join("\n").trim()
+  // Drop a trailing lead-in line like "Here are some follow-up questions:" so it
+  // doesn't dangle as plain text once the items below become chips.
+  let summaryLines = lines.slice(0, cut)
+  while (
+    summaryLines.length > 0 &&
+    /:\s*$/.test(summaryLines[summaryLines.length - 1]?.trim() ?? "")
+  ) {
+    summaryLines = summaryLines.slice(0, -1)
+  }
   return {
-    summary: summary || trimmed,
+    summary: summaryLines.join("\n").trim(),
     followUps: followUps.slice(0, 3),
   }
 }

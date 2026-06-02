@@ -21,6 +21,8 @@ export interface SelectionBar {
   getToLang: () => string
   showSavedState: () => void
   isDropdownOpen: () => boolean
+  /** True while a translation result card is shown; the bar stays pinned. */
+  isResultOpen: () => boolean
   destroy: () => void
 }
 
@@ -654,6 +656,7 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
     getToLang: () => toChip.getLang(),
     showSavedState,
     isDropdownOpen: () => currentDropdown !== null,
+    isResultOpen: () => resultCard.style.display !== "none",
     destroy,
   }
 }

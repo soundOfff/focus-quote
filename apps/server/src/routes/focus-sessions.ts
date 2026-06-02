@@ -60,6 +60,7 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
         id: focusSessions.id,
         topicId: focusSessions.topicId,
         topic: focusSessions.topic,
+        goal: focusSessions.goal,
       })
       .from(focusSessions)
       .where(and(eq(focusSessions.id, id), eq(focusSessions.userId, userId)))
@@ -69,17 +70,34 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
     }
     let topicId = session.topicId
     if (!topicId) {
-      if (!session.topic) {
-        return c.json(
-          { error: "Session has no topic to attach to", code: "BAD_REQUEST" },
-          400,
-        )
+      let topicName = session.topic
+      // A live (in-progress) session usually has no topic yet — topics are
+      // derived at completion. Try to derive one on demand; otherwise fall back
+      // to the session goal so the link still lands under a sensible topic
+      // instead of failing for every page.
+      if (!topicName) {
+        await maybeGenerateTopic(userId, id)
+        const [refreshed] = await db
+          .select({ topicId: focusSessions.topicId, topic: focusSessions.topic })
+          .from(focusSessions)
+          .where(and(eq(focusSessions.id, id), eq(focusSessions.userId, userId)))
+          .limit(1)
+        if (refreshed?.topicId) topicId = refreshed.topicId
+        else topicName = refreshed?.topic ?? session.goal?.trim() ?? null
       }
-      topicId = await ensureTopicId(userId, session.topic)
-      await db
-        .update(focusSessions)
-        .set({ topicId })
-        .where(and(eq(focusSessions.id, id), eq(focusSessions.userId, userId)))
+      if (!topicId) {
+        if (!topicName) {
+          return c.json(
+            { error: "Session has no topic to attach to", code: "BAD_REQUEST" },
+            400,
+          )
+        }
+        topicId = await ensureTopicId(userId, topicName)
+        await db
+          .update(focusSessions)
+          .set({ topic: topicName, topicId })
+          .where(and(eq(focusSessions.id, id), eq(focusSessions.userId, userId)))
+      }
     }
     const itemId = randomUUID()
     const createdAt = new Date().toISOString()

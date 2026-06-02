@@ -375,6 +375,14 @@ const renderGuideUI = (
       const bend = Math.min(120, len * 0.25)
       const cx = mx + (-dy / len) * bend
       const cy = my + (dx / len) * bend
+      // offset-path positions the box relative to its own origin. placeCursorAt
+      // leaves non-zero left/top behind, which would double-offset the cursor
+      // (and fling it off-screen — the "cursor not showing" report). Zero them
+      // and pin offset-position so the absolute path coordinates are the sole
+      // positioning input.
+      cursor.style.left = "0px"
+      cursor.style.top = "0px"
+      cursor.style.setProperty("offset-position", "0 0")
       cursor.style.offsetPath = `path("M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}")`
       cursor.style.offsetRotate = "0deg"
       cursor.style.offsetDistance = "0%"
