@@ -7,6 +7,7 @@ import {
   type Tag,
   type TagId,
   type QuoteId,
+  type ConsolidateProgressEvent,
 } from "@focus-quote/shared"
 import { findTagByName } from "../shared/tag-graph"
 
@@ -161,12 +162,19 @@ export class TagsService extends Effect.Service<TagsService>()("TagsService", {
         yield* sync.enqueue({ kind: "deleteTag", id: tagId })
       })
 
-    /** Run the server-side Consolidation ("Tidy now") pass, then refresh. */
-    const consolidate = Effect.gen(function* () {
-      const resp = yield* api.consolidateTags()
-      const graph = yield* pullGraph
-      return { changes: resp.changes, graph }
-    })
+    /**
+     * Run the server-side Consolidation ("Tidy now") pass, streaming progress
+     * frames to `onProgress` so the caller can fill a determinate bar, then pull
+     * the freshly-reshaped graph.
+     */
+    const consolidate = (
+      onProgress: (event: ConsolidateProgressEvent) => void,
+    ) =>
+      Effect.gen(function* () {
+        const changes = yield* api.consolidateTagsStream(onProgress)
+        const graph = yield* pullGraph
+        return { changes, graph }
+      })
 
     return {
       getGraph,

@@ -158,6 +158,45 @@ export function BrandMark({
 }
 
 /**
+ * Progress — a hairline paper track with one amber fill, mirroring
+ * editorial-ui's `Progress` primitive (../../../editorial-ui/src). Determinate
+ * when `value` is a number (0–100); indeterminate — a fill that sweeps across
+ * the track — when omitted, for work whose duration we can't measure (e.g. the
+ * one-shot server-side Tidy pass). Sweep keyframes live in styles/tailwind.css.
+ */
+export function Progress({
+  value,
+  label,
+  class: className,
+}: {
+  value?: number | null
+  label?: string
+  class?: string
+}) {
+  const indeterminate = value == null
+  const clamped = indeterminate ? 0 : Math.max(0, Math.min(100, value))
+  return (
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={indeterminate ? undefined : 0}
+      aria-valuemax={indeterminate ? undefined : 100}
+      aria-valuenow={indeterminate ? undefined : Math.round(clamped)}
+      class={cx(
+        "fq-progress relative h-1.5 w-full overflow-hidden rounded-pill border border-rule bg-paper-2",
+        indeterminate && "fq-progress--indeterminate",
+        className,
+      )}
+    >
+      <div
+        class="fq-progress__bar h-full rounded-pill"
+        style={indeterminate ? undefined : { width: `${clamped}%` }}
+      />
+    </div>
+  )
+}
+
+/**
  * Pill chip. Used in saved-quote cards for the tag. See `.chip` in
  * COMPONENTS.md generic primitives.
  */

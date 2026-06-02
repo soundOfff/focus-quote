@@ -236,21 +236,31 @@ const generate = async (input: GenInput): Promise<string | null> => {
       if (input.expectJson) {
         messages.push({ role: "assistant", content: "{" })
       }
-      const res = await c.chat.completions.create({
+      // Reasoning models routed through OpenRouter (e.g. Gemini Flash) spend
+      // hidden "reasoning" tokens out of max_tokens BEFORE emitting the JSON.
+      // Left unbounded the reasoning can eat the whole budget and the object
+      // comes back truncated mid-string ("Unterminated string in JSON") —
+      // unrecoverable. Two levers, both only on the JSON path:
+      //   1. a generous max_tokens floor so reasoning + the object both fit, and
+      //   2. reasoning.effort "low" to bound the reasoning slice — these are
+      //      mechanical classify/extract calls that don't need deep thinking,
+      //      and capping it also cuts cost (reasoning tokens dominate the bill).
+      // Non-reasoning models ignore the `reasoning` field; reconstructJson then
+      // restores the object from whatever framing the model used.
+      const body: Record<string, unknown> = {
         model: env.OPENROUTER_MODEL,
-        // Many OpenRouter models prepend a prose preamble (and sometimes
-        // reasoning) before the JSON despite the prompt + prefill. With a tight
-        // cap they run out of budget mid-object and the reply is truncated with
-        // no closing brace — unrecoverable. Give JSON replies a floor so the
-        // object actually finishes; reconstructJson then extracts it.
         max_tokens: input.expectJson
-          ? Math.max(input.maxTokens, 700)
+          ? Math.max(input.maxTokens, 1200)
           : input.maxTokens,
         messages,
-        ...(input.expectJson
-          ? { response_format: { type: "json_object" } }
-          : {}),
-      })
+      }
+      if (input.expectJson) {
+        body.response_format = { type: "json_object" }
+        body.reasoning = { effort: "low" }
+      }
+      const res = await c.chat.completions.create(
+        body as unknown as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
+      )
       const content = res.choices[0]?.message?.content ?? null
       if (content === null) return null
       return input.expectJson ? reconstructJson(content) : content
@@ -762,6 +772,73 @@ export const classifyQuoteIntoTags = async (input: {
     return { attachTagIds, newTag }
   } catch (err) {
     console.warn("[llm] classifyQuoteIntoTags failed:", err)
+    return null
+  }
+}
+
+const SYSTEM_QUOTES_TAGS_BATCH = `You are a librarian filing several captured quotes into a user's tag graph in a single pass.
+You receive a list of quotes (each with an id and text) and the list of existing tags (each with an id and name).
+For EACH quote independently, choose the existing tag ids whose subject genuinely fits the quote (zero, one, or a few). If NONE fit well, propose ONE concise new tag name (1-3 words, Title Case) naming that quote's subject.
+Strongly prefer reusing an existing tag over inventing a near-duplicate. When several quotes in this batch share a subject that no existing tag covers, propose the SAME new tag name for each of them (so they file together).
+Reply with strict JSON: {"results": [{"id": string, "attachTagIds": string[], "newTag": string | null}]} with EXACTLY one entry per input quote id, echoing each id back.
+- When existing tags fit: list their ids in attachTagIds and set newTag to null.
+- When nothing fits: use an empty attachTagIds array and set newTag to the new name.
+Only use tag ids from the provided list. No prose, no markdown fences.`
+
+export interface BatchQuoteTagClassification {
+  id: string
+  attachTagIds: string[]
+  newTag: string | null
+}
+
+/**
+ * Batched per-Save classifier (ADR 0003): file up to a handful of untagged
+ * quotes in ONE call so the manual Tidy sweep pays a single (reasoning-heavy)
+ * LLM round-trip for the whole batch instead of one per quote — the cost lever
+ * for "Tidy now". Same low-stakes, self-correcting contract as the single-quote
+ * classifier (invalid/echoed-wrong ids are dropped by the caller). Fail-soft:
+ * returns null on any error so the sweep simply retries on the next Tidy.
+ */
+export const classifyQuotesIntoTagsBatch = async (input: {
+  quotes: ReadonlyArray<{ id: string; text: string }>
+  tags: ReadonlyArray<{ id: string; name: string }>
+}): Promise<BatchQuoteTagClassification[] | null> => {
+  if (input.quotes.length === 0) return []
+  try {
+    const text = await generate({
+      system: SYSTEM_QUOTES_TAGS_BATCH,
+      user: JSON.stringify({
+        quotes: input.quotes.map((q) => ({
+          id: q.id,
+          text: q.text.slice(0, 1200),
+        })),
+        tags: input.tags.slice(0, 300),
+      }),
+      // One classification is tiny (~30 tokens); size the cap to the batch with
+      // headroom on top of the reasoning slice generate() reserves.
+      maxTokens: Math.min(4000, 600 + input.quotes.length * 140),
+      tier: "fast",
+      model: ANTHROPIC_HAIKU_CHEAP,
+      expectJson: true,
+    })
+    if (!text) return null
+    const parsed = JSON.parse(stripFences(text)) as { results?: unknown }
+    if (!Array.isArray(parsed.results)) return null
+    return parsed.results.flatMap((r): BatchQuoteTagClassification[] => {
+      if (typeof r !== "object" || r === null) return []
+      const obj = r as Record<string, unknown>
+      if (typeof obj.id !== "string") return []
+      const attachTagIds = Array.isArray(obj.attachTagIds)
+        ? obj.attachTagIds.filter((t): t is string => typeof t === "string")
+        : []
+      const newTag =
+        typeof obj.newTag === "string" && obj.newTag.trim()
+          ? obj.newTag.trim()
+          : null
+      return [{ id: obj.id, attachTagIds, newTag }]
+    })
+  } catch (err) {
+    console.warn("[llm] classifyQuotesIntoTagsBatch failed:", err)
     return null
   }
 }

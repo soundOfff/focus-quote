@@ -4,11 +4,13 @@ import { db } from "../db/client"
 import { quotes, tags, tagEdges, quoteTags } from "../db/schema"
 import {
   classifyQuoteIntoTags,
+  classifyQuotesIntoTagsBatch,
   proposeTagConsolidation,
   type QuoteTagClassification,
 } from "./llm"
 import { aiFeatureEnabledForUser } from "./ai-gate"
 import { tryConsume } from "./rate-limit"
+import type { ConsolidateProgressEvent } from "@focus-quote/shared"
 
 // ADR 0003: the server owns the AI-maintained Tag graph. The per-Save Haiku
 // pass only ATTACHES a quote (creating one Tag if nothing fits); the error-prone
@@ -245,22 +247,31 @@ const emptyResult = (): ConsolidateResult => ({
   requotesRefiled: 0,
 })
 
-// Most untagged quotes one "Tidy now" will file in a single pass. Bounds the
-// LLM spend of a user-triggered sweep; the rest are filed on the next click
-// (and the Untagged count keeps showing what's left).
-const UNTAGGED_SWEEP_CAP = 20
+// Most untagged quotes one "Tidy now" will file in a single pass. The whole
+// sweep is ONE batched LLM call, so keep the batch modest — bounds prompt size
+// and keeps the progress bar quick; the rest are filed on the next click (and
+// the Untagged count keeps showing what's left).
+const UNTAGGED_SWEEP_CAP = 10
 
 /**
  * Tidy's filing step (the user-visible point of "Tidy now"): sweep quotes that
- * carry no Tag at all through the per-Save Haiku classifier so the Untagged
+ * carry no Tag at all through the batched Haiku classifier so the Untagged
  * bucket actually clears — the restructuring pass below only reshapes *existing*
  * Tags and never files a loose quote. Freshly-captured (pending) quotes are
  * filed before already-processed ones so a backlog never starves new captures.
- * Bounded by UNTAGGED_SWEEP_CAP and the per-user rate-limit bucket (one LLM call
- * per quote); a minted Tag is reused for later quotes in the same sweep. Must
- * run inside the per-user lock. Fail-soft per quote.
+ *
+ * The cost lever: the whole batch goes through the model in ONE round-trip
+ * (reasoning models bill mostly for hidden reasoning tokens, so one shared pass
+ * for up to UNTAGGED_SWEEP_CAP quotes is ~10x cheaper than one call per quote).
+ * Charges a single rate-limit token. We then apply the results one quote at a
+ * time and emit a progress frame after each so the bar fills smoothly. A minted
+ * Tag is reused for later quotes in the same batch. Must run inside the per-user
+ * lock. Fail-soft: a null plan or unechoed id just leaves that quote for next Tidy.
  */
-const categorizeUntaggedQuotes = async (userId: string): Promise<number> => {
+const categorizeUntaggedQuotes = async (
+  userId: string,
+  onProgress?: (e: ConsolidateProgressEvent) => Promise<void> | void,
+): Promise<number> => {
   const untagged = await db
     .select({
       id: quotes.id,
@@ -278,22 +289,37 @@ const categorizeUntaggedQuotes = async (userId: string): Promise<number> => {
   untagged.sort((a, b) =>
     a.status === b.status ? 0 : a.status === "pending" ? -1 : 1,
   )
-  
+  const batch = untagged.slice(0, UNTAGGED_SWEEP_CAP)
+
+  // One batched call for the whole sweep — charge a single token; if the bucket
+  // is dry, leave the batch for the next Tidy.
+  if (!tryConsume(userId)) return 0
+
   // The live Tag list, grown in-memory as we mint new Tags so a later quote in
-  // this same sweep reuses one an earlier quote just created.
+  // this same batch reuses one an earlier quote just created.
   const liveTags = await db
     .select({ id: tags.id, name: tags.name })
     .from(tags)
     .where(eq(tags.userId, userId))
 
+  await onProgress?.({ phase: "classifying", total: batch.length })
+  const plans = await classifyQuotesIntoTagsBatch({
+    quotes: batch.map((q) => ({ id: q.id, text: q.text })),
+    tags: liveTags,
+  })
+  if (!plans) return 0 // model unavailable — leave the batch for the next Tidy
+  const byId = new Map(plans.map((p) => [p.id, p]))
+
   let filed = 0
-  for (const q of untagged.slice(0, UNTAGGED_SWEEP_CAP)) {
-    // One LLM call per quote — stop the moment the bucket runs dry.
-    if (!tryConsume(userId)) break
-    const plan = await classifyQuoteIntoTags({ text: q.text, tags: liveTags })
-    if (!plan) continue // model unavailable — leave it for the next Tidy
-    const { attached } = await applyClassification(userId, q.id, plan, liveTags)
-    if (attached > 0) filed++
+  let processed = 0
+  for (const q of batch) {
+    const plan = byId.get(q.id)
+    if (plan) {
+      const { attached } = await applyClassification(userId, q.id, plan, liveTags)
+      if (attached > 0) filed++
+    }
+    processed++
+    await onProgress?.({ phase: "filing", processed, total: batch.length })
   }
   return filed
 }
@@ -310,6 +336,7 @@ const categorizeUntaggedQuotes = async (userId: string): Promise<number> => {
  */
 export const consolidateGraph = async (
   userId: string,
+  onProgress?: (e: ConsolidateProgressEvent) => Promise<void> | void,
 ): Promise<ConsolidateResult> => {
   try {
     const canFile = await aiFeatureEnabledForUser(userId, "quoteTagging")
@@ -319,15 +346,16 @@ export const consolidateGraph = async (
     return await withUserLock(userId, async () => {
       const result = emptyResult()
 
-      // 1) Filing step — clear the Untagged bucket. Self-limited by the bucket
-      //    (one call per quote), so it may drain what the restructure needs.
-      if (canFile) result.filed = await categorizeUntaggedQuotes(userId)
+      // 1) Filing step — clear the Untagged bucket via one batched call, then
+      //    stream a frame per applied quote (see categorizeUntaggedQuotes).
+      if (canFile) result.filed = await categorizeUntaggedQuotes(userId, onProgress)
 
       // 2) Restructuring step — heavier than a per-Save pass, so charge more of
       //    the bucket. If filing drained it, skip restructuring this round; the
       //    filing already helped and the next click (after refill) reshapes.
       if (!canTidy) return result
       if (!tryConsume(userId, 3)) return result
+      await onProgress?.({ phase: "restructuring" })
 
       const tagRows = await db
         .select({ id: tags.id, name: tags.name, userEdited: tags.userEdited })

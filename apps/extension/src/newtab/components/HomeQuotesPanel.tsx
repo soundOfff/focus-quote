@@ -9,11 +9,17 @@ import {
   X,
 } from "lucide-preact"
 import { useEffect, useMemo, useState } from "preact/hooks"
-import type { Quote, QuoteId, TagGraph, TagId } from "@focus-quote/shared"
+import type {
+  ConsolidateProgressEvent,
+  Quote,
+  QuoteId,
+  TagGraph,
+  TagId,
+} from "@focus-quote/shared"
 import { QuotesService } from "../../services/quotes"
 import { TagsService } from "../../services/tags"
 import { runP } from "../runtime"
-import { Button, EmptyState } from "../../ui/primitives"
+import { Button, EmptyState, Progress } from "../../ui/primitives"
 import {
   UNTAGGED_LABEL,
   buildTagTree,
@@ -58,10 +64,33 @@ const removeQuoteEff = (quoteId: QuoteId) =>
     return yield* quotes.remove(quoteId)
   })
 
-const consolidateEff = Effect.gen(function* () {
-  const tags = yield* TagsService
-  return yield* tags.consolidate
-})
+const consolidateEff = (
+  onProgress: (event: ConsolidateProgressEvent) => void,
+) =>
+  Effect.gen(function* () {
+    const tags = yield* TagsService
+    return yield* tags.consolidate(onProgress)
+  })
+
+/** Map a streamed progress frame to a determinate bar value + caption. */
+const tidyBar = (
+  e: ConsolidateProgressEvent | null,
+): { value: number | null; label: string } => {
+  if (!e) return { value: null, label: "Starting…" }
+  switch (e.phase) {
+    case "classifying":
+      return { value: null, label: `Reading ${e.total} quotes…` }
+    case "filing":
+      return {
+        value: e.total > 0 ? (e.processed / e.total) * 100 : 100,
+        label: `Filed ${e.processed} / ${e.total}`,
+      }
+    case "restructuring":
+      return { value: null, label: "Tidying tags…" }
+    case "done":
+      return { value: 100, label: "Done" }
+  }
+}
 
 const cx = (...parts: Array<string | false | null | undefined>) =>
   parts.filter(Boolean).join(" ")
@@ -80,6 +109,8 @@ export function HomeQuotesPanel() {
   const [tagInput, setTagInput] = useState("")
   const [tidying, setTidying] = useState(false)
   const [tidyNote, setTidyNote] = useState<string | null>(null)
+  const [tidyProgress, setTidyProgress] =
+    useState<ConsolidateProgressEvent | null>(null)
 
   const reload = () =>
     runP(loadData)
@@ -149,7 +180,8 @@ export function HomeQuotesPanel() {
   const tidyNow = () => {
     setTidying(true)
     setTidyNote(null)
-    runP(consolidateEff)
+    setTidyProgress(null)
+    runP(consolidateEff((e) => setTidyProgress(e)))
       .then(({ changes }) => {
         const { filed, merged, renamed, reparented } = changes
         const parts: string[] = []
@@ -166,6 +198,7 @@ export function HomeQuotesPanel() {
       .catch(() => setTidyNote("Couldn't tidy right now."))
       .finally(() => {
         setTidying(false)
+        setTidyProgress(null)
         reload()
       })
   }
@@ -291,7 +324,21 @@ export function HomeQuotesPanel() {
           {tidying ? "Tidying…" : "Tidy now"}
         </Button>
       </div>
-      {tidyNote && <p class="text-[11px] text-mute">{tidyNote}</p>}
+      {tidying ? (
+        (() => {
+          const { value, label } = tidyBar(tidyProgress)
+          return (
+            <div class="flex items-center gap-2">
+              <Progress value={value} label={label} class="flex-1" />
+              <span class="shrink-0 text-[11px] tabular-nums text-mute">
+                {label}
+              </span>
+            </div>
+          )
+        })()
+      ) : (
+        tidyNote && <p class="text-[11px] text-mute">{tidyNote}</p>
+      )}
 
       <div class="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
         {/* Tag tree */}

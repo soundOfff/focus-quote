@@ -58,18 +58,35 @@ export interface TagGraphResponse {
 }
 
 /** Summary of what a single Consolidation ("Tidy now") pass changed. */
+export interface ConsolidateChanges {
+  /** Untagged quotes filed under a Tag by the sweep. */
+  filed: number
+  merged: number
+  renamed: number
+  reparented: number
+  deleted: number
+  requotesRefiled: number
+}
+
 export interface ConsolidateTagsResponse {
   ok: boolean
-  changes: {
-    /** Untagged quotes filed under a Tag by the sweep. */
-    filed: number
-    merged: number
-    renamed: number
-    reparented: number
-    deleted: number
-    requotesRefiled: number
-  }
+  changes: ConsolidateChanges
 }
+
+/**
+ * One progress frame streamed (SSE) by POST /api/tags/consolidate so the UI
+ * can fill a determinate bar as the pass runs:
+ *  - `classifying`: the single batched LLM call is in flight (indeterminate).
+ *  - `filing`: applying the batch's results one quote at a time (determinate —
+ *    `processed`/`total`).
+ *  - `restructuring`: the merge/rename/re-parent pass is running (indeterminate).
+ *  - `done`: terminal frame carrying the final change tally.
+ */
+export type ConsolidateProgressEvent =
+  | { phase: "classifying"; total: number }
+  | { phase: "filing"; processed: number; total: number }
+  | { phase: "restructuring" }
+  | { phase: "done"; changes: ConsolidateChanges }
 
 // ---- Sessions ----
 
