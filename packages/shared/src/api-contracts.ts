@@ -61,6 +61,8 @@ export interface TagGraphResponse {
 export interface ConsolidateTagsResponse {
   ok: boolean
   changes: {
+    /** Untagged quotes filed under a Tag by the sweep. */
+    filed: number
     merged: number
     renamed: number
     reparented: number
