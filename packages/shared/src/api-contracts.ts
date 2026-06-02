@@ -177,7 +177,11 @@ export interface CreateTopicResponse {
   topic: Topic
 }
 
-export type VaultItemKind = "note" | "url"
+export interface DeleteTopicResponse {
+  ok: boolean
+}
+
+export type VaultItemKind = "note" | "url" | "image"
 
 export interface VaultItem {
   id: string
@@ -185,6 +189,8 @@ export interface VaultItem {
   kind: VaultItemKind
   body: string
   title: string | null
+  /** media_bucket_files id for kind "image"; null otherwise. */
+  mediaFileId: string | null
   createdAt: string
 }
 
@@ -196,10 +202,77 @@ export interface CreateVaultItemRequest {
   kind: VaultItemKind
   body: string
   title?: string | null
+  mediaFileId?: string | null
 }
 
 export interface CreateVaultItemResponse {
   item: VaultItem
+}
+
+/** A vault item saved mid-session, not yet filed under a topic. */
+export interface PendingVaultItem {
+  id: string
+  sessionId: string
+  kind: VaultItemKind
+  body: string
+  title: string | null
+  mediaFileId: string | null
+  createdAt: string
+}
+
+export interface ListPendingVaultItemsResponse {
+  items: ReadonlyArray<PendingVaultItem>
+}
+
+/** Result of saving a vault item against a session or via quick-save. */
+export interface SavedVaultItem {
+  id: string
+  /** null while pending (the session has no topic yet). */
+  topicId: string | null
+  /** Originating session, or null for a session-less direct save. */
+  sessionId: string | null
+  kind: VaultItemKind
+  body: string
+  title: string | null
+  mediaFileId: string | null
+  createdAt: string
+  /** true when stashed as a pending session item (not yet under a topic). */
+  pending: boolean
+}
+
+export interface SaveSessionVaultLinkResponse {
+  item: SavedVaultItem
+}
+
+/** Body for the general POST /api/vault/save quick-save endpoint. */
+export interface SaveVaultItemRequest {
+  sessionId?: string | null
+  kind: VaultItemKind
+  body: string
+  title?: string | null
+  mediaFileId?: string | null
+}
+
+export interface SaveVaultItemResponse {
+  item: SavedVaultItem
+}
+
+export interface MoveVaultItemRequest {
+  topicId: string
+}
+
+export interface MoveVaultItemResponse {
+  ok: boolean
+  itemId: string
+  topicId: string
+}
+
+export interface AssignSessionTopicRequest {
+  topicId: string
+}
+
+export interface AssignSessionTopicResponse {
+  session: Session
 }
 
 // ---- Session URLs (AI analysis) ----
