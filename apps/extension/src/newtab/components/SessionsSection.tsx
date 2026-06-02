@@ -174,13 +174,14 @@ export function SessionCard({ session }: CardProps) {
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
   }, [urls])
 
-  const avgScore = useMemo(() => {
-    if (!urls || urls.length === 0) return null
-    const scored = urls.filter((u) => u.distractionScore !== null)
-    if (scored.length === 0) return null
-    const sum = scored.reduce((acc, u) => acc + (u.distractionScore ?? 0), 0)
-    return Math.round(sum / scored.length)
-  }, [urls])
+  // TEMPORARILY DISABLED — average distraction score (detection paused).
+  // const avgScore = useMemo(() => {
+  //   if (!urls || urls.length === 0) return null
+  //   const scored = urls.filter((u) => u.distractionScore !== null)
+  //   if (scored.length === 0) return null
+  //   const sum = scored.reduce((acc, u) => acc + (u.distractionScore ?? 0), 0)
+  //   return Math.round(sum / scored.length)
+  // }, [urls])
 
   const statusBadge = () => {
     if (d.status === "running")
@@ -311,6 +312,7 @@ export function SessionCard({ session }: CardProps) {
                 <span class="text-[11px] uppercase tracking-wide text-mute">
                   {urls.length} URL{urls.length === 1 ? "" : "s"}
                 </span>
+                {/* TEMPORARILY DISABLED — avg distraction badge (detection paused).
                 {avgScore !== null && (
                   <Badge
                     tone={
@@ -323,7 +325,7 @@ export function SessionCard({ session }: CardProps) {
                   >
                     Avg distraction · {avgScore}
                   </Badge>
-                )}
+                )} */}
                 {categoryBreakdown?.map(([cat, count]) => (
                   <Badge
                     key={cat}
@@ -354,11 +356,12 @@ export function SessionCard({ session }: CardProps) {
                             {u.category}
                           </Badge>
                         )}
+                        {/* TEMPORARILY DISABLED — distraction score (detection paused).
                         {u.distractionScore !== null && (
                           <span class="shrink-0 text-[10px] text-mute tabular-nums">
                             {u.distractionScore}
                           </span>
-                        )}
+                        )} */}
                       </div>
                       {u.title && (
                         <div class="truncate text-[11px] text-mute">

@@ -31,7 +31,8 @@ import {
 import { ensureOpenrouterMigrated } from "../shared/settings"
 import { applyTheme, loadTodayGoal } from "../shared/theme"
 import { runP } from "./runtime"
-import { useAnalysisInsight } from "./components/AnalysisPanel"
+// TEMPORARILY DISABLED — distraction detection paused (no AI token spend).
+// import { useAnalysisInsight } from "./components/AnalysisPanel"
 import { QuoteList } from "./components/QuoteList"
 import { SearchBar } from "./components/SearchBar"
 import { SessionPanel } from "./components/SessionPanel"
@@ -167,7 +168,9 @@ function AppInner() {
 
   // AnalysisPanel collapsed into a hook — its insight line piggy-backs on
   // the Today's Intent band so the popup keeps just four primary regions.
-  const analysis = useAnalysisInsight()
+  // TEMPORARILY DISABLED — distraction detection paused; the hook also polled
+  // the session-urls endpoint every 8s, so leaving it off avoids that traffic.
+  // const analysis = useAnalysisInsight()
 
   const refresh = (q: string) => {
     runP(loadQuotes(q))
@@ -383,11 +386,12 @@ function AppInner() {
             </span>
           )}
         </p>
+        {/* TEMPORARILY DISABLED — distraction-detection insight line.
         {analysis.insightLine && (
           <p class="mb-2 text-[11.5px] italic leading-[1.45] text-muted">
             {analysis.insightLine}
           </p>
-        )}
+        )} */}
       </section>
 
       {/* 3. Focus session */}
