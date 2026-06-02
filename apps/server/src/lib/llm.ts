@@ -4,6 +4,11 @@ import { env } from "../env"
 
 const ANTHROPIC_HAIKU = "claude-haiku-4-5-20251001"
 const ANTHROPIC_SONNET = "claude-sonnet-4-5-20250929"
+// Older, much cheaper Haiku (~4-5x less than 4.5). Used only for the per-Save
+// tag classifier — a low-stakes, self-correcting call (invalid tag ids are
+// dropped by the caller and the manual Tidy pass fixes any sloppiness). NOT used
+// for the heavier Consolidation/Tidy pass, which stays on Haiku 4.5.
+const ANTHROPIC_HAIKU_CHEAP = "claude-3-haiku-20240307"
 
 // OpenRouter supports OpenAI-compatible embeddings. Small + cheap is fine
 // here — we're scoring short strings (URL + title vs. goal/topic) and the
@@ -173,6 +178,12 @@ interface GenInput {
   maxTokens: number
   tier: "fast" | "smart"
   expectJson: boolean
+  /**
+   * Optional exact model override (Anthropic provider only). When set it wins
+   * over the tier→model mapping; the OpenRouter path always uses
+   * env.OPENROUTER_MODEL and ignores this.
+   */
+  model?: string
 }
 
 const generate = async (input: GenInput): Promise<string | null> => {
@@ -180,8 +191,21 @@ const generate = async (input: GenInput): Promise<string | null> => {
   if (provider === "anthropic") {
     const c = getAnthropic()
     if (!c) return null
+    const messages: Anthropic.MessageParam[] = [
+      { role: "user", content: input.user },
+    ]
+    // Force well-formed JSON: prefill the assistant turn with "{" so the model
+    // *continues* the object instead of prefacing it with prose ("Here is the
+    // JSON: ..."), which the cheaper models routinely do despite the prompt —
+    // wasting the token budget and getting the JSON truncated. reconstructJson
+    // restores the leading brace. Every expectJson caller wants a top-level
+    // object, so this is always safe.
+    if (input.expectJson) {
+      messages.push({ role: "assistant", content: "{" })
+    }
     const res = await c.messages.create({
-      model: input.tier === "smart" ? ANTHROPIC_SONNET : ANTHROPIC_HAIKU,
+      model:
+        input.model ?? (input.tier === "smart" ? ANTHROPIC_SONNET : ANTHROPIC_HAIKU),
       max_tokens: input.maxTokens,
       system: [
         {
@@ -190,29 +214,39 @@ const generate = async (input: GenInput): Promise<string | null> => {
           cache_control: { type: "ephemeral" },
         },
       ],
-      messages: [{ role: "user", content: input.user }],
+      messages,
     })
-    return res.content
+    const text = res.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
       .join("")
+    return input.expectJson ? reconstructJson(text) : text
   }
   if (provider === "openrouter") {
     const c = getOpenRouter()
     if (!c) return null
     try {
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        { role: "system", content: input.system },
+        { role: "user", content: input.user },
+      ]
+      // Same prefill trick (OpenRouter supports an assistant prefill message):
+      // most OpenRouter models ignore response_format, so the "{" prefill is
+      // the reliable lever against prose preambles + truncation.
+      if (input.expectJson) {
+        messages.push({ role: "assistant", content: "{" })
+      }
       const res = await c.chat.completions.create({
         model: env.OPENROUTER_MODEL,
         max_tokens: input.maxTokens,
-        messages: [
-          { role: "system", content: input.system },
-          { role: "user", content: input.user },
-        ],
+        messages,
         ...(input.expectJson
           ? { response_format: { type: "json_object" } }
           : {}),
       })
-      return res.choices[0]?.message?.content ?? null
+      const content = res.choices[0]?.message?.content ?? null
+      if (content === null) return null
+      return input.expectJson ? reconstructJson(content) : content
     } catch (err) {
       logOpenRouterError(err, {
         model: env.OPENROUTER_MODEL,
@@ -622,8 +656,49 @@ export const summarizeSession = async (input: {
   }
 }
 
-const stripFences = (s: string): string =>
-  s.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim()
+/**
+ * Best-effort extraction of the single JSON value the model was asked for.
+ * Strips markdown fences, then — because the cheaper Haiku models like to wrap
+ * the JSON in prose ("Here is the JSON: {…}") — narrows to the outermost
+ * object/array by slicing from the first opening brace to its matching last
+ * closing brace. Falls back to the trimmed string when no brace is present.
+ */
+export const stripFences = (s: string): string => {
+  const cleaned = s
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim()
+  for (const [open, close] of [
+    ["{", "}"],
+    ["[", "]"],
+  ] as const) {
+    const start = cleaned.indexOf(open)
+    const end = cleaned.lastIndexOf(close)
+    if (start !== -1 && end > start) return cleaned.slice(start, end + 1)
+  }
+  return cleaned
+}
+
+/**
+ * Reconstruct the JSON object the model was asked for, given that we prefill the
+ * assistant turn with "{". Depending on the provider/model the reply is either
+ * the *continuation* (no leading brace — prepend it) or, when the prefill is
+ * ignored, the full text (possibly wrapped in prose — extract it). Try both
+ * readings and return whichever actually parses; on neither (e.g. the reply was
+ * truncated mid-object) hand back a best-effort string so the caller's own
+ * try/catch logs once and falls back to null.
+ */
+export const reconstructJson = (raw: string): string => {
+  for (const candidate of [stripFences(`{${raw}`), stripFences(raw)]) {
+    try {
+      JSON.parse(candidate)
+      return candidate
+    } catch {
+      // try the next interpretation
+    }
+  }
+  return stripFences(raw)
+}
 
 // ---------------- Tag graph curation (ADR 0003) ----------------
 
@@ -660,6 +735,9 @@ export const classifyQuoteIntoTags = async (input: {
       }),
       maxTokens: 200,
       tier: "fast",
+      // Cheapest path: per-Save tagging is low-stakes + self-correcting, so it
+      // runs on the older, ~4-5x cheaper Haiku 3 rather than Haiku 4.5.
+      model: ANTHROPIC_HAIKU_CHEAP,
       expectJson: true,
     })
     if (!text) return null
