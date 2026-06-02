@@ -34,7 +34,7 @@ export function Button({
       : variant === "outline"
         ? "border border-rule-2 bg-paper text-ink-2 hover:bg-paper-2"
         : variant === "ghost"
-          ? "border border-rule-2 bg-paper text-ink-2 hover:bg-paper-2"
+          ? "bg-transparent text-ink-2 hover:text-ink"
           : variant === "chip"
             ? "border border-rule bg-paper-2 text-ink-2 hover:bg-paper"
             : "bg-paper-2 text-ink hover:bg-rule/40"

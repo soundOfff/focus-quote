@@ -810,6 +810,10 @@ export const installGuideButton = (shell: ToolbarShell): (() => void) => {
       // controller wired up so the playback card can clean it up properly.
       const steps = [...res.steps] as GuideStep[]
       toolbarStore.getState().openGuide(goal, steps)
+      // Succeeded — forget the goal so reopening Guide Me starts with an empty
+      // input (it's still one tap away under "Recent"). On failure we leave
+      // lastGoal set, so the prompt reopens pre-filled for an easy retry.
+      lastGoal = ""
       currentPopover?.close()
       currentPopover = null
       currentController?.destroy()

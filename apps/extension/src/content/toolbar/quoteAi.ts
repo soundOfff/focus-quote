@@ -396,9 +396,20 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
     root.append(passageNode, summaryBlock.wrap, followUps.wrap, composer.root)
     currentPopover.setBody(root)
 
+    // Only the assistant reply drives this view. The toolbar store is also
+    // mutated on every page click/scroll by actionCapture during a session;
+    // re-rendering on those would `replaceChildren()` the follow-up buttons out
+    // from under a click (the capture-phase click handler fires first), so the
+    // suggestion never reaches its own handler and feels unclickable. Guard on
+    // the reply text so unrelated store churn is a no-op.
+    let lastRenderedReply: string | null = null
+    let hasRendered = false
     const renderFromStore = () => {
       const chat = toolbarStore.getState().chat
       const lastReply = lastAssistantText(chat.history)
+      if (hasRendered && lastReply === lastRenderedReply) return
+      hasRendered = true
+      lastRenderedReply = lastReply
       if (!lastReply) {
         summaryBlock.body.style.color = tokens.muted
         summaryBlock.body.style.fontStyle = "italic"

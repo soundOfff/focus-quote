@@ -402,6 +402,7 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
   let pendingText = ""
   let visible = false
   let savedTimeout: ReturnType<typeof setTimeout> | null = null
+  let hideTimeout: ReturnType<typeof setTimeout> | null = null
   let translateAbort: AbortController | null = null
   let currentDropdown: LangDropdownHandle | null = null
   let lastRect: DOMRect | null = null
@@ -409,16 +410,19 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
   // ---- Root ----
   const root = document.createElement("div")
   root.setAttribute("data-focusquote-selection-bar", "")
+  // Resting state is fully inert: invisible, behind everything, and
+  // click-through. `show()` promotes it to the popover layer; `hide()` returns
+  // it here so the faded-out bar can never intercept clicks on the page.
   root.style.cssText = [
     "all:initial",
     "box-sizing:border-box",
     "position:fixed",
-    `z-index:${tokens.zPopover}`,
+    "z-index:-1",
     "display:flex",
     "flex-direction:column",
     "align-items:flex-start",
     "user-select:none",
-    "pointer-events:auto",
+    "pointer-events:none",
     "opacity:0",
     "transform:translateY(-4px)",
     "transition:opacity 150ms ease,transform 150ms ease",
@@ -601,9 +605,15 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
   // ---- Public API ----
 
   const show = (text: string, rect: DOMRect) => {
+    if (hideTimeout) {
+      clearTimeout(hideTimeout)
+      hideTimeout = null
+    }
     pendingText = text
     position(rect)
     requestAnimationFrame(() => position(rect))
+    root.style.zIndex = String(tokens.zPopover)
+    root.style.pointerEvents = "auto"
     root.style.opacity = "1"
     root.style.transform = "translateY(0)"
     visible = true
@@ -617,6 +627,16 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
     }
     root.style.opacity = "0"
     root.style.transform = "translateY(-4px)"
+    // Stop intercepting clicks the instant we start fading; the remaining
+    // animation is purely visual.
+    root.style.pointerEvents = "none"
+    // Once the fade has played, drop the (now-invisible) bar out of the
+    // stacking context so it can never sit above or hit-test against the page.
+    if (hideTimeout) clearTimeout(hideTimeout)
+    hideTimeout = setTimeout(() => {
+      hideTimeout = null
+      root.style.zIndex = "-1"
+    }, 160)
     resultCard.style.display = "none"
     resultCard.textContent = ""
     translateAbort?.abort()
@@ -641,6 +661,10 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
 
   const destroy = () => {
     hide()
+    if (hideTimeout) {
+      clearTimeout(hideTimeout)
+      hideTimeout = null
+    }
     root.remove()
   }
 
