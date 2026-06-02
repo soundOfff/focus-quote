@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks"
 import { Effect } from "effect"
 import {
   Clock,
+  FolderInput,
   ImagePlus,
   Layers,
   Link2,
@@ -15,7 +16,7 @@ import { ApiService } from "../../services/api"
 import { runP } from "../runtime"
 import { normalizeVaultUrl } from "../../shared/url"
 import type { Topic, VaultItem } from "@focus-quote/shared"
-import { MonoLabel } from "../../ui/primitives"
+import { Button, MonoLabel } from "../../ui/primitives"
 import { useToast } from "../../ui/Toast"
 
 const loadTopics = Effect.gen(function* () {
@@ -87,6 +88,12 @@ const renameTopic = (id: string, name: string) =>
     return yield* api.renameTopic(id, name)
   })
 
+const deleteTopic = (id: string) =>
+  Effect.gen(function* () {
+    const api = yield* ApiService
+    return yield* api.deleteTopic(id)
+  })
+
 const loadVault = (topicId: string) =>
   Effect.gen(function* () {
     const api = yield* ApiService
@@ -145,6 +152,59 @@ function Sep() {
   return <span class="text-muted-2">·</span>
 }
 
+// Lazily fetches an image vault item's bytes from the media bucket (the bearer
+// token lives in the SW, so we can't point an <img src> straight at the API —
+// we fetch the data URL through the api service instead).
+function VaultImage({
+  mediaFileId,
+  alt,
+}: {
+  mediaFileId: string
+  alt: string
+}) {
+  const [src, setSrc] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let alive = true
+    runP(
+      Effect.gen(function* () {
+        const api = yield* ApiService
+        return yield* api.getMedia(mediaFileId)
+      }),
+    )
+      .then((res) => {
+        if (alive) {
+          setSrc(`data:${res.file.mimeType};base64,${res.file.dataBase64}`)
+        }
+      })
+      .catch(() => {
+        if (alive) setFailed(true)
+      })
+    return () => {
+      alive = false
+    }
+  }, [mediaFileId])
+  if (failed) {
+    return <span class="text-[11px] text-muted">Image unavailable</span>
+  }
+  if (!src) {
+    return (
+      <div class="flex h-16 w-24 items-center justify-center rounded-control border border-rule-2 bg-paper">
+        <Loader2 size={14} class="animate-spin text-muted" aria-hidden />
+      </div>
+    )
+  }
+  return (
+    <a href={src} target="_blank" rel="noopener noreferrer" class="min-w-0">
+      <img
+        src={src}
+        alt={alt}
+        class="max-h-28 rounded-control border border-rule-2 object-contain"
+      />
+    </a>
+  )
+}
+
 export function TopicsSection() {
   const [topics, setTopics] = useState<ReadonlyArray<Topic>>([])
   const [ready, setReady] = useState(false)
@@ -154,6 +214,7 @@ export function TopicsSection() {
   const [mediaLoading, setMediaLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notes, setNotes] = useState<ReadonlyArray<VaultItem>>([])
+  const [movingId, setMovingId] = useState<string | null>(null)
   const [noteDraft, setNoteDraft] = useState("")
   const [addingNote, setAddingNote] = useState(false)
   const [linkDraft, setLinkDraft] = useState("")
@@ -165,6 +226,8 @@ export function TopicsSection() {
   const renameInputRef = useRef<HTMLInputElement>(null)
   const [renaming, setRenaming] = useState(false)
   const [renameDraft, setRenameDraft] = useState("")
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
@@ -186,6 +249,7 @@ export function TopicsSection() {
 
   const open = (topic: Topic) => {
     setRenaming(false)
+    setConfirmDelete(false)
     setOpenTopic(topic.name)
     setOpenTopicId(topic.id)
     setMedia([])
@@ -204,6 +268,7 @@ export function TopicsSection() {
 
   const close = () => {
     setRenaming(false)
+    setConfirmDelete(false)
     setOpenTopic(null)
     setOpenTopicId(null)
     setMedia([])
@@ -273,6 +338,26 @@ export function TopicsSection() {
       .catch((err) => {
         console.error("[FocusQuote] rename topic:", err)
         toast.error("Couldn't rename topic.")
+      })
+  }
+
+  const handleDeleteTopic = () => {
+    const id = openTopicId
+    if (!id || deleting) return
+    setDeleting(true)
+    runP(deleteTopic(id))
+      .then(() => {
+        toast.success("Topic deleted.")
+        setTopics((prev) => prev.filter((t) => t.id !== id))
+        close()
+      })
+      .catch((err) => {
+        console.error("[FocusQuote] delete topic:", err)
+        toast.error("Couldn't delete topic.")
+      })
+      .finally(() => {
+        setDeleting(false)
+        setConfirmDelete(false)
       })
   }
 
@@ -361,6 +446,30 @@ export function TopicsSection() {
     runP(deleteVaultItem(openTopicId, itemId)).catch(() => {})
   }
 
+  const handleMove = (itemId: string, targetTopicId: string) => {
+    if (!openTopicId || !targetTopicId || targetTopicId === openTopicId) {
+      setMovingId(null)
+      return
+    }
+    // Optimistically drop the item from this topic — it now lives elsewhere.
+    setNotes((prev) => prev.filter((n) => n.id !== itemId))
+    setMovingId(null)
+    runP(
+      Effect.gen(function* () {
+        const api = yield* ApiService
+        return yield* api.moveTopicVaultItem(openTopicId, itemId, targetTopicId)
+      }),
+    )
+      .then(() => toast.success("Moved to topic."))
+      .catch(() => {
+        toast.error("Couldn't move item.")
+        // Reload to resync after a failed optimistic removal.
+        runP(loadVault(openTopicId))
+          .then((items) => setNotes(items))
+          .catch(() => {})
+      })
+  }
+
   if (!ready) return null
 
   return (
@@ -445,7 +554,7 @@ export function TopicsSection() {
               type="button"
               onClick={startCreate}
               aria-label="New topic"
-              class="flex w-14 items-center justify-center self-stretch rounded-card border border-dashed border-rule-2 bg-transparent text-muted-2 transition-[color,border-color,background-color] duration-150 hover:border-amber hover:bg-paper-2 hover:text-amber-deep focus:outline-none focus-visible:border-amber-deep focus-visible:ring-[3px] focus-visible:ring-amber/20"
+              class="flex w-[232px] h-16 items-center justify-center self-stretch rounded-card border border-dashed border-rule-2 bg-transparent text-muted-2 transition-[color,border-color,background-color] duration-150 hover:border-amber hover:bg-paper-2 hover:text-amber-deep focus:outline-none focus-visible:border-amber-deep focus-visible:ring-[3px] focus-visible:ring-amber/20"
             >
               <Plus size={16} strokeWidth={1.8} aria-hidden />
             </button>
@@ -514,14 +623,58 @@ export function TopicsSection() {
               </button>
               <button
                 type="button"
+                onClick={() => setConfirmDelete(true)}
+                aria-label="Delete topic"
+                class="grid h-8 w-8 place-items-center rounded-control border border-rule-2 bg-paper text-ink-2 transition-[color,background-color,border-color] duration-150 hover:border-blue-ink/40 hover:bg-paper-2 hover:text-blue-ink focus:outline-none focus-visible:border-amber-deep focus-visible:ring-[3px] focus-visible:ring-amber/20"
+              >
+                <Trash2 size={15} strokeWidth={1.6} aria-hidden />
+              </button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={close}
                 aria-label="Close"
-                class="grid h-8 w-8 place-items-center rounded-control border border-rule-2 bg-paper text-ink-2 transition-[color,background-color,border-color] duration-150 hover:border-muted-2 hover:bg-paper-2 hover:text-ink focus:outline-none focus-visible:border-amber-deep focus-visible:ring-[3px] focus-visible:ring-amber/20"
               >
                 <X size={15} strokeWidth={1.8} aria-hidden />
-              </button>
+              </Button>
             </div>
           </div>
+
+          {confirmDelete && (
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-control border border-blue-ink/30 bg-paper px-3.5 py-2.5">
+              <p class="text-[12.5px] leading-[1.45] text-ink-2">
+                Delete <span class="font-semibold text-ink">{openTopic}</span>? Its
+                saved notes, links &amp; screenshots are removed. Past sessions are
+                kept, just unlinked.
+              </p>
+              <div class="flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={deleting}
+                  class="inline-flex h-8 items-center rounded-control border border-rule-2 bg-paper px-3 text-[12.5px] font-medium text-ink-2 transition-[color,background-color,border-color] duration-150 hover:border-muted-2 hover:bg-paper-2 hover:text-ink focus:outline-none focus-visible:border-amber-deep focus-visible:ring-[3px] focus-visible:ring-amber/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteTopic}
+                  disabled={deleting}
+                  class="inline-flex h-8 items-center gap-1.5 rounded-control border border-blue-ink bg-blue-ink px-3 text-[12.5px] font-semibold text-paper transition-[filter] duration-150 hover:brightness-110 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-amber/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deleting ? (
+                    <>
+                      <Loader2 size={13} class="animate-spin" aria-hidden /> Deleting…
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={13} strokeWidth={1.8} aria-hidden /> Delete topic
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
 
           <p class="mb-4 mt-2.5 max-w-[64ch] text-[13px] leading-[1.55] text-ink-2">
             Attach screenshots so future recall &amp; reading recommendations can
@@ -582,29 +735,79 @@ export function TopicsSection() {
                   key={n.id}
                   class="group flex items-start justify-between gap-2 rounded-control px-2.5 py-1.5 !w-[695px] border border-rule-2 bg-paper"
                 >
-                  {n.kind === "url" ? (
-                    <a
-                      href={n.body}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="min-w-0 truncate text-xs font-medium text-blue-ink hover:underline"
-                      title={n.body}
+                  <div class="min-w-0 flex-1">
+                    {n.kind === "url" ? (
+                      <a
+                        href={n.body}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="block min-w-0 truncate text-xs font-medium text-blue-ink hover:underline"
+                        title={n.body}
+                      >
+                        {n.title || n.body}
+                      </a>
+                    ) : n.kind === "image" && n.mediaFileId ? (
+                      <VaultImage
+                        mediaFileId={n.mediaFileId}
+                        alt={n.title || "Saved image"}
+                      />
+                    ) : (
+                      <p class="min-w-0 whitespace-pre-wrap break-words text-xs text-ink-2">
+                        {n.body}
+                      </p>
+                    )}
+                    {movingId === n.id && (
+                      <div class="mt-1.5 flex items-center gap-1.5">
+                        <select
+                          aria-label="Move to topic"
+                          onChange={(e) =>
+                            handleMove(
+                              n.id,
+                              (e.currentTarget as HTMLSelectElement).value,
+                            )
+                          }
+                          class="h-7 rounded-control border border-rule-2 bg-paper px-2 text-[12px] text-ink focus:border-amber-deep focus:outline-none focus:ring-[3px] focus:ring-amber/18"
+                        >
+                          <option value="">Move to…</option>
+                          {topics
+                            .filter((t) => t.id !== openTopicId)
+                            .map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setMovingId(null)}
+                          class="rounded p-1 text-[11px] text-muted hover:text-ink"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div class="flex shrink-0 items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMovingId(movingId === n.id ? null : n.id)
+                      }
+                      aria-label="Move to another topic"
+                      title="Move to another topic"
+                      class="shrink-0 rounded p-0.5 text-muted opacity-0 transition-opacity hover:text-blue-ink group-hover:opacity-100 focus:outline-none focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-amber/20"
                     >
-                      {n.title || n.body}
-                    </a>
-                  ) : (
-                    <p class="min-w-0 whitespace-pre-wrap break-words text-xs text-ink-2">
-                      {n.body}
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteNote(n.id)}
-                    aria-label="Delete note"
-                    class="shrink-0 rounded p-0.5 text-muted opacity-0 transition-opacity hover:text-blue-ink group-hover:opacity-100 focus:outline-none focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-amber/20"
-                  >
-                    <Trash2 size={12} aria-hidden />
-                  </button>
+                      <FolderInput size={12} aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteNote(n.id)}
+                      aria-label="Delete item"
+                      class="shrink-0 rounded p-0.5 text-muted opacity-0 transition-opacity hover:text-blue-ink group-hover:opacity-100 focus:outline-none focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-amber/20"
+                    >
+                      <Trash2 size={12} aria-hidden />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
