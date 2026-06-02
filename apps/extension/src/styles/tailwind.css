@@ -28,6 +28,8 @@
     --paper-rgb: 251 250 246;
     --paper-2: #F4F2EC;
     --paper-2-rgb: 244 242 236;
+    /* Deepest paper band — recessed hover (session-detail URLs list). */
+    --paper-3: #ECE9DF;
 
     /* Ink */
     --ink: #1A1814;
@@ -61,10 +63,12 @@
     --blue-soft-rgb: 224 235 241;
     --blue-ink: #2E5C73;
     --blue-ink-rgb: 46 92 115;
+    --blue-edge: #BCD3DD;
     --sage-soft: #E1EBDF;
     --sage-soft-rgb: 225 235 223;
     --sage-ink: #4A6A47;
     --sage-ink-rgb: 74 106 71;
+    --sage-edge: #C6D7C2;
     --clay-soft: #F2DDD3;
     --clay-soft-rgb: 242 221 211;
     --clay-ink: #A04B26;
@@ -136,6 +140,11 @@
     --paper-rgb: 21 20 15;
     --paper-2: #1F1E18;
     --paper-2-rgb: 31 30 24;
+    /* One step lighter than paper-2 so the URLs-list hover still reads. */
+    --paper-3: #262420;
+    /* Recessed page backdrop — darker than paper so cards lift in dark mode. */
+    --page: #0E0D09;
+    --page-rgb: 14 13 9;
 
     --ink: #F1ECDD;
     --ink-rgb: 241 236 221;
@@ -159,10 +168,12 @@
     --blue-soft-rgb: 31 46 56;
     --blue-ink: #94B8CC;
     --blue-ink-rgb: 148 184 204;
+    --blue-edge: #2E4A57;
     --sage-soft: #233326;
     --sage-soft-rgb: 35 51 38;
     --sage-ink: #9FC09B;
     --sage-ink-rgb: 159 192 155;
+    --sage-edge: #3A5740;
     --clay-soft: #3A201A;
     --clay-soft-rgb: 58 32 26;
     --clay-ink: #E29B7E;

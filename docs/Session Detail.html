@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>FocusQuote — Session</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --paper:        #FBFAF6;
+  --paper-2:      #F4F2EC;
+  --paper-3:      #ECE9DF;
+  --ink:          #1A1814;
+  --ink-2:        #3A362F;
+  --muted:        #807A6F;
+  --muted-2:      #B5AEA0;
+  --rule:         #E5E0D5;
+  --rule-2:       #D9D3C5;
+  --amber:        #F2A03C;
+  --amber-deep:   #C77A1F;
+  --amber-soft:   #FBE6C8;
+  --blue-soft:    #E0EBF1;
+  --blue-ink:     #2E5C73;
+  --blue-edge:    #BCD3DD;
+  --sage-soft:    #E1EBDF;
+  --sage-ink:     #4A6A47;
+  --sage-edge:    #C6D7C2;
+  --page:         #E9E7E1;
+  --popup-border: #DAD3C2;
+  --font-serif:  'Newsreader', Georgia, serif;
+  --font-sans:   'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-mono:   'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --radius-card:    11px;
+  --radius-control: 8px;
+  --shadow-popup:
+    0 1px 0 rgba(255,255,255,0.7) inset,
+    0 12px 28px -12px rgba(40,30,15,0.18),
+    0 2px 6px -2px rgba(40,30,15,0.10);
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  padding: 40px 24px 72px;
+}
+button { cursor: pointer; background: none; border: 0; padding: 0; font: inherit; color: inherit; }
+a { color: inherit; text-decoration: none; }
+input, textarea { font: inherit; color: inherit; }
+svg { display: block; }
+
+.shell { max-width: 680px; margin: 0 auto; }
+
+/* mono small-caps label */
+.label {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* top bar */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.back {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; font-weight: 500;
+  color: var(--ink-2);
+  padding: 7px 11px 7px 8px;
+  border-radius: var(--radius-control);
+  transition: background 0.12s, color 0.12s;
+}
+.back:hover { background: var(--paper-2); color: var(--ink); }
+.back svg { color: var(--muted); }
+
+/* generic buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 12.5px; font-weight: 600;
+  line-height: 1;
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s, filter 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(242,160,60,0.22); border-color: var(--amber-deep); }
+.btn-amber {
+  background: linear-gradient(180deg, #F4AC4F 0%, #EE9B30 100%);
+  color: #2A1A05;
+  border-color: var(--amber-deep);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 1px 2px rgba(40,30,15,0.15);
+}
+.btn-amber:hover { filter: brightness(1.03); }
+.btn-amber:active { filter: brightness(0.97); }
+.btn-ghost {
+  background: var(--paper);
+  color: var(--ink-2);
+  border-color: var(--rule-2);
+  font-weight: 500;
+}
+.btn-ghost:hover { background: var(--paper-2); color: var(--ink); border-color: #C7C0AF; }
+.btn-sm { font-size: 11.5px; padding: 6px 10px; border-radius: 7px; }
+
+/* regenerate = mono small-caps ghost chip */
+.btn-regen {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted);
+  background: var(--paper);
+  border: 1px solid var(--rule-2);
+  border-radius: 999px;
+  padding: 6px 11px 6px 9px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.btn-regen:hover { background: var(--paper-2); color: var(--ink-2); border-color: #C7C0AF; }
+.btn-regen svg { color: var(--muted-2); }
+.btn-regen:hover svg { color: var(--amber-deep); }
+
+/* ───── HERO ───── */
+.hero {
+  background: var(--paper);
+  border: 1px solid var(--popup-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-popup);
+  padding: 22px 24px 20px;
+  margin-bottom: 16px;
+}
+.status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 9.5px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--sage-ink);
+  background: var(--sage-soft);
+  border: 1px solid var(--sage-edge);
+  border-radius: 999px;
+  padding: 3px 9px 3px 7px;
+  margin-bottom: 13px;
+}
+.status .dot { width: 6px; height: 6px; border-radius: 999px; background: #6A8F66; }
+.hero h1 {
+  font-family: var(--font-serif);
+  font-size: 30px; font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  margin: 0 0 12px;
+}
+.meta {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 0;
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted);
+}
+.meta .m { display: inline-flex; align-items: center; gap: 5px; }
+.meta .m b { color: var(--ink-2); font-weight: 600; }
+.meta .sep { color: var(--muted-2); padding: 0 9px; }
+.meta svg { color: var(--muted-2); }
+
+/* ───── PANEL ───── */
+.panel {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  padding: 16px 18px 17px;
+  margin-bottom: 14px;
+}
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+}
+.panel-title {
+  display: inline-flex; align-items: center; gap: 9px;
+  font-size: 14px; font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.005em;
+}
+.panel-title .ic {
+  width: 26px; height: 26px;
+  border-radius: 7px;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted);
+}
+.panel-sub {
+  font-size: 12px; color: var(--muted);
+  margin: 10px 0 0;
+  line-height: 1.5;
+}
+.empty-note {
+  font-size: 12.5px;
+  color: var(--muted-2);
+  font-style: italic;
+  font-family: var(--font-serif);
+  margin-top: 12px;
+}
+
+/* active recall */
+.recall-q {
+  font-family: var(--font-serif);
+  font-size: 15.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--ink);
+  margin: 14px 0 14px;
+  letter-spacing: -0.005em;
+}
+.recall-q .qn { color: var(--amber-deep); font-weight: 600; margin-right: 4px; }
+.textarea {
+  width: 100%;
+  background: var(--paper);
+  border: 1px solid var(--rule-2);
+  border-radius: var(--radius-control);
+  padding: 11px 13px;
+  font-size: 13px;
+  color: var(--ink);
+  min-height: 64px; resize: vertical; line-height: 1.5;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.textarea::placeholder { color: var(--muted-2); }
+.textarea:hover { border-color: #C7C0AF; }
+.textarea:focus { outline: none; border-color: var(--amber-deep); box-shadow: 0 0 0 3px rgba(242,160,60,0.18); }
+.recall-actions {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 11px;
+}
+.recall-actions .right { margin-left: auto; }
+.q-counter {
+  font-family: var(--font-mono);
+  font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+/* summary prose */
+.summary-text {
+  font-size: 13.5px; color: var(--ink-2);
+  line-height: 1.6; margin: 12px 0 0;
+  max-width: 64ch;
+}
+
+/* numbered study tips */
+.tips { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; }
+.tips li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  padding: 11px 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+.tips li + li { border-top: 1px solid var(--rule); }
+.tips li .n {
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 600;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  background: var(--amber-soft);
+  color: var(--amber-deep);
+  border: 1px solid #ECC78C;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.tips li b { color: var(--ink); font-weight: 600; }
+
+/* ── Suggested next reads — hairline list ── */
+.reads { display: flex; flex-direction: column; margin-top: 6px; }
+.read {
+  display: block;
+  padding: 15px 0 14px;
+  transition: opacity 0.12s;
+}
+.read + .read { border-top: 1px solid var(--rule); }
+.read:hover .read-title { color: var(--amber-deep); }
+.read-title {
+  display: flex; align-items: baseline; gap: 7px;
+  font-family: var(--font-serif);
+  font-size: 15px; font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  line-height: 1.25;
+  transition: color 0.12s;
+}
+.read-title .ext { color: var(--muted-2); flex-shrink: 0; align-self: center; transition: color 0.12s; transform: translateY(1px); }
+.read:hover .read-title .ext { color: var(--amber-deep); }
+.read-desc {
+  font-size: 12.5px; color: var(--ink-2);
+  line-height: 1.5; margin: 6px 0 9px;
+  max-width: 60ch;
+}
+.read-url {
+  display: flex; align-items: center; gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 9.5px; letter-spacing: 0.02em;
+  color: var(--muted-2);
+  min-width: 0;
+}
+.read-url svg { color: var(--muted-2); flex-shrink: 0; }
+.read-url .u {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0;
+}
+.read-url .u b { color: var(--muted); font-weight: 600; }
+
+/* URLs visited — collapsible footer row */
+.urls {
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+.urls-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px;
+  width: 100%;
+  transition: background 0.12s;
+}
+.urls-bar:hover { background: var(--paper-3); }
+.urls-bar .left { display: inline-flex; align-items: center; gap: 9px; }
+.urls-bar .left .ic {
+  width: 26px; height: 26px; border-radius: 7px;
+  background: var(--paper); border: 1px solid var(--rule);
+  display: inline-flex; align-items: center; justify-content: center; color: var(--muted);
+}
+.urls-bar .ttl { font-size: 14px; font-weight: 600; letter-spacing: -0.005em; }
+.urls-bar .count { color: var(--muted); font-weight: 500; }
+.urls-bar .chev { color: var(--muted-2); transition: transform 0.18s; }
+.urls.is-open .urls-bar .chev { transform: rotate(90deg); }
+.urls-list {
+  display: none;
+  border-top: 1px solid var(--rule);
+  padding: 4px 8px 8px;
+}
+.urls.is-open .urls-list { display: block; }
+
+/* domain-grouped visit row */
+.url-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 10px;
+  border-radius: 9px;
+  transition: background 0.12s;
+}
+.url-row + .url-row { border-top: 1px solid var(--rule); }
+.url-row:hover { background: var(--paper); }
+.url-row:hover + .url-row { border-top-color: transparent; }
+
+.url-row .favicon {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--paper); border: 1px solid var(--rule-2);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted); flex-shrink: 0;
+}
+.url-row .u-main { min-width: 0; }
+.url-row .u-top {
+  display: flex; align-items: center; gap: 8px;
+}
+.url-row .u-host {
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%;
+}
+.cat {
+  font-family: var(--font-mono);
+  font-size: 8.5px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 4px;
+  background: var(--paper-2); color: var(--muted);
+  border: 1px solid var(--rule); flex-shrink: 0;
+}
+.cat.is-blue { color: var(--blue-ink); background: var(--blue-soft); border-color: var(--blue-edge); }
+.cat.is-sage { color: var(--sage-ink); background: var(--sage-soft); border-color: var(--sage-edge); }
+.url-row .u-count {
+  font-family: var(--font-mono);
+  font-size: 9.5px; font-weight: 500;
+  color: var(--muted-2); flex-shrink: 0;
+}
+.url-row .u-query {
+  font-size: 12px; color: var(--muted);
+  margin-top: 3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.url-row .u-open {
+  width: 30px; height: 30px; border-radius: 7px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted-2); flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.url-row:hover .u-open { color: var(--ink-2); }
+.url-row .u-open:hover { background: var(--paper-2); color: var(--amber-deep); }
+
+.urls-more {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted);
+  border-top: 1px solid var(--rule);
+  transition: color 0.12s;
+}
+.urls-more:hover { color: var(--amber-deep); }
+
+@media (max-width: 560px) {
+  body { padding: 24px 12px 48px; }
+  .hero h1 { font-size: 25px; }
+  .meta .sep { padding: 0 6px; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-arrow-l" viewBox="0 0 24 24"><path d="M11 5 4 12l7 7M4 12h16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14-4.5L4 8M4 4v4h4M4 13a8 8 0 0 0 14 4.5L20 16M20 20v-4h-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.3 1 2.1V16h6v-.4c0-.8.4-1.5 1-2.1A6 6 0 0 0 12 3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-recall" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.5v.2M12 17v.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h5v16H6a2 2 0 0 0-2 2V5zM20 5a2 2 0 0 0-2-2h-5v16h5a2 2 0 0 1 2 2V5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
+    <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12 20 4l-6 16-3-7-7-1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
+
+<div class="shell">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <button class="back"><svg width="15" height="15"><use href="#i-arrow-l"/></svg> Back</button>
+    <button class="btn btn-ghost btn-sm"><svg width="13" height="13"><use href="#i-refresh"/></svg> Refresh</button>
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <span class="status"><span class="dot"></span> Completed</span>
+    <h1>Data structures</h1>
+    <div class="meta">
+      <span class="m"><b>15m</b> planned</span>
+      <span class="sep">·</span>
+      <span class="m"><b>15m</b> actual</span>
+      <span class="sep">·</span>
+      <span class="m"><svg width="11" height="11"><use href="#i-clock"/></svg> 02:21–02:36 AM</span>
+      <span class="sep">·</span>
+      <span class="m">Thu, May 21</span>
+      <span class="sep">·</span>
+      <span class="m"><b>15</b> URLs</span>
+    </div>
+  </div>
+
+  <!-- AI summary -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title"><span class="ic"><svg width="15" height="15"><use href="#i-spark"/></svg></span> AI summary</span>
+      <button class="btn-regen"><svg width="11" height="11"><use href="#i-refresh"/></svg> Regenerate</button>
+    </div>
+    <p class="summary-text">You reviewed introductions to data structures and complex data structures across Google, GeeksforGeeks and Codecademy, focusing on the role each structure plays. To stay on track, try narrowing in on one structure type at a time rather than surveying many at once.</p>
+  </div>
+
+  <!-- Study tips -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title"><span class="ic"><svg width="15" height="15"><use href="#i-bulb"/></svg></span> Study tips</span>
+      <button class="btn-regen"><svg width="11" height="11"><use href="#i-refresh"/></svg> Regenerate</button>
+    </div>
+    <ol class="tips">
+      <li><span class="n">1</span><span>After reviewing hash maps on Codecademy, try implementing one yourself in your preferred language to solidify your understanding.</span></li>
+      <li><span class="n">2</span><span>Since you looked at the data-structures intro on GeeksforGeeks, go deeper on the implementation of <b>linked lists</b> and <b>binary trees</b>.</span></li>
+      <li><span class="n">3</span><span>Investigate how different structures affect algorithm efficiency — analyze Big-O for common operations like search and insertion.</span></li>
+      <li><span class="n">4</span><span>As you covered complex structures, explore graphs and their algorithms (Dijkstra, BFS, DFS) on a platform like LeetCode.</span></li>
+      <li><span class="n">5</span><span>You read a Medium article on data structures — find companion pieces on sorting algorithms and implement them.</span></li>
+    </ol>
+  </div>
+
+  <!-- Active recall -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title"><span class="ic"><svg width="15" height="15"><use href="#i-recall"/></svg></span> Active recall</span>
+      <button class="btn-regen"><svg width="11" height="11"><use href="#i-refresh"/></svg> Regenerate</button>
+    </div>
+    <p class="panel-sub">Type your answer and submit — the LLM grades it. Or reveal directly.</p>
+
+    <p class="recall-q"><span class="qn">5.</span>¿Qué ventajas ofrecen los árboles binarios de búsqueda (BST) sobre las estructuras de datos lineales para operaciones de búsqueda? ¿Cuál es su principal limitación en el peor de los casos?</p>
+
+    <textarea class="textarea" placeholder="Your answer…"></textarea>
+
+    <div class="recall-actions">
+      <button class="btn btn-amber"><svg width="13" height="13"><use href="#i-send"/></svg> Submit</button>
+      <button class="btn btn-ghost"><svg width="13" height="13"><use href="#i-eye"/></svg> Reveal answer</button>
+      <span class="q-counter right">5 / 5</span>
+    </div>
+  </div>
+
+  <!-- Suggested next reads -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title"><span class="ic"><svg width="15" height="15"><use href="#i-book"/></svg></span> Suggested next reads</span>
+      <button class="btn-regen"><svg width="11" height="11"><use href="#i-refresh"/></svg> Regenerate</button>
+    </div>
+    <p class="panel-sub">Resources that complement what you covered. URLs are verified before saving.</p>
+
+    <div class="reads">
+      <a class="read" href="#">
+        <div class="read-title">Data Structures and Algorithm Specialization <span class="ext"><svg width="13" height="13"><use href="#i-ext"/></svg></span></div>
+        <div class="read-desc">This Coursera specialization offers a comprehensive curriculum covering various data structures with practical examples and coding assignments.</div>
+        <div class="read-url"><svg width="11" height="11"><use href="#i-globe"/></svg> <span class="u"><b>coursera.org</b>/specializations/data-structures-algorithms</span></div>
+      </a>
+      <a class="read" href="#">
+        <div class="read-title">Data Structures — Computerphile <span class="ext"><svg width="13" height="13"><use href="#i-ext"/></svg></span></div>
+        <div class="read-desc">This Computerphile video explains core data-structure concepts, complementing the more technical resources you visited.</div>
+        <div class="read-url"><svg width="11" height="11"><use href="#i-globe"/></svg> <span class="u"><b>youtube.com</b>/playlist?list=PLUL4u3cNGP61Oq3tNYp6V_xF-gvLqAvlc</span></div>
+      </a>
+      <a class="read" href="#">
+        <div class="read-title">Data Structures Easy to Advanced Course — Full Tutorial from a Google Engineer <span class="ext"><svg width="13" height="13"><use href="#i-ext"/></svg></span></div>
+        <div class="read-desc">A comprehensive tutorial starting from basic to advanced structures, which can solidify your understanding after the initial exploration.</div>
+        <div class="read-url"><svg width="11" height="11"><use href="#i-globe"/></svg> <span class="u"><b>youtube.com</b>/watch?v=RBSGKlAvoiM</span></div>
+      </a>
+      <a class="read" href="#">
+        <div class="read-title">VisuAlgo <span class="ext"><svg width="13" height="13"><use href="#i-ext"/></svg></span></div>
+        <div class="read-desc">VisuAlgo offers interactive visualizations of various data structures and algorithms, which will help you intuitively grasp how they work.</div>
+        <div class="read-url"><svg width="11" height="11"><use href="#i-globe"/></svg> <span class="u"><b>visualgo.net</b>/en</span></div>
+      </a>
+    </div>
+  </div>
+
+  <!-- URLs visited -->
+  <div class="urls is-open" id="urls">
+    <button class="urls-bar" onclick="document.getElementById('urls').classList.toggle('is-open')">
+      <span class="left">
+        <span class="ic"><svg width="15" height="15"><use href="#i-globe"/></svg></span>
+        <span class="ttl">URLs visited <span class="count">(15)</span></span>
+      </span>
+      <svg class="chev" width="16" height="16"><use href="#i-chev-r"/></svg>
+    </button>
+    <div class="urls-list">
+      <a class="url-row" href="#">
+        <span class="favicon"><svg width="15" height="15"><use href="#i-globe"/></svg></span>
+        <span class="u-main">
+          <div class="u-top">
+            <span class="u-host">www.google.com</span>
+            <span class="cat is-blue">Tools</span>
+            <span class="u-count">52 visits</span>
+          </div>
+          <div class="u-query">data structures — Buscar con Google</div>
+        </span>
+        <span class="u-open"><svg width="14" height="14"><use href="#i-ext"/></svg></span>
+      </a>
+      <a class="url-row" href="#">
+        <span class="favicon"><svg width="15" height="15"><use href="#i-globe"/></svg></span>
+        <span class="u-main">
+          <div class="u-top">
+            <span class="u-host">geeksforgeeks.org</span>
+            <span class="cat is-sage">Docs</span>
+            <span class="u-count">9 visits</span>
+          </div>
+          <div class="u-query">Introduction to Data Structures</div>
+        </span>
+        <span class="u-open"><svg width="14" height="14"><use href="#i-ext"/></svg></span>
+      </a>
+      <a class="url-row" href="#">
+        <span class="favicon"><svg width="15" height="15"><use href="#i-globe"/></svg></span>
+        <span class="u-main">
+          <div class="u-top">
+            <span class="u-host">codecademy.com</span>
+            <span class="cat is-sage">Docs</span>
+            <span class="u-count">6 visits</span>
+          </div>
+          <div class="u-query">Hash Maps: Introduction — Learn Data Structures</div>
+        </span>
+        <span class="u-open"><svg width="14" height="14"><use href="#i-ext"/></svg></span>
+      </a>
+      <a class="url-row" href="#">
+        <span class="favicon"><svg width="15" height="15"><use href="#i-globe"/></svg></span>
+        <span class="u-main">
+          <div class="u-top">
+            <span class="u-host">medium.com</span>
+            <span class="cat">Article</span>
+            <span class="u-count">3 visits</span>
+          </div>
+          <div class="u-query">A gentle introduction to data structures and Big-O</div>
+        </span>
+        <span class="u-open"><svg width="14" height="14"><use href="#i-ext"/></svg></span>
+      </a>
+      <button class="urls-more">Show all 15 visits</button>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
