@@ -41,6 +41,8 @@ const URL_FLUSH_ALARM = "focusquote.urls.flush"
 const ACTION_FLUSH_ALARM = "focusquote.actions.flush"
 const URL_FLUSH_PERIOD_MIN = 0.5 // 30s
 const CONTEXT_MENU_ID = "focusquote.saveQuote"
+const CONTEXT_MENU_IMAGE_ID = "focusquote.saveImage"
+const ACTIVE_SESSION_KEY = "focusquote.activeSession"
 
 const ServicesLayer = Layer.mergeAll(
   StorageService.Default,
@@ -147,10 +149,11 @@ const handleSessionStart = (msg: RuntimeMessage) =>
     const syncSvc = yield* SyncService
     yield* syncSvc.drain.pipe(Effect.either)
 
-    // Open real-time event channel for AI nudges. Best-effort; tracker
-    // still records URLs even if stream fails.
-    const stream = yield* RealtimeStreamService
-    yield* stream.open(session.id).pipe(Effect.catchAll(() => Effect.void))
+    // TEMPORARILY DISABLED — distraction detection paused. The real-time SSE
+    // channel only carried AI distraction nudges, so it's off while paused.
+    // Re-enable together with URL tracking + the server classifier.
+    // const stream = yield* RealtimeStreamService
+    // yield* stream.open(session.id).pipe(Effect.catchAll(() => Effect.void))
   })
 
 const handleSessionCancel = Effect.gen(function* () {
@@ -302,14 +305,19 @@ const handleActionEvent = (msg: ActionEventMessage) =>
 
 const handleSpaNav = (msg: SpaNavMessage, sender: chrome.runtime.MessageSender) =>
   Effect.gen(function* () {
-    const details = {
-      frameId: 0,
-      tabId: sender.tab?.id ?? -1,
-      url: msg.url,
-      title: msg.title,
-      content: msg.content,
-    }
-    yield* handleNavigation(details)
+    // TEMPORARILY DISABLED — distraction-detection URL tracking is paused.
+    // The SPA-nav bridge still feeds the session action log below; only the
+    // URL-tracking call is commented out. Re-enable with the rest of the
+    // distraction pipeline.
+    // const details = {
+    //   frameId: 0,
+    //   tabId: sender.tab?.id ?? -1,
+    //   url: msg.url,
+    //   title: msg.title,
+    //   content: msg.content,
+    // }
+    // yield* handleNavigation(details)
+    void sender
     const sessions = yield* SessionsService
     const active = yield* sessions.getActive.pipe(Effect.orElseSucceed(() => null))
     if (!active) return
@@ -392,7 +400,122 @@ const registerContextMenu = () => {
       title: "Save to FocusQuote",
       contexts: ["selection"],
     })
+    chrome.contextMenus.create({
+      id: CONTEXT_MENU_IMAGE_ID,
+      title: "Save image to FocusQuote vault",
+      contexts: ["image"],
+    })
   })
+}
+
+/** Read the active focus session id (set by the popup/background timer). */
+const readActiveSessionId = async (): Promise<string | null> => {
+  try {
+    const out = await chrome.storage.local.get(ACTIVE_SESSION_KEY)
+    const active = out?.[ACTIVE_SESSION_KEY] as { sessionId?: unknown } | null
+    const id = active?.sessionId
+    return typeof id === "string" ? id : null
+  } catch {
+    return null
+  }
+}
+
+/** base64-encode binary image bytes in the worker (no FileReader/DOM here). */
+const bytesToBase64 = (bytes: Uint8Array): string => {
+  let binary = ""
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}
+
+const toastTab = (
+  tabId: number | undefined,
+  message: string,
+  variant: "info" | "error" = "info",
+) => {
+  if (tabId === undefined) return
+  void chrome.tabs
+    .sendMessage(tabId, { type: "focusquote.toast", message, variant })
+    .catch(() => {})
+}
+
+/**
+ * Right-click → "Save image to vault". Fetches the image bytes (the SW holds
+ * <all_urls> host permission so cross-origin fetch is allowed), stores them in
+ * the media bucket, then records a kind="image" vault item. With an active
+ * session the item is pending (promoted at session end); otherwise it lands in
+ * "Uncategorized". The image's source page URL is kept in `body` for context.
+ */
+const handleSaveImage = async (
+  info: chrome.contextMenus.OnClickData,
+  tab: chrome.tabs.Tab | undefined,
+): Promise<void> => {
+  const tabId = tab?.id
+  const srcUrl = info.srcUrl
+  if (!srcUrl) {
+    toastTab(tabId, "Couldn't read that image.", "error")
+    return
+  }
+  try {
+    const res = await fetch(srcUrl)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const blob = await res.blob()
+    const mimeType =
+      blob.type && blob.type.startsWith("image/") ? blob.type : "image/png"
+    const dataBase64 = bytesToBase64(new Uint8Array(await blob.arrayBuffer()))
+    const byteSize = Math.floor((dataBase64.length * 3) / 4)
+    const sessionId = await readActiveSessionId()
+
+    // 1) Store the bytes in the media bucket (creates the user media ref too).
+    const upload = await handleApiProxy({
+      path: "/api/media",
+      method: "POST",
+      body: { kind: "screenshot", mimeType, dataBase64, byteSize, sessionId },
+    })
+    if (!upload.ok) {
+      toastTab(
+        tabId,
+        upload.status === 401
+          ? "Sign in to FocusQuote to save to your vault."
+          : "Couldn't save the image.",
+        "error",
+      )
+      return
+    }
+    const fileId = (upload.data as { file?: { id?: string } } | null)?.file?.id
+    if (!fileId) {
+      toastTab(tabId, "Couldn't save the image.", "error")
+      return
+    }
+
+    // 2) Record a vault item referencing the stored bytes.
+    const save = await handleApiProxy({
+      path: "/api/vault/save",
+      method: "POST",
+      body: {
+        sessionId,
+        kind: "image",
+        body: info.pageUrl ?? srcUrl,
+        title: null,
+        mediaFileId: fileId,
+      },
+    })
+    if (!save.ok) {
+      toastTab(tabId, "Couldn't save the image.", "error")
+      return
+    }
+    toastTab(
+      tabId,
+      sessionId
+        ? "Image saved to this session's vault."
+        : "Image saved to your vault.",
+    )
+  } catch (err) {
+    console.warn("[FocusQuote] save image failed:", err)
+    toastTab(tabId, "Couldn't save that image.", "error")
+  }
 }
 
 // ---- listeners ----
@@ -447,24 +570,36 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // that the user never actually navigated to. handleNavigation re-checks this,
 // but we early-out at the listener boundary too so the runtime never even
 // spins up the Effect runtime for a subframe event.
-chrome.webNavigation.onCompleted.addListener((details) => {
-  if (details.frameId !== 0) return
-  runWithServices(handleNavigation(details)).catch((err) =>
-    console.warn("[FocusQuote] nav handle failed:", err),
-  )
-})
-chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
-  if (details.frameId !== 0) return
-  runWithServices(handleNavigation(details)).catch((err) =>
-    console.warn("[FocusQuote] history nav handle failed:", err),
-  )
-})
+// TEMPORARILY DISABLED — distraction detection paused. These listeners were the
+// entry point for URL tracking (they feed handleNavigation -> UrlTracker.record).
+// Re-enable together with the SPA-nav call, the SSE channel, and the server
+// classifier to turn distraction detection back on.
+// chrome.webNavigation.onCompleted.addListener((details) => {
+//   if (details.frameId !== 0) return
+//   runWithServices(handleNavigation(details)).catch((err) =>
+//     console.warn("[FocusQuote] nav handle failed:", err),
+//   )
+// })
+// chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+//   if (details.frameId !== 0) return
+//   runWithServices(handleNavigation(details)).catch((err) =>
+//     console.warn("[FocusQuote] history nav handle failed:", err),
+//   )
+// })
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId !== CONTEXT_MENU_ID) return
-  runWithServices(handleSaveSelection(info, tab)).catch((err) =>
-    console.error("[FocusQuote] save selection failed:", err),
-  )
+  if (info.menuItemId === CONTEXT_MENU_ID) {
+    runWithServices(handleSaveSelection(info, tab)).catch((err) =>
+      console.error("[FocusQuote] save selection failed:", err),
+    )
+    return
+  }
+  if (info.menuItemId === CONTEXT_MENU_IMAGE_ID) {
+    void handleSaveImage(info, tab).catch((err) =>
+      console.error("[FocusQuote] save image failed:", err),
+    )
+    return
+  }
 })
 
 /**
