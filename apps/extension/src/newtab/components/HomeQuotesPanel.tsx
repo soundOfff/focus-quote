@@ -46,6 +46,12 @@ const detachEff = (quoteId: QuoteId, tagId: TagId) =>
     return yield* tags.detach(quoteId, tagId)
   })
 
+const deleteTagEff = (tagId: TagId) =>
+  Effect.gen(function* () {
+    const tags = yield* TagsService
+    return yield* tags.deleteTag(tagId)
+  })
+
 const removeQuoteEff = (quoteId: QuoteId) =>
   Effect.gen(function* () {
     const quotes = yield* QuotesService
@@ -119,6 +125,20 @@ export function HomeQuotesPanel() {
   const detach = (quoteId: QuoteId, tagId: TagId) => {
     runP(detachEff(quoteId, tagId)).then(reload).catch(() => {})
   }
+  // Deletes the Tag itself (and any sub-tag edges hanging off it). Quotes filed
+  // only under it fall back to Untagged; child tags are promoted to roots.
+  // Irreversible, so confirm first.
+  const deleteTag = (tagId: TagId, name: string) => {
+    if (
+      !window.confirm(
+        `Delete the tag "${name}"? Quotes filed only here move to Untagged and any sub-tags move up a level. This can't be undone.`,
+      )
+    )
+      return
+    if (selected.kind === "tag" && selected.tagId === tagId)
+      setSelected({ kind: "all" })
+    runP(deleteTagEff(tagId)).then(reload).catch(() => {})
+  }
   // Deletes the Quote entirely (distinct from the per-chip ✕, which only removes
   // a tag). Irreversible, so confirm first.
   const deleteQuote = (quoteId: QuoteId) => {
@@ -131,12 +151,16 @@ export function HomeQuotesPanel() {
     setTidyNote(null)
     runP(consolidateEff)
       .then(({ changes }) => {
-        const { merged, renamed, reparented } = changes
-        const total = merged + renamed + reparented
+        const { filed, merged, renamed, reparented } = changes
+        const parts: string[] = []
+        if (filed) parts.push(`${filed} filed`)
+        if (merged) parts.push(`${merged} merged`)
+        if (renamed) parts.push(`${renamed} renamed`)
+        if (reparented) parts.push(`${reparented} re-parented`)
         setTidyNote(
-          total === 0
+          parts.length === 0
             ? "Already tidy — no changes."
-            : `Tidied: ${merged} merged, ${renamed} renamed, ${reparented} re-parented.`,
+            : `Tidied: ${parts.join(", ")}.`,
         )
       })
       .catch(() => setTidyNote("Couldn't tidy right now."))
@@ -212,6 +236,14 @@ export function HomeQuotesPanel() {
               {count}
             </span>
           </button>
+          <button
+            type="button"
+            onClick={() => deleteTag(node.tag.id, node.tag.name)}
+            aria-label={`Delete tag ${node.tag.name}`}
+            class="shrink-0 rounded p-0.5 text-mute opacity-0 transition-opacity hover:text-accent-red focus-visible:opacity-100 group-hover:opacity-100"
+          >
+            <Trash2 size={12} aria-hidden />
+          </button>
         </div>
         {hasChildren && !isCollapsed && (
           <ul>{node.children.map((c) => renderNode(c, depth + 1))}</ul>
@@ -249,7 +281,9 @@ export function HomeQuotesPanel() {
           variant="outline"
           size="sm"
           type="button"
-          disabled={tidying || graph.tags.length < 2}
+          // Useful when there's anything to do: loose quotes to file, or enough
+          // tags to restructure.
+          disabled={tidying || (graph.tags.length < 2 && untaggedIds.size === 0)}
           onClick={tidyNow}
           class="!rounded-md gap-1.5"
         >
