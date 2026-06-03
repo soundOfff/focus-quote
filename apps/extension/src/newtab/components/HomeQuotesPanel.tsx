@@ -2,7 +2,8 @@ import { Effect } from "effect"
 import {
   ChevronDown,
   ChevronRight,
-  ExternalLink,
+  List,
+  Network,
   Plus,
   Sparkles,
   Trash2,
@@ -19,7 +20,8 @@ import type {
 import { QuotesService } from "../../services/quotes"
 import { TagsService } from "../../services/tags"
 import { runP } from "../runtime"
-import { Button, EmptyState, Progress } from "../../ui/primitives"
+import { Button, EmptyState, Progress, Segmented } from "../../ui/primitives"
+import { KnowledgeGraph } from "./KnowledgeGraph"
 import {
   UNTAGGED_LABEL,
   buildTagTree,
@@ -95,6 +97,9 @@ const tidyBar = (
 const cx = (...parts: Array<string | false | null | undefined>) =>
   parts.filter(Boolean).join(" ")
 
+type QuotesView = "list" | "graph"
+const VIEW_KEY = "focusquote.quotes.view"
+
 const selectionEq = (a: TagSelection, b: TagSelection) =>
   a.kind === b.kind && (a.kind !== "tag" || a.tagId === (b as { tagId: string }).tagId)
 
@@ -102,6 +107,7 @@ export function HomeQuotesPanel() {
   const [quotes, setQuotes] = useState<ReadonlyArray<Quote>>([])
   const [graph, setGraph] = useState<TagGraph>(EMPTY_GRAPH)
   const [ready, setReady] = useState(false)
+  const [view, setView] = useState<QuotesView>("list")
   const [selected, setSelected] = useState<TagSelection>({ kind: "all" })
   const [includeSubTags, setIncludeSubTags] = useState(true)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
@@ -124,6 +130,21 @@ export function HomeQuotesPanel() {
   useEffect(() => {
     reload()
   }, [])
+
+  useEffect(() => {
+    chrome.storage?.local
+      ?.get(VIEW_KEY)
+      .then((r) => {
+        const v = r?.[VIEW_KEY]
+        if (v === "list" || v === "graph") setView(v)
+      })
+      .catch(() => {})
+  }, [])
+
+  const setViewPersist = (next: QuotesView) => {
+    setView(next)
+    chrome.storage?.local?.set({ [VIEW_KEY]: next }).catch(() => {})
+  }
 
   const tree = useMemo(() => buildTagTree(graph), [graph])
   const untaggedIds = useMemo(
@@ -287,29 +308,33 @@ export function HomeQuotesPanel() {
 
   return (
     <div class="flex flex-col gap-3">
-      {/* Toolbar: roll-up toggle + Tidy now */}
+      {/* Toolbar: List/Graph mode + Tidy now */}
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <button
-          type="button"
-          role="switch"
-          aria-checked={includeSubTags}
-          onClick={() => setIncludeSubTags((v) => !v)}
-          class={cx(
-            "inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-1 text-xs font-medium transition-colors",
-            includeSubTags
-              ? "border-ink bg-surface-soft text-ink"
-              : "border-hairline text-mute hover:text-body",
-          )}
-        >
-          <span
-            class={cx(
-              "h-2 w-2 rounded-full",
-              includeSubTags ? "bg-primary" : "bg-hairline",
-            )}
-            aria-hidden
-          />
-          Include sub-tags
-        </button>
+        <Segmented
+          size="sm"
+          value={view}
+          onChange={setViewPersist}
+          items={[
+            {
+              value: "list",
+              ariaLabel: "List view",
+              label: (
+                <span class="inline-flex items-center gap-1.5">
+                  <List size={13} aria-hidden /> List
+                </span>
+              ),
+            },
+            {
+              value: "graph",
+              ariaLabel: "Graph view",
+              label: (
+                <span class="inline-flex items-center gap-1.5">
+                  <Network size={13} aria-hidden /> Graph
+                </span>
+              ),
+            },
+          ]}
+        />
         <Button
           variant="outline"
           size="sm"
@@ -340,145 +365,186 @@ export function HomeQuotesPanel() {
         tidyNote && <p class="text-[11px] text-mute">{tidyNote}</p>
       )}
 
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
-        {/* Tag tree */}
-        <nav class="flex flex-col gap-0.5" aria-label="Tags">
+      {view === "graph" ? (
+        <KnowledgeGraph
+          quotes={quotes}
+          graph={graph}
+          onShowInList={(tagId) => {
+            setViewPersist("list")
+            setSelected({ kind: "tag", tagId })
+          }}
+          onDeleteTag={(tagId, name) => deleteTag(tagId as TagId, name)}
+        />
+      ) : (
+        <>
+          {/* Roll-up toggle (list view only) */}
           <button
             type="button"
-            onClick={() => setSelected({ kind: "all" })}
-            aria-pressed={selected.kind === "all"}
+            role="switch"
+            aria-checked={includeSubTags}
+            onClick={() => setIncludeSubTags((v) => !v)}
             class={cx(
-              "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-              selected.kind === "all"
-                ? "bg-surface-soft text-ink"
-                : "text-mute hover:text-body",
+              "inline-flex w-fit items-center gap-1.5 rounded-pill border px-2.5 py-1 text-xs font-medium transition-colors",
+              includeSubTags
+                ? "border-ink bg-surface-soft text-ink"
+                : "border-hairline text-mute hover:text-body",
             )}
           >
-            <span class="flex-1 text-left">All quotes</span>
-            <span class="tabular-nums text-[11px] text-mute">
-              {quotes.length}
-            </span>
-          </button>
-          {tree.length > 0 && <ul class="flex flex-col">{tree.map((n) => renderNode(n, 0))}</ul>}
-          {untaggedIds.size > 0 && (
-            <button
-              type="button"
-              onClick={() => setSelected({ kind: "untagged" })}
-              aria-pressed={selected.kind === "untagged"}
+            <span
               class={cx(
-                "mt-0.5 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                selected.kind === "untagged"
-                  ? "bg-surface-soft text-ink"
-                  : "text-mute hover:text-body",
+                "h-2 w-2 rounded-full",
+                includeSubTags ? "bg-primary" : "bg-hairline",
               )}
-            >
-              <span class="flex-1 text-left">{UNTAGGED_LABEL}</span>
-              <span class="tabular-nums text-[11px] text-mute">
-                {untaggedIds.size}
-              </span>
-            </button>
-          )}
-        </nav>
+              aria-hidden
+            />
+            Include sub-tags
+          </button>
 
-        {/* Quote list */}
-        {visible.length === 0 ? (
-          <p class="px-1 py-6 text-center text-xs text-mute">
-            No quotes under this tag.
-          </p>
-        ) : (
-          <ul class="flex flex-col gap-2">
-            {visible.map((q) => {
-              const qTags = tagsForQuote(graph, q.id)
-              const editing = taggingId === q.id
-              return (
-                <li
-                  key={q.id}
-                  class="group rounded-md border border-hairline bg-surface px-4 py-3"
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
+            {/* Tag tree */}
+            <nav class="flex flex-col gap-0.5" aria-label="Tags">
+              <button
+                type="button"
+                onClick={() => setSelected({ kind: "all" })}
+                aria-pressed={selected.kind === "all"}
+                class={cx(
+                  "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                  selected.kind === "all"
+                    ? "bg-surface-soft text-ink"
+                    : "text-mute hover:text-body",
+                )}
+              >
+                <span class="flex-1 text-left">All quotes</span>
+                <span class="tabular-nums text-[11px] text-mute">
+                  {quotes.length}
+                </span>
+              </button>
+              {tree.length > 0 && (
+                <ul class="flex flex-col">{tree.map((n) => renderNode(n, 0))}</ul>
+              )}
+              {untaggedIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelected({ kind: "untagged" })}
+                  aria-pressed={selected.kind === "untagged"}
+                  class={cx(
+                    "mt-0.5 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                    selected.kind === "untagged"
+                      ? "bg-surface-soft text-ink"
+                      : "text-mute hover:text-body",
+                  )}
                 >
-                  <div class="flex items-start gap-2">
-                    <blockquote class="flex-1 font-serif text-sm font-medium leading-snug text-ink">
-                      {q.text}
-                    </blockquote>
-                    <button
-                      type="button"
-                      onClick={() => deleteQuote(q.id)}
-                      aria-label="Delete quote"
-                      class="shrink-0 rounded p-1 text-mute opacity-0 transition-opacity hover:text-accent-red focus-visible:opacity-100 group-hover:opacity-100"
-                    >
-                      <Trash2 size={13} aria-hidden />
-                    </button>
-                  </div>
-                  <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                    {(q.sourceTitle || q.sourceUrl) && (
-                      <div class="flex items-center gap-1 text-[11px] text-mute">
-                        {q.sourceUrl ? (
-                          <a
-                            href={q.sourceUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="inline-flex items-center gap-0.5 font-medium text-link-blue hover:underline"
-                          >
-                            {q.sourceTitle ?? q.sourceUrl}
-                            {/* <ExternalLink size={10} aria-hidden /> */}
-                          </a>
-                        ) : (
-                          <span>{q.sourceTitle}</span>
-                        )}
-                      </div>
-                    )}
+                  <span class="flex-1 text-left">{UNTAGGED_LABEL}</span>
+                  <span class="tabular-nums text-[11px] text-mute">
+                    {untaggedIds.size}
+                  </span>
+                </button>
+              )}
+            </nav>
 
-                    <div class="ml-auto flex flex-wrap items-center gap-1.5">
-                      {qTags.map((t) => (
-                        <span
-                          key={t.id}
-                          class="inline-flex items-center gap-1 rounded-pill border border-hairline px-2 py-0.5 text-[11px] font-medium text-body"
-                        >
-                          {t.name}
-                          <button
-                            type="button"
-                            onClick={() => detach(q.id, t.id)}
-                            aria-label={`Remove tag ${t.name}`}
-                            class="text-mute hover:text-ink"
-                          >
-                            <X size={11} aria-hidden />
-                          </button>
-                        </span>
-                      ))}
-                      {editing ? (
-                        <input
-                          type="text"
-                          value={tagInput}
-                          placeholder="Tag name"
-                          autoFocus
-                          onInput={(e) =>
-                            setTagInput((e.currentTarget as HTMLInputElement).value)
-                          }
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") commitTag(q.id)
-                            if (e.key === "Escape") setTaggingId(null)
-                          }}
-                          onBlur={() => commitTag(q.id)}
-                          class="h-7 w-32 rounded-md border border-hairline-soft bg-canvas px-2 text-xs text-ink outline-none focus:ring-1 focus:ring-focus-ring/70"
-                        />
-                      ) : (
+            {/* Quote list */}
+            {visible.length === 0 ? (
+              <p class="px-1 py-6 text-center text-xs text-mute">
+                No quotes under this tag.
+              </p>
+            ) : (
+              <ul class="flex flex-col gap-2">
+                {visible.map((q) => {
+                  const qTags = tagsForQuote(graph, q.id)
+                  const editing = taggingId === q.id
+                  return (
+                    <li
+                      key={q.id}
+                      class="group rounded-md border border-hairline bg-surface px-4 py-3"
+                    >
+                      <div class="flex items-start gap-2">
+                        <blockquote class="flex-1 font-serif text-sm font-medium leading-snug text-ink">
+                          {q.text}
+                        </blockquote>
                         <button
                           type="button"
-                          onClick={() => beginTagging(q.id)}
-                          aria-label="Add tag"
-                          class="inline-flex items-center gap-1 rounded-pill border border-dashed border-hairline px-2 py-0.5 text-[11px] font-medium text-mute transition-colors hover:border-hairline hover:text-body"
+                          onClick={() => deleteQuote(q.id)}
+                          aria-label="Delete quote"
+                          class="shrink-0 rounded p-1 text-mute opacity-0 transition-opacity hover:text-accent-red focus-visible:opacity-100 group-hover:opacity-100"
                         >
-                          <Plus size={11} aria-hidden />
-                          Tag
+                          <Trash2 size={13} aria-hidden />
                         </button>
-                      )}
-                    </div>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </div>
+                      </div>
+                      <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                        {(q.sourceTitle || q.sourceUrl) && (
+                          <div class="flex items-center gap-1 text-[11px] text-mute">
+                            {q.sourceUrl ? (
+                              <a
+                                href={q.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="inline-flex items-center gap-0.5 font-medium text-link-blue hover:underline"
+                              >
+                                {q.sourceTitle ?? q.sourceUrl}
+                                {/* <ExternalLink size={10} aria-hidden /> */}
+                              </a>
+                            ) : (
+                              <span>{q.sourceTitle}</span>
+                            )}
+                          </div>
+                        )}
+
+                        <div class="ml-auto flex flex-wrap items-center gap-1.5">
+                          {qTags.map((t) => (
+                            <span
+                              key={t.id}
+                              class="inline-flex items-center gap-1 rounded-pill border border-hairline px-2 py-0.5 text-[11px] font-medium text-body"
+                            >
+                              {t.name}
+                              <button
+                                type="button"
+                                onClick={() => detach(q.id, t.id)}
+                                aria-label={`Remove tag ${t.name}`}
+                                class="text-mute hover:text-ink"
+                              >
+                                <X size={11} aria-hidden />
+                              </button>
+                            </span>
+                          ))}
+                          {editing ? (
+                            <input
+                              type="text"
+                              value={tagInput}
+                              placeholder="Tag name"
+                              autoFocus
+                              onInput={(e) =>
+                                setTagInput(
+                                  (e.currentTarget as HTMLInputElement).value,
+                                )
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") commitTag(q.id)
+                                if (e.key === "Escape") setTaggingId(null)
+                              }}
+                              onBlur={() => commitTag(q.id)}
+                              class="h-7 w-32 rounded-md border border-hairline-soft bg-canvas px-2 text-xs text-ink outline-none focus:ring-1 focus:ring-focus-ring/70"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => beginTagging(q.id)}
+                              aria-label="Add tag"
+                              class="inline-flex items-center gap-1 rounded-pill border border-dashed border-hairline px-2 py-0.5 text-[11px] font-medium text-mute transition-colors hover:border-hairline hover:text-body"
+                            >
+                              <Plus size={11} aria-hidden />
+                              Tag
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
     </div>
   )
 }
