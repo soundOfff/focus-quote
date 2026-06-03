@@ -284,7 +284,15 @@ const DEFAULTS: SimConfig = {
   velocityDecay: 0.6,
   alphaDecay: 0.0228,
   alphaMin: 0.0018,
-  collidePadding: 3,
+  // Resting edge-gap between nodes. Repulsion and gravity both fade with alpha,
+  // so at rest this positional pass is the *only* thing holding nodes apart —
+  // it sets the floor that the whole cloud packs down to. 12 gives every node
+  // real breathing room (≈4× the old 3px) without inflating the footprint.
+  // Keep this well under ~14: the shove is alpha-independent, so too large a
+  // value injects energy the cooling schedule can't damp and the layout blows
+  // apart (measured: 14 diverges within the live tick budget; 12 stays stable
+  // past 2000 ticks even with quote leaves shown).
+  collidePadding: 12,
 }
 
 export interface Simulation {
