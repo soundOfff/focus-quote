@@ -583,19 +583,24 @@ const callResourcesOnce = async (
 
 /**
  * Canonicalize a URL for "same-page" comparison (ADR-0004 Layer A exclusion):
- * lowercase the host, drop the fragment, and ignore a trailing slash so trivial
- * variants of the same page collapse to one key. Falls back to a trimmed,
- * lowercased string for inputs the URL parser rejects.
+ * scheme-agnostic (http and https are the same page), lowercase host with a
+ * leading "www." stripped so apex and www collapse, fragment dropped, and a
+ * trailing slash ignored — so trivial variants of the same page reduce to one
+ * key. Falls back to a trimmed, lowercased string for inputs the URL parser
+ * rejects.
  */
 export const normalizeUrl = (u: string): string => {
   try {
     const url = new URL(u.trim())
+    const host = url.host.toLowerCase().replace(/^www\./, "")
     const path = url.pathname.replace(/\/+$/, "")
-    return `${url.protocol}//${url.host.toLowerCase()}${path}${url.search}`
+    return `${host}${path}${url.search}`
   } catch {
     return u
       .trim()
       .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/^www\./, "")
       .replace(/#.*$/, "")
       .replace(/\/+$/, "")
   }
@@ -617,6 +622,25 @@ export const dropExcludedRecommendations = (
 const MIN_RECOMMENDATIONS = 3
 const MAX_RECOMMENDATIONS = 5
 
+/**
+ * Vault-first gate (ADR-0004 #38): resource recommendations need *some* material
+ * to ground or constrain generation. Generate when this session has tracked
+ * visits or seed saves, OR when the resolved Topic already carries a known-set
+ * to exclude — so a Topic whose Vault holds only *earlier* sessions' saves still
+ * produces output, keeping this gate aligned with the caller's "has material"
+ * decision rather than silently returning null.
+ */
+export const hasResourceMaterial = (
+  input: StudyInput,
+  opts: {
+    excludeUrls?: ReadonlyArray<string>
+    vault?: ReadonlyArray<ResourceVaultSeed>
+  },
+): boolean =>
+  input.urls.length > 0 ||
+  (opts.vault?.length ?? 0) > 0 ||
+  (opts.excludeUrls?.length ?? 0) > 0
+
 export const generateResourceRecommendations = async (
   input: StudyInput,
   opts: {
@@ -626,10 +650,11 @@ export const generateResourceRecommendations = async (
     vault?: ReadonlyArray<ResourceVaultSeed>
   } = {},
 ): Promise<ResourceRecommendation[] | null> => {
-  const vault = opts.vault ?? []
   // Vault-first (ADR-0004): produce recommendations from Goal + Topic + Vault
-  // even with zero tracked visits.
-  if (input.urls.length === 0 && vault.length === 0) return null
+  // even with zero tracked visits. A non-empty known-set counts as material, so
+  // a Topic carrying only earlier sessions' saves still generates (#38).
+  if (!hasResourceMaterial(input, opts)) return null
+  const vault = opts.vault ?? []
   // Layer A known-set: visited pages ∪ the caller-supplied Topic Vault URLs.
   const excludeUrls = [...input.urls.map((u) => u.url), ...(opts.excludeUrls ?? [])]
   try {

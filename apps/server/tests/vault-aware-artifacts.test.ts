@@ -113,6 +113,49 @@ describe("Vault-aware completion artifacts (ADR-0004, #38/#39)", () => {
     expect(opts.vault).toHaveLength(2) // the saved URL is excluded
   })
 
+  it("#39: a captionless screenshot (title=null) still feeds recall via its source URL", async () => {
+    const { userId } = await createTestUser()
+    const topicId = await seedTopic(userId)
+    const sessionId = await seedSession(userId, topicId)
+    // Right-click "Save image" saves post title=null with the page URL in body.
+    await seedVaultItem(userId, topicId, sessionId, {
+      kind: "image",
+      body: "https://en.wikipedia.org/wiki/Krebs_cycle",
+      title: null,
+    })
+
+    await maybeGenerateRecallQuestions(userId, sessionId, { onDemand: true })
+
+    expect(h.recall).toHaveBeenCalledTimes(1)
+    const [, opts] = h.recall.mock.calls[0] as unknown as [
+      unknown,
+      { vault: Array<{ kind: string; text: string }> },
+    ]
+    expect(opts.vault).toEqual([
+      { kind: "screenshot", text: "https://en.wikipedia.org/wiki/Krebs_cycle" },
+    ])
+  })
+
+  it("#38: a screenshot's source URL is excluded from recommendations", async () => {
+    const { userId } = await createTestUser()
+    const topicId = await seedTopic(userId)
+    const sessionId = await seedSession(userId, topicId)
+    await seedVaultItem(userId, topicId, sessionId, {
+      kind: "image",
+      body: "https://blog.example.com/the-krebs-cycle",
+      title: "Krebs cycle deep-dive",
+    })
+
+    await maybeGenerateResourceRecommendations(userId, sessionId)
+
+    expect(h.resources).toHaveBeenCalledTimes(1)
+    const [, opts] = h.resources.mock.calls[0] as unknown as [
+      unknown,
+      { excludeUrls: string[] },
+    ]
+    expect(opts.excludeUrls).toContain("https://blog.example.com/the-krebs-cycle")
+  })
+
   it("#38: resources exclude the whole Topic Vault but seed only this session's saves", async () => {
     const { userId } = await createTestUser()
     const topicId = await seedTopic(userId)

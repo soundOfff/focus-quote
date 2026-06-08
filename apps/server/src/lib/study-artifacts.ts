@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm"
+import { and, asc, desc, eq, inArray } from "drizzle-orm"
 import { db } from "../db/client"
 import {
   focusSessions,
@@ -90,11 +90,18 @@ const loadInput = async (userId: string, sessionId: string) => {
 
 /**
  * Load the resolved Topic's Vault — the user's curated, already-known set
- * (ADR-0004). Drives both the Vault-aware artifacts: Resource recommendations
- * exclude/seed from it; Recall draws questions from its notes and screenshots.
- * Returns [] when the session has no Topic yet.
+ * (ADR-0004) — restricted to the given `kinds`. Drives both Vault-aware
+ * artifacts: Resource recommendations exclude/seed from it; Recall draws from
+ * its notes and screenshots. Caps at the 200 most recent matching rows, so each
+ * caller passes only the kinds it consumes (recall: note/image) to stop a flood
+ * of one kind starving another past the cap. Callers pass [] when there is no
+ * Topic yet.
  */
-const loadVaultItems = async (userId: string, topicId: string) =>
+const loadVaultItems = async (
+  userId: string,
+  topicId: string,
+  kinds: ReadonlyArray<string>,
+) =>
   db
     .select({
       kind: topicVaultItems.kind,
@@ -107,6 +114,7 @@ const loadVaultItems = async (userId: string, topicId: string) =>
       and(
         eq(topicVaultItems.userId, userId),
         eq(topicVaultItems.topicId, topicId),
+        inArray(topicVaultItems.kind, kinds),
       ),
     )
     .orderBy(desc(topicVaultItems.createdAt))
@@ -121,8 +129,10 @@ const toRecallNote = (v: VaultItem): RecallVaultNote[] => {
     return text ? [{ kind: "note", text }] : []
   }
   if (v.kind === "image") {
-    // For screenshots the caption lives in `title`; `body` is the source URL.
-    const text = (v.title ?? "").trim()
+    // Screenshots carry the caption in `title`; fall back to the source URL in
+    // `body` so captionless saves (e.g. right-click "Save image", title=null)
+    // still feed recall instead of contributing nothing (#39).
+    const text = (v.title ?? "").trim() || (v.body ?? "").trim()
     return text ? [{ kind: "screenshot", text }] : []
   }
   return []
@@ -186,10 +196,9 @@ const maybeGenerate = async (
 
     // Vault-aware artifacts (Phase 2, ADR-0004): read the resolved Topic's Vault
     // — the user's already-known set — so they work even with zero tracked
-    // visits and can exclude/seed from what the user already saved.
-    const vaultItems = ctx.session.topicId
-      ? await loadVaultItems(userId, ctx.session.topicId)
-      : []
+    // visits and can exclude/seed from what the user already saved. Each branch
+    // loads only the Vault kinds it consumes (see loadVaultItems' row cap).
+    const topicId = ctx.session.topicId
 
     if (artifact === "recallQuestions") {
       const recall = await loadRecallOptions(userId)
@@ -199,6 +208,11 @@ const maybeGenerate = async (
       // session-detail page (onDemand) or hits Regenerate (force).
       if (!opts.force && !opts.onDemand && !recall.auto) return
       // #39: draw recall from the Topic's Vault notes + screenshot captions.
+      // Load only those kinds so a flood of saved URLs can't push them past the
+      // row cap and starve recall of material.
+      const vaultItems = topicId
+        ? await loadVaultItems(userId, topicId, ["note", "image"])
+        : []
       const vault = vaultItems.flatMap(toRecallNote)
       if (ctx.urls.length === 0 && vault.length === 0) return
       const questions = await generateRecallQuestions(input, {
@@ -215,9 +229,14 @@ const maybeGenerate = async (
     // the Topic Vault (topic scope) or already visited this session — done in
     // code below + inside the generator. Layer B: seed novelty from *this
     // session's* Vault saves (session scope).
+    const vaultItems = topicId
+      ? await loadVaultItems(userId, topicId, ["url", "image", "note"])
+      : []
     if (ctx.urls.length === 0 && vaultItems.length === 0) return
     const excludeUrls = vaultItems
-      .filter((v) => v.kind === "url")
+      // url items hold the page URL; image items hold their source page URL in
+      // `body` (schema) — both are part of the already-known set to exclude.
+      .filter((v) => v.kind === "url" || v.kind === "image")
       .map((v) => v.body)
     const seed: ResourceVaultSeed[] = vaultItems
       .filter((v) => v.sessionId === sessionId)
