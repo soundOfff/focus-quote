@@ -12,14 +12,7 @@ import {
 } from "../db/schema"
 import { requireUser, type RequireUserVariables } from "../middleware/require-user"
 import { SyncBatchInput, type SyncJobInput } from "../lib/api-schemas"
-import { maybeGenerateSummary } from "../lib/summary"
-import {
-  maybeGenerateRecallQuestions,
-  maybeGenerateResourceRecommendations,
-  maybeGenerateStudyTips,
-} from "../lib/study-artifacts"
-import { maybeGenerateTitle, maybeGenerateTopic } from "../lib/topic"
-import { flushPendingSessionVault } from "../lib/vault"
+import { runCompletionDownstream } from "../lib/completion"
 import {
   attachQuoteTag,
   deleteTag,
@@ -61,9 +54,9 @@ export const syncRoutes = new Hono<{ Variables: RequireUserVariables }>()
       }
     }
 
-    // After the batch applies, kick off summary generation for any session
-    // that just became completed. URL upserts in the same batch land first,
-    // so summarizeSession sees the full visit history. Fire-and-forget.
+    // After the batch applies, run the two-phase completion pipeline (ADR-0004)
+    // for any session that just became completed. URL upserts in the same batch
+    // land first, so generation sees the full visit history. Fire-and-forget.
     const completedIds = new Set<string>()
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i]!
@@ -73,17 +66,7 @@ export const syncRoutes = new Hono<{ Variables: RequireUserVariables }>()
       completedIds.add(job.id)
     }
     for (const id of completedIds) {
-      void maybeGenerateSummary(userId, id)
-      void maybeGenerateStudyTips(userId, id)
-      void maybeGenerateRecallQuestions(userId, id)
-      void maybeGenerateResourceRecommendations(userId, id)
-      // Resolve the topic, THEN promote any pending vault items into it (or
-      // "Uncategorized"). Sequenced so the flush sees the resolved topicId.
-      void maybeGenerateTopic(userId, id)
-        .then(() => flushPendingSessionVault(userId, id))
-        .catch(() => {})
-      // Self-gated + only writes when the goal is empty (issue #9).
-      void maybeGenerateTitle(userId, id)
+      void runCompletionDownstream(userId, id)
     }
 
     // File pending quotes into the Tag graph (ADR 0003). We sweep the user's

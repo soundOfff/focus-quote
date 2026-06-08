@@ -25,7 +25,6 @@ import {
   parseStudyTips,
 } from "../lib/study-artifacts"
 import {
-  maybeAutoDeriveGoal,
   maybeGenerateTitle,
   maybeGenerateTopic,
 } from "../lib/topic"
@@ -33,7 +32,7 @@ import {
   flushPendingSessionVault,
   saveSessionVaultItem,
 } from "../lib/vault"
-import { aiFeatureEnabledForUser } from "../lib/ai-gate"
+import { runCompletionDownstream } from "../lib/completion"
 import { gradeRecallAnswer } from "../lib/llm"
 
 const VaultLinkInput = z.object({
@@ -175,38 +174,11 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
       .limit(1)
     if (!row) return c.json({ error: "Upsert failed" }, 500)
 
-    // If the upsert just marked the session complete, kick off summary
-    // generation (fire-and-forget — generation may take a few seconds and
-    // we don't want to block the response).
+    // If the upsert just marked the session complete, run the two-phase
+    // completion pipeline (ADR-0004). Fire-and-forget — generation may take a
+    // few seconds and we don't want to block the response.
     if (row.completed) {
-      // When the user set no goal, one of two AI fillers labels the session:
-      // an opt-in auto-Title (issue #9) or, by default, an auto-derived Goal.
-      // Only one runs so we never double-spend or compete for the label.
-      const hasGoal = (row.goal ?? "").trim().length > 0
-      const downstream = async () => {
-        const autoTitle =
-          !hasGoal && (await aiFeatureEnabledForUser(userId, "autoTitle"))
-        if (!hasGoal && !autoTitle) await maybeAutoDeriveGoal(userId, row.id)
-        if (!row.summary) void maybeGenerateSummary(userId, row.id)
-        if (!row.studyTips) void maybeGenerateStudyTips(userId, row.id)
-        if (!row.recallQuestions)
-          void maybeGenerateRecallQuestions(userId, row.id)
-        if (!row.resourceRecommendations)
-          void maybeGenerateResourceRecommendations(userId, row.id)
-        // Topic feeds the title prompt, so on the auto-title path resolve it
-        // first (awaited) before deriving the title.
-        if (autoTitle) {
-          if (!row.topic) await maybeGenerateTopic(userId, row.id)
-          await maybeGenerateTitle(userId, row.id)
-        } else if (!row.topic) {
-          await maybeGenerateTopic(userId, row.id)
-        }
-        // Topic is now resolved (or stayed empty) — promote any vault items the
-        // user saved during the session into its topic, falling back to
-        // "Uncategorized" so nothing saved mid-session is ever lost.
-        await flushPendingSessionVault(userId, row.id)
-      }
-      void downstream()
+      void runCompletionDownstream(userId, row.id)
     }
 
     return c.json({ session: toSessionDTO(row) }, 200)
