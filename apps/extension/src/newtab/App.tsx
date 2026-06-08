@@ -11,6 +11,7 @@ import {
   loadTodayGoal,
   saveTheme,
   saveTodayGoal,
+  subscribeThemeChanges,
 } from "../shared/theme"
 import {
   ensurePrefsMigrated,
@@ -212,6 +213,16 @@ function AppInner() {
     chrome.runtime.onMessage.addListener(onMessage)
     return () => chrome.runtime.onMessage.removeListener(onMessage)
   }, [toast])
+
+  // Sync the theme live when changed elsewhere (popup, options).
+  useEffect(
+    () =>
+      subscribeThemeChanges((next) => {
+        setTheme(next)
+        applyTheme(next)
+      }),
+    [],
+  )
 
   const handleToggleTheme = useCallback(() => {
     const next: Theme = theme === "dark" ? "light" : "dark"

@@ -24,7 +24,7 @@ import {
   saveOpenrouterKey as saveOpenrouterKeyRemote,
   type OpenrouterKeyState,
 } from "../shared/settings"
-import { applyTheme } from "../shared/theme"
+import { applyTheme, subscribeThemeChanges } from "../shared/theme"
 import { useDebounce } from "../shared/use-debounce"
 import {
   defaultPrefs,
@@ -284,6 +284,16 @@ function AppInner() {
       })
       .catch(() => {})
   }, [])
+
+  // Sync the theme live when changed elsewhere (popup, newtab).
+  useEffect(
+    () =>
+      subscribeThemeChanges((theme) => {
+        setPrefs((prev) => ({ ...prev, theme }))
+        applyTheme(theme)
+      }),
+    [],
+  )
 
   const handleTabChange = (next: OptionsTab) => {
     setActiveTab(next)

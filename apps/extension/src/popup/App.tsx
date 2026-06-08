@@ -29,7 +29,11 @@ import {
   saveProfilePrefs,
 } from "../shared/profile"
 import { ensureOpenrouterMigrated } from "../shared/settings"
-import { applyTheme, loadTodayGoal } from "../shared/theme"
+import {
+  applyTheme,
+  loadTodayGoal,
+  subscribeThemeChanges,
+} from "../shared/theme"
 import { runP } from "./runtime"
 // TEMPORARILY DISABLED — distraction detection paused (no AI token spend).
 // import { useAnalysisInsight } from "./components/AnalysisPanel"
@@ -232,6 +236,17 @@ function AppInner() {
 
     refreshAuth()
   }, [])
+
+  // Re-apply the theme live when it changes in another context (newtab,
+  // options) so the popup never shows a stale scheme.
+  useEffect(
+    () =>
+      subscribeThemeChanges((theme) => {
+        setPrefs((prev) => ({ ...prev, theme }))
+        applyTheme(theme)
+      }),
+    [],
+  )
 
   useEffect(() => {
     if (!authReady) return

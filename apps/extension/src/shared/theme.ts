@@ -2,13 +2,41 @@ import { Effect } from "effect"
 import type { StorageService } from "../services/storage"
 import { ApiService } from "../services/api"
 import type { Theme } from "@focus-quote/shared"
-import { loadPrefs, pushPrefsToRemote, savePrefs } from "./prefs"
+import { loadPrefs, PREFS_KEY, pushPrefsToRemote, savePrefs } from "./prefs"
 
 export const TODAY_GOAL_KEY = "focusquote.todayGoal"
 
 export const applyTheme = (theme: Theme) => {
   if (typeof document === "undefined") return
   document.documentElement.classList.toggle("dark", theme === "dark")
+}
+
+/**
+ * Cross-context theme sync. Every extension page persists prefs under a single
+ * `chrome.storage.local` key, so a change made in one context (e.g. the popup)
+ * fires `storage.onChanged` in every other open context. Each root subscribes
+ * to re-apply the theme (and refresh its own controls) without a reload.
+ *
+ * Returns an unsubscribe function for effect cleanup.
+ */
+export const subscribeThemeChanges = (
+  onTheme: (theme: Theme) => void,
+): (() => void) => {
+  if (typeof chrome === "undefined" || !chrome.storage?.onChanged) {
+    return () => {}
+  }
+  const listener = (
+    changes: Record<string, chrome.storage.StorageChange>,
+    area: string,
+  ) => {
+    if (area !== "local") return
+    const change = changes[PREFS_KEY]
+    if (!change) return
+    const next = (change.newValue as { theme?: unknown } | undefined)?.theme
+    if (next === "light" || next === "dark") onTheme(next)
+  }
+  chrome.storage.onChanged.addListener(listener)
+  return () => chrome.storage.onChanged.removeListener(listener)
 }
 
 export const loadTheme = (storage: StorageService) =>
