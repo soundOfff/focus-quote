@@ -11,6 +11,7 @@ import {
 import { emitDebug } from "../shared/debug"
 
 const URL_BUFFER_KEY = "focusquote.urlBuffer"
+const URL_SENT_KEY = "focusquote.urlSent"
 
 /**
  * Buffer entry — same shape as wire-format NewSessionUrl. Stored locally
@@ -22,6 +23,19 @@ type BufferEntry = Schema.Schema.Type<typeof BufferEntry>
 
 const Buffer = Schema.Array(BufferEntry)
 type Buffer = Schema.Schema.Type<typeof Buffer>
+
+/**
+ * Dedupe ledger — the set of `sessionId|url` keys already recorded this
+ * session, kept separately from the buffer because the buffer is wiped on
+ * every flush (~30s). Without this, re-visiting a URL after a flush slipped
+ * past the dedupe and got sent again, surfacing as duplicate rows in history.
+ */
+const SentEntry = Schema.Struct({
+  key: Schema.String,
+  hasContent: Schema.Boolean,
+})
+const SentLog = Schema.Array(SentEntry)
+type SentLog = Schema.Schema.Type<typeof SentLog>
 
 const readBuffer = (storage: StorageService): Effect.Effect<Buffer> =>
   Effect.gen(function* () {
@@ -36,6 +50,20 @@ const readBuffer = (storage: StorageService): Effect.Effect<Buffer> =>
 
 const writeBuffer = (storage: StorageService, buf: Buffer) =>
   storage.set(URL_BUFFER_KEY, buf).pipe(Effect.catchAll(() => Effect.void))
+
+const readSent = (storage: StorageService): Effect.Effect<SentLog> =>
+  Effect.gen(function* () {
+    const raw = yield* storage
+      .get<unknown>(URL_SENT_KEY)
+      .pipe(Effect.catchAll(() => Effect.succeed(null)))
+    if (raw === null) return [] as unknown as SentLog
+    return yield* Schema.decodeUnknown(SentLog)(raw).pipe(
+      Effect.catchAll(() => Effect.succeed([] as unknown as SentLog)),
+    )
+  })
+
+const writeSent = (storage: StorageService, log: SentLog) =>
+  storage.set(URL_SENT_KEY, log).pipe(Effect.catchAll(() => Effect.void))
 
 export class UrlTrackerService extends Effect.Service<UrlTrackerService>()(
   "UrlTrackerService",
@@ -86,16 +114,18 @@ export class UrlTrackerService extends Effect.Service<UrlTrackerService>()(
             visitedAt: new Date().toISOString(),
           }
           const buf = yield* readBuffer(storage)
-          // Dedupe: same session + url already buffered within last 10 min
-          const cutoff = Date.now() - 10 * 60_000
-          const isRecentDup = buf.some(
-            (e) =>
-              e.sessionId === entry.sessionId &&
-              e.url === entry.url &&
-              !((entry.content?.length ?? 0) > 0 && !(e.content?.length ?? 0)) &&
-              new Date(e.visitedAt).getTime() > cutoff,
-          )
-          if (isRecentDup) {
+          // Dedupe against every URL already recorded for this session, not
+          // just the current in-memory buffer. The buffer is wiped on each
+          // flush (~30s), so a buffer-only check re-sent any URL re-visited
+          // after a flush — those landed as duplicate rows in session history.
+          // The sent ledger persists across flushes for the life of the session.
+          const key = `${entry.sessionId}|${entry.url}`
+          const hasContent = (entry.content?.length ?? 0) > 0
+          const sent = yield* readSent(storage)
+          const prior = sent.find((s) => s.key === key)
+          // A content-bearing visit may still pass once, to upgrade an earlier
+          // content-less capture so the AI gets the page text.
+          if (prior && !(hasContent && !prior.hasContent)) {
             void emitDebug({
               type: "buffer:skip-dedupe",
               hostname: input.hostname,
@@ -103,6 +133,10 @@ export class UrlTrackerService extends Effect.Service<UrlTrackerService>()(
             return
           }
           yield* writeBuffer(storage, [...buf, entry])
+          yield* writeSent(storage, [
+            ...sent.filter((s) => s.key !== key),
+            { key, hasContent },
+          ].slice(-1000) as unknown as SentLog)
           void emitDebug({
             type: "buffer:add",
             hostname: input.hostname,
@@ -171,7 +205,10 @@ export class UrlTrackerService extends Effect.Service<UrlTrackerService>()(
         return { posted: 0, queued: buf.length }
       })
 
-      const clear = writeBuffer(storage, [] as unknown as Buffer)
+      const clear = Effect.gen(function* () {
+        yield* writeBuffer(storage, [] as unknown as Buffer)
+        yield* writeSent(storage, [] as unknown as SentLog)
+      })
 
       return { record, flush, clear }
     }),
