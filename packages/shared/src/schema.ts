@@ -106,6 +106,11 @@ export const Session = Schema.Struct({
   // AI-generated label (issue #9). Server-provided; absent on locally-created
   // sessions, so the key is optional (undefined until the server fills it).
   title: Schema.optional(NullableString),
+  // The session's resolved Topic (issue #34). `topicId` is the stable identity
+  // (ADR-0001); `topic` is the mutable display label. Both are server-provided
+  // and optional — absent on locally-created sessions, null until resolved.
+  topic: Schema.optional(NullableString),
+  topicId: Schema.optional(Schema.NullOr(TopicId)),
   durationMinutes: Schema.Number,
   breakMinutes: Schema.Number,
   completed: Schema.Boolean,

@@ -1,5 +1,5 @@
 import type { ComponentChildren } from "preact"
-import { useEffect, useMemo, useState } from "preact/hooks"
+import { useEffect, useMemo, useRef, useState } from "preact/hooks"
 import { Effect } from "effect"
 import { SessionsService } from "../../services/sessions"
 import { ApiService } from "../../services/api"
@@ -300,14 +300,35 @@ function Panel({
   )
 }
 
+/** Empty-state line that becomes a "Generating…" spinner while the two-phase
+ *  completion pipeline is still settling just after a session finishes (#34). */
+function EmptyNote({
+  generating,
+  label,
+}: {
+  generating?: boolean
+  label: string
+}) {
+  if (generating) {
+    return (
+      <p class="empty-note" style="display:flex;align-items:center;gap:8px">
+        <Icon id="i-refresh" size={13} class="spin" /> Generating…
+      </p>
+    )
+  }
+  return <p class="empty-note">{label}</p>
+}
+
 function SummaryPanel({
   summary,
   onRegenerate,
   regenerating,
+  generating,
 }: {
   summary: string | null
   onRegenerate: () => void
   regenerating: boolean
+  generating?: boolean
 }) {
   return (
     <Panel
@@ -319,7 +340,7 @@ function SummaryPanel({
       {summary ? (
         <p class="summary-text">{summary}</p>
       ) : (
-        <p class="empty-note">No summary generated yet.</p>
+        <EmptyNote generating={generating} label="No summary generated yet." />
       )}
     </Panel>
   )
@@ -329,10 +350,12 @@ function TipsPanel({
   tips,
   onRegenerate,
   regenerating,
+  generating,
 }: {
   tips: ReadonlyArray<string> | null
   onRegenerate: () => void
   regenerating: boolean
+  generating?: boolean
 }) {
   return (
     <Panel
@@ -351,7 +374,7 @@ function TipsPanel({
           ))}
         </ol>
       ) : (
-        <p class="empty-note">No study tips generated yet.</p>
+        <EmptyNote generating={generating} label="No study tips generated yet." />
       )}
     </Panel>
   )
@@ -374,11 +397,13 @@ function RecallPanel({
   questions,
   onRegenerate,
   regenerating,
+  generating,
 }: {
   sessionId: string
   questions: ReadonlyArray<RecallQuestion> | null
   onRegenerate: () => void
   regenerating: boolean
+  generating?: boolean
 }) {
   const total = questions?.length ?? 0
   const [idx, setIdx] = useState(0)
@@ -514,7 +539,10 @@ function RecallPanel({
           )}
         </>
       ) : (
-        <p class="empty-note">No recall questions generated yet.</p>
+        <EmptyNote
+          generating={generating}
+          label="No recall questions generated yet."
+        />
       )}
     </Panel>
   )
@@ -524,10 +552,12 @@ function ReadsPanel({
   resources,
   onRegenerate,
   regenerating,
+  generating,
 }: {
   resources: ReadonlyArray<ResourceRecommendation> | null
   onRegenerate: () => void
   regenerating: boolean
+  generating?: boolean
 }) {
   return (
     <Panel
@@ -568,7 +598,7 @@ function ReadsPanel({
           })}
         </div>
       ) : (
-        <p class="empty-note">No suggested reads yet.</p>
+        <EmptyNote generating={generating} label="No suggested reads yet." />
       )}
     </Panel>
   )
@@ -661,6 +691,12 @@ function UrlsPanel({ urls }: { urls: UrlRow[] }) {
 interface Props {
   sessionId: string
 }
+
+// A session counts as "just finished" (so empty artifact panels show a
+// generating state and we auto-poll) for this long after it ends.
+const RECENTLY_FINISHED_MS = 3 * 60_000
+const GENERATING_POLL_INTERVAL_MS = 3000
+const GENERATING_POLL_LIMIT = 6
 
 // The study artifacts a generate-all run fans out, each mapped to the AI
 // feature that gates it (ADR 0002). "topic" is gated by the master switch only.
@@ -775,9 +811,36 @@ export function SessionDetail({ sessionId }: Props) {
       .finally(() => setGeneratingAll(false))
   }
 
+  const pollRef = useRef(0)
   useEffect(() => {
+    pollRef.current = 0
     refresh()
   }, [sessionId])
+
+  // Just after a session finishes, the two-phase completion pipeline (ADR-0004)
+  // is still generating artifacts in the background. Poll a few times so the
+  // "Generating…" panels fill in without the user hitting Refresh. Self-bounded:
+  // stops once nothing is missing, the recency window lapses, or the cap is hit.
+  useEffect(() => {
+    const sess = data?.session
+    if (!sess) return
+    const recent =
+      sess.completed &&
+      !!sess.endedAt &&
+      Date.now() - new Date(sess.endedAt).getTime() < RECENTLY_FINISHED_MS
+    const missing =
+      !data.summary ||
+      !(data.tips && data.tips.length) ||
+      !(data.questions && data.questions.length) ||
+      !(data.resources && data.resources.length)
+    if (!recent || !missing || pollRef.current >= GENERATING_POLL_LIMIT) return
+    const id = window.setTimeout(() => {
+      pollRef.current += 1
+      refresh()
+    }, GENERATING_POLL_INTERVAL_MS)
+    return () => window.clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh is stable per sessionId
+  }, [data])
 
   const derived = useMemo(() => {
     if (!data?.session) return null
@@ -859,6 +922,13 @@ export function SessionDetail({ sessionId }: Props) {
   )
   const showAiPanels = d.status === "completed" || hasArtifacts
 
+  // A freshly-finished session whose artifacts haven't landed yet should show a
+  // "Generating…" state rather than an empty "No X yet" note (#34).
+  const recentlyFinished =
+    d.status === "completed" &&
+    !!s.endedAt &&
+    Date.now() - new Date(s.endedAt).getTime() < RECENTLY_FINISHED_MS
+
   const statusClass =
     d.status === "completed"
       ? ""
@@ -899,6 +969,14 @@ export function SessionDetail({ sessionId }: Props) {
           </span>
           <h1>{s.goal || s.title || "Untitled session"}</h1>
           <div class="meta">
+            {s.topic && (
+              <>
+                <span class="m">
+                  <Icon id="i-book" size={11} /> {s.topic}
+                </span>
+                <span class="sep">·</span>
+              </>
+            )}
             <span class="m">
               <b>{fmtMinutes(d.plannedMs)}</b> planned
             </span>
@@ -930,22 +1008,30 @@ export function SessionDetail({ sessionId }: Props) {
               summary={data.summary}
               onRegenerate={() => regenerate("summary")}
               regenerating={regenerating.has("summary")}
+              generating={recentlyFinished && !data.summary}
             />
             <TipsPanel
               tips={data.tips}
               onRegenerate={() => regenerate("studyTips")}
               regenerating={regenerating.has("studyTips")}
+              generating={recentlyFinished && !(data.tips && data.tips.length)}
             />
             <RecallPanel
               sessionId={sessionId}
               questions={data.questions}
               onRegenerate={() => regenerate("recallQuestions")}
               regenerating={regenerating.has("recallQuestions")}
+              generating={
+                recentlyFinished && !(data.questions && data.questions.length)
+              }
             />
             <ReadsPanel
               resources={data.resources}
               onRegenerate={() => regenerate("resourceRecommendations")}
               regenerating={regenerating.has("resourceRecommendations")}
+              generating={
+                recentlyFinished && !(data.resources && data.resources.length)
+              }
             />
           </>
         )}

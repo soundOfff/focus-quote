@@ -26,7 +26,7 @@ import { GoalEditor } from "./components/GoalEditor"
 import { SessionsSection } from "./components/SessionsSection"
 import { TopicsSection } from "./components/TopicsSection"
 import { SessionDetail } from "./pages/SessionDetail"
-import { useRoute } from "./router"
+import { useRoute, navigateTo } from "./router"
 import { EmptyState, SkeletonCard } from "../ui/primitives"
 import { AppShell } from "../ui/AppShell"
 import { ToastProvider, useToast } from "../ui/Toast"
@@ -206,7 +206,18 @@ function AppInner() {
       if (type === "focusquote.auth.signedIn") {
         refresh()
       } else if (type === "focusquote.session.finished") {
-        toast.success("Focus session complete.")
+        const sessionId = (msg as { sessionId?: string }).sessionId
+        toast.success(
+          "Focus session complete.",
+          sessionId
+            ? {
+                action: {
+                  label: "View report",
+                  onClick: () => navigateTo(`/session/${sessionId}`),
+                },
+              }
+            : undefined,
+        )
         refresh()
       } else if (type === "focusquote.session.cancelled") {
         toast.info("Session cancelled.")

@@ -8,6 +8,7 @@ import {
   Globe,
   Loader2,
   Sparkles,
+  Tag,
   Timer,
   XCircle,
 } from "lucide-preact"
@@ -249,6 +250,11 @@ export function SessionCard({ session }: CardProps) {
                 )}
               </button>
               <div class="flex items-center gap-2">
+                {session.topic && (
+                  <Badge tone="neutral">
+                    <Tag size={10} /> {session.topic}
+                  </Badge>
+                )}
                 {statusBadge()}
               </div>
             </div>
