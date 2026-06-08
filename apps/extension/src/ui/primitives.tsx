@@ -239,6 +239,7 @@ export function Segmented<T extends string | number>({
   onChange,
   size = "md",
   variant = "neutral",
+  fill = false,
   class: className,
 }: {
   items: ReadonlyArray<SegmentedItem<T>>
@@ -247,13 +248,16 @@ export function Segmented<T extends string | number>({
   size?: "sm" | "md"
   /** "amber" tints the active segment with amber-soft (Appearance picker). */
   variant?: "neutral" | "amber"
+  /** Stretch full-width and give every segment an equal share. */
+  fill?: boolean
   class?: string
 }) {
   return (
     <div
       role="tablist"
       class={cx(
-        "inline-flex shrink-0 overflow-hidden rounded-control border border-rule-2 bg-paper-2",
+        "overflow-hidden rounded-control border border-rule-2 bg-paper-2",
+        fill ? "flex w-full" : "inline-flex shrink-0",
         size === "sm" ? "h-8" : "h-9",
         className,
       )}
@@ -276,6 +280,7 @@ export function Segmented<T extends string | number>({
             onClick={() => onChange(item.value)}
             class={cx(
               "inline-flex h-full min-w-[40px] items-center justify-center gap-1.5 px-3 text-xs leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40",
+              fill && "flex-1 basis-0 min-w-0",
               divider,
               active ? activeChrome : inactiveChrome,
             )}
@@ -603,11 +608,30 @@ export function Toggle({
   enabled,
   onToggle,
   ariaLabel,
+  size = "md",
 }: {
   enabled: boolean
   onToggle: () => void
   ariaLabel: string
+  /** `md` (default) for settings rows; `sm` for compact inline filters. */
+  size?: "sm" | "md"
 }) {
+  const s =
+    size === "sm"
+      ? {
+          button: "h-7 w-10",
+          track: "h-5 w-9",
+          knob: "h-4 w-4",
+          knobOn: "translate-x-4",
+          check: 9,
+        }
+      : {
+          button: "h-11 w-14",
+          track: "h-7 w-12",
+          knob: "h-6 w-6",
+          knobOn: "translate-x-5",
+          check: 11,
+        }
   return (
     <button
       type="button"
@@ -616,13 +640,15 @@ export function Toggle({
       onClick={onToggle}
       aria-label={ariaLabel}
       class={cx(
-        "relative flex h-11 w-14 shrink-0 cursor-pointer items-center justify-center rounded-full border border-transparent bg-transparent transition-[color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas",
+        "relative flex shrink-0 cursor-pointer items-center justify-center rounded-full border border-transparent bg-transparent transition-[color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas",
         "before:absolute before:inset-0 before:rounded-full before:content-['']",
+        s.button,
       )}
     >
       <span
         class={cx(
-          "relative h-7 w-12 overflow-hidden rounded-full border px-0.5 transition-[border-color,background-color,box-shadow] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
+          "relative overflow-hidden rounded-full border px-0.5 transition-[border-color,background-color,box-shadow] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none",
+          s.track,
           enabled
             ? "border-primary bg-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_0_0_1px_rgba(247,165,1,0.35)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_0_0_3px_rgba(247,165,1,0.22)]"
             : "border-hairline bg-surface-doc dark:bg-surface-soft",
@@ -630,14 +656,15 @@ export function Toggle({
       >
         <span
           class={cx(
-            "absolute left-0.5 top-0.5 flex h-6 w-6 items-center justify-center rounded-full border bg-white shadow-[0_2px_6px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.08)] transition-[transform,border-color] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none dark:border-hairline-soft dark:bg-surface dark:shadow-[0_2px_8px_rgba(0,0,0,0.45)]",
+            "absolute left-0.5 top-0.5 flex items-center justify-center rounded-full border bg-white shadow-[0_2px_6px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.08)] transition-[transform,border-color] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none dark:border-hairline-soft dark:bg-surface dark:shadow-[0_2px_8px_rgba(0,0,0,0.45)]",
+            s.knob,
             enabled
-              ? "translate-x-5 border-white/70"
+              ? `${s.knobOn} border-white/70`
               : "translate-x-0 border-hairline",
           )}
         >
           <Check
-            size={11}
+            size={s.check}
             strokeWidth={2.5}
             class={cx(
               "motion-safe:transition-[opacity,transform,filter] motion-safe:duration-200 motion-safe:ease-[cubic-bezier(0.2,0,0,1)]",
