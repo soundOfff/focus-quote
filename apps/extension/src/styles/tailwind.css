@@ -200,6 +200,79 @@
     --scrollbar-track: transparent;
   }
 
+  /**
+   * Light scope — the inverse of `.dark`. Lets a subtree force the light
+   * palette even when an ancestor (`html`) is `.dark`: a custom property is
+   * resolved against the closest element that declares it, so a `.light`
+   * container restores light tokens for its whole subtree. The Quotes graph's
+   * "Light" pane uses this so it reads light regardless of the app theme.
+   * Mirrors `:root`'s light values for exactly the tokens `.dark` overrides;
+   * the legacy `--color-*` aliases auto-track because they resolve through
+   * these var names (same reason the `.dark` block doesn't re-declare them).
+   */
+  .light {
+    color-scheme: light;
+
+    --paper: #FBFAF6;
+    --paper-rgb: 251 250 246;
+    --paper-2: #F4F2EC;
+    --paper-2-rgb: 244 242 236;
+    --paper-3: #ECE9DF;
+    --page: #E9E7E1;
+    --page-rgb: 233 231 225;
+
+    --ink: #1A1814;
+    --ink-rgb: 26 24 20;
+    --ink-2: #3A362F;
+    --ink-2-rgb: 58 54 47;
+    --muted: #807A6F;
+    --muted-rgb: 128 122 111;
+    --muted-2: #B5AEA0;
+    --muted-2-rgb: 181 174 160;
+
+    --rule: #E5E0D5;
+    --rule-rgb: 229 224 213;
+    --rule-2: #D9D3C5;
+    --rule-2-rgb: 217 211 197;
+
+    --amber-soft: #FBE6C8;
+    --amber-soft-rgb: 251 230 200;
+
+    --blue-soft: #E0EBF1;
+    --blue-soft-rgb: 224 235 241;
+    --blue-ink: #2E5C73;
+    --blue-ink-rgb: 46 92 115;
+    --blue-edge: #BCD3DD;
+    --sage-soft: #E1EBDF;
+    --sage-soft-rgb: 225 235 223;
+    --sage-ink: #4A6A47;
+    --sage-ink-rgb: 74 106 71;
+    --sage-edge: #C6D7C2;
+    --clay-soft: #F2DDD3;
+    --clay-soft-rgb: 242 221 211;
+    --clay-ink: #A04B26;
+    --clay-ink-rgb: 160 75 38;
+
+    --popup-border: #DAD3C2;
+    --popup-border-rgb: 218 211 194;
+
+    --shadow-popup:
+      0 1px 0 rgba(255, 255, 255, 0.7) inset,
+      0 12px 28px -12px rgba(40, 30, 15, 0.18),
+      0 2px 6px -2px rgba(40, 30, 15, 0.10);
+    --shadow-toolbar:
+      0 1px 0 rgba(255, 255, 255, 0.7) inset,
+      0 14px 32px -10px rgba(40, 30, 15, 0.22),
+      0 3px 8px -2px rgba(40, 30, 15, 0.10);
+    --shadow-segmented-active: 0 1px 2px rgba(40, 30, 15, 0.08);
+
+    --color-focus-ring: var(--amber-deep-rgb);
+
+    --scrollbar-thumb: rgb(var(--rule-rgb) / 0.72);
+    --scrollbar-thumb-hover: rgb(var(--muted-rgb) / 0.88);
+    --scrollbar-track: transparent;
+  }
+
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;

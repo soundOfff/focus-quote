@@ -27,7 +27,7 @@ import {
   Segmented,
   Toggle,
 } from "../../ui/primitives"
-import { KnowledgeGraph } from "./KnowledgeGraph"
+import { QuotesGraph } from "./QuotesGraph"
 import {
   UNTAGGED_LABEL,
   buildTagTree,
@@ -123,6 +123,8 @@ export function HomeQuotesPanel() {
   const [tidyNote, setTidyNote] = useState<string | null>(null)
   const [tidyProgress, setTidyProgress] =
     useState<ConsolidateProgressEvent | null>(null)
+  // Bumped to re-heat the graph layout when Tidy runs (graph view reads it).
+  const [reheatSignal, setReheatSignal] = useState(0)
 
   const reload = () =>
     runP(loadData)
@@ -208,6 +210,7 @@ export function HomeQuotesPanel() {
     setTidying(true)
     setTidyNote(null)
     setTidyProgress(null)
+    setReheatSignal((n) => n + 1)
     runP(consolidateEff((e) => setTidyProgress(e)))
       .then(({ changes }) => {
         const { filed, merged, renamed, reparented } = changes
@@ -314,8 +317,9 @@ export function HomeQuotesPanel() {
 
   return (
     <div class="flex flex-col gap-3">
-      {/* Toolbar: List/Graph mode + Tidy now */}
-      <div class="flex flex-wrap items-center justify-between gap-2">
+      {/* Toolbar: View toggle · Include sub-tags · Tidy now — one height/radius/
+          border language; Tidy is the surface's single amber accent. */}
+      <div class="flex flex-wrap items-center gap-2">
         <Segmented
           size="sm"
           value={view}
@@ -341,15 +345,24 @@ export function HomeQuotesPanel() {
             },
           ]}
         />
+        <label class="inline-flex h-8 cursor-pointer items-center gap-2 rounded-control border border-rule-2 bg-paper-2 px-2.5 text-xs font-medium text-body">
+          <Toggle
+            size="sm"
+            enabled={includeSubTags}
+            onToggle={() => setIncludeSubTags((v) => !v)}
+            ariaLabel="Include sub-tags"
+          />
+          Include sub-tags
+        </label>
         <Button
-          variant="outline"
+          variant="primary"
           size="sm"
           type="button"
           // Useful when there's anything to do: loose quotes to file, or enough
           // tags to restructure.
           disabled={tidying || (graph.tags.length < 2 && untaggedIds.size === 0)}
           onClick={tidyNow}
-          class="!rounded-md gap-1.5"
+          class="ml-auto !rounded-md gap-1.5"
         >
           <Sparkles size={13} aria-hidden />
           {tidying ? "Tidying…" : "Tidy now"}
@@ -372,9 +385,11 @@ export function HomeQuotesPanel() {
       )}
 
       {view === "graph" ? (
-        <KnowledgeGraph
+        <QuotesGraph
           quotes={quotes}
           graph={graph}
+          includeSubTags={includeSubTags}
+          reheatSignal={reheatSignal}
           onShowInList={(tagId) => {
             setViewPersist("list")
             setSelected({ kind: "tag", tagId })
@@ -383,17 +398,6 @@ export function HomeQuotesPanel() {
         />
       ) : (
         <>
-          {/* Roll-up toggle (list view only) */}
-          <label class="inline-flex w-fit cursor-pointer items-center gap-2 text-xs font-medium text-body">
-            <Toggle
-              size="sm"
-              enabled={includeSubTags}
-              onToggle={() => setIncludeSubTags((v) => !v)}
-              ariaLabel="Include sub-tags"
-            />
-            Include sub-tags
-          </label>
-
           <div class="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
             {/* Tag tree */}
             <nav class="flex flex-col gap-0.5" aria-label="Tags">
