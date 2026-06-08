@@ -17,7 +17,7 @@ A research subject that groups focus sessions sharing a theme and owns a Vault. 
 _Avoid_: Category, folder
 
 **Vault**:
-The information a user keeps under a Topic — text notes, saved URLs, and screenshots — collected for later recall.
+The information a user keeps under a Topic — text notes, saved URLs, and screenshots — the record of what they already hold and know on that Topic.
 _Avoid_: Storage, archive
 
 **Vault item**:
@@ -27,6 +27,10 @@ _Avoid_: Attachment, resource
 **Tracked visit**:
 A page the extension recorded automatically during a session for distraction analysis (`SessionUrl`). Telemetry, not curated knowledge — promoting one into the Vault turns it into a Vault item.
 _Avoid_: Visit, history entry, session URL
+
+**Quote**:
+An important piece of text a user captures from a page to keep. Portable knowledge, filed globally in the Tag graph — independent of any Session or Topic.
+_Avoid_: Highlight, snippet, clip
 
 **Tag**:
 A subject a Quote is filed under. Tags form a graph: a Tag may have several parent Tags, and a Quote may carry several Tags. The AI assigns and maintains them; a Tag a user creates or edits is pinned and the AI leaves it alone. A Tag has a stable identity independent of its name.
