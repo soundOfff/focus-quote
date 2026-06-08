@@ -230,7 +230,7 @@ function VariantB_Settings() {
             { k: "auto",  l: "Auto",  I: IDot },
           ].map((o, i) => (
             <button key={o.k} style={{
-              flex: 1, padding: "9px 8px",
+              flex: 1, flexBasis: 0, minWidth: 0, padding: "9px 8px",
               borderRight: i < 2 ? "1px solid var(--rule)" : "none",
               background: o.active ? "var(--paper)" : "transparent",
               border: "none", borderRadius: 0,
