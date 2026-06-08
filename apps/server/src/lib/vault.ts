@@ -263,7 +263,10 @@ export const saveVaultItem = async (
  * Promote every pending vault item saved during `sessionId` into a Topic Vault
  * under `topicId`. Items keep their stable id, kind, body, title, media link and
  * original createdAt; the pending rows are then removed. Idempotent — a second
- * call finds nothing left to move (insert is conflict-safe on the stable id).
+ * call finds nothing left to move. If an item's stable id already lives under a
+ * *different* Topic (e.g. flushed to "Uncategorized" first, then the session is
+ * reassigned to a real Topic), it is **moved** to `topicId` rather than left
+ * stranded under the old Topic while its pending source row is deleted.
  * Returns how many items were promoted.
  */
 export const promoteSessionVaultItems = async (
@@ -296,7 +299,11 @@ export const promoteSessionVaultItems = async (
         createdAt: p.createdAt,
       })),
     )
-    .onConflictDoNothing()
+    // Upsert the topicId on the stable id: a re-promotion after a manual Topic
+    // reassignment moves the item to the new Topic instead of silently keeping
+    // it under the old one. Every conflicting row in this batch targets the
+    // same `topicId`, so the literal set is correct for all of them.
+    .onConflictDoUpdate({ target: topicVaultItems.id, set: { topicId } })
   await database
     .delete(sessionVaultItems)
     .where(
