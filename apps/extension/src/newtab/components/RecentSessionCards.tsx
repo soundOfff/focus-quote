@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-preact"
+import { ChevronRight, Tag } from "lucide-preact"
 import type { Session } from "@focus-quote/shared"
 import { Badge } from "../../ui/primitives"
 import { navigateTo } from "../router"
@@ -74,6 +74,13 @@ export function RecentSessionCards({
                 <span class="truncate text-sm font-semibold text-ink">
                   {session.goal || session.title || "Session without a goal"}
                 </span>
+                {session.topic && (
+                  <div class="flex">
+                    <Badge tone="neutral">
+                      <Tag size={10} /> {session.topic}
+                    </Badge>
+                  </div>
+                )}
                 <p class="line-clamp-2 text-xs leading-relaxed text-mute">
                   {d.blurb}
                 </p>

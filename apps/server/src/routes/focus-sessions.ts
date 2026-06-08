@@ -417,6 +417,9 @@ const toSessionDTO = (row: typeof focusSessions.$inferSelect) => ({
   id: row.id,
   goal: row.goal,
   title: row.title,
+  // Surface the resolved Topic so the UI can label sessions (issue #34).
+  topic: row.topic,
+  topicId: row.topicId,
   durationMinutes: row.durationMinutes,
   breakMinutes: row.breakMinutes,
   completed: row.completed,

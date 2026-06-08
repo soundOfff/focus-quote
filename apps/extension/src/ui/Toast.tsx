@@ -5,16 +5,27 @@ import { CheckCircle2, AlertTriangle, Info, X } from "lucide-preact"
 
 type ToastKind = "success" | "error" | "info"
 
+/** An optional inline action button (e.g. "View report"). */
+interface ToastAction {
+  label: string
+  onClick: () => void
+}
+
+interface ToastOptions {
+  action?: ToastAction
+}
+
 interface ToastItem {
   id: number
   kind: ToastKind
   message: string
+  action?: ToastAction
 }
 
 interface ToastApi {
-  success: (message: string) => void
-  error: (message: string) => void
-  info: (message: string) => void
+  success: (message: string, opts?: ToastOptions) => void
+  error: (message: string, opts?: ToastOptions) => void
+  info: (message: string, opts?: ToastOptions) => void
 }
 
 const ToastContext = createContext<ToastApi | null>(null)
@@ -23,18 +34,26 @@ const cx = (...parts: Array<string | false | null | undefined>) =>
   parts.filter(Boolean).join(" ")
 
 const TOAST_TTL_MS = 2500
+// Actionable toasts linger longer so the user has time to reach the button.
+const TOAST_ACTION_TTL_MS = 8000
 
 export function ToastProvider({ children }: { children: ComponentChildren }) {
   const [items, setItems] = useState<ToastItem[]>([])
   const idRef = useRef(1)
 
-  const push = useCallback((kind: ToastKind, message: string) => {
-    const id = idRef.current++
-    setItems((prev) => [...prev, { id, kind, message }])
-    window.setTimeout(() => {
-      setItems((prev) => prev.filter((t) => t.id !== id))
-    }, TOAST_TTL_MS)
-  }, [])
+  const push = useCallback(
+    (kind: ToastKind, message: string, opts?: ToastOptions) => {
+      const id = idRef.current++
+      setItems((prev) => [...prev, { id, kind, message, action: opts?.action }])
+      window.setTimeout(
+        () => {
+          setItems((prev) => prev.filter((t) => t.id !== id))
+        },
+        opts?.action ? TOAST_ACTION_TTL_MS : TOAST_TTL_MS,
+      )
+    },
+    [],
+  )
 
   const dismiss = useCallback((id: number) => {
     setItems((prev) => prev.filter((t) => t.id !== id))
@@ -42,9 +61,9 @@ export function ToastProvider({ children }: { children: ComponentChildren }) {
 
   const api = useMemo<ToastApi>(
     () => ({
-      success: (m) => push("success", m),
-      error: (m) => push("error", m),
-      info: (m) => push("info", m),
+      success: (m, opts) => push("success", m, opts),
+      error: (m, opts) => push("error", m, opts),
+      info: (m, opts) => push("info", m, opts),
     }),
     [push],
   )
@@ -101,6 +120,18 @@ function ToastView({
     >
       <Icon size={16} class="mt-0.5 shrink-0" />
       <p class="min-w-0 flex-1 leading-snug">{item.message}</p>
+      {item.action && (
+        <button
+          type="button"
+          onClick={() => {
+            item.action?.onClick()
+            onDismiss()
+          }}
+          class="ml-1 shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold text-link-blue hover:text-link-blue/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70"
+        >
+          {item.action.label}
+        </button>
+      )}
       <button
         type="button"
         aria-label="Dismiss"
