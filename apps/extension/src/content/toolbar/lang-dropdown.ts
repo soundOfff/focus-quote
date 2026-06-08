@@ -13,6 +13,12 @@ export interface LangDropdownHandle {
 export interface LangDropdownOptions {
   currentCode: string
   mode: "from" | "to"
+  /**
+   * The chip that opened this dropdown. Clicks on it are ignored by the
+   * outside-click dismiss handler so the chip's own onClick can toggle the
+   * panel closed (instead of the dismiss racing ahead and reopening it).
+   */
+  anchorEl: HTMLElement
   onSelect: (code: string) => void
   onClose: () => void
 }
@@ -29,7 +35,7 @@ export function openLangDropdown(
   anchorRect: DOMRect,
   options: LangDropdownOptions,
 ): LangDropdownHandle {
-  const { currentCode, mode, onSelect, onClose } = options
+  const { currentCode, mode, anchorEl, onSelect, onClose } = options
   const languages = mode === "from" ? ALL_FROM_LANGUAGES : TRANSLATE_LANGUAGES
 
   const panel = document.createElement("div")
@@ -48,12 +54,6 @@ export function openLangDropdown(
     `font-family:${FONT_SANS}`,
     `color:${tokens.ink}`,
   ].join(";")
-
-  // Position below anchor
-  const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - 196))
-  const top = anchorRect.bottom + 6
-  panel.style.left = `${left}px`
-  panel.style.top = `${top}px`
 
   // Prevent selection collapse
   panel.addEventListener("mousedown", (e) => {
@@ -217,6 +217,10 @@ export function openLangDropdown(
   // Dismiss handlers
   const onDocMouseDown = (e: MouseEvent) => {
     if (panel.contains(e.target as Node)) return
+    // Ignore the chip that owns this dropdown — its onClick toggles us closed.
+    // Without this, the capture-phase mousedown closes us first, then the
+    // chip's click reopens us, so the panel never appears to close on re-click.
+    if (anchorEl.contains(e.target as Node)) return
     close()
   }
   const onKeyDown = (e: KeyboardEvent) => {
@@ -232,6 +236,43 @@ export function openLangDropdown(
   }, 0)
 
   ;(document.documentElement || document.body).appendChild(panel)
+
+  // Position once the panel is in the DOM and measurable. Prefer opening below
+  // the chip, but flip above when there isn't enough room — and cap the scroll
+  // area so the panel never spills past the top/bottom of the viewport.
+  const positionPanel = (): void => {
+    const margin = 8
+    const gap = 6
+    const panelW = panel.offsetWidth || 190
+    const spaceBelow = Math.max(
+      0,
+      window.innerHeight - anchorRect.bottom - gap - margin,
+    )
+    const spaceAbove = Math.max(0, anchorRect.top - gap - margin)
+    const openUp = panel.offsetHeight > spaceBelow && spaceAbove > spaceBelow
+
+    const avail = openUp ? spaceAbove : spaceBelow
+    const chromeH = panel.offsetHeight - rowsContainer.offsetHeight
+    const maxRows = Math.max(96, avail - chromeH)
+    if (rowsContainer.offsetHeight > maxRows) {
+      rowsContainer.style.maxHeight = `${maxRows}px`
+    }
+
+    const panelH = panel.offsetHeight
+    const top = openUp
+      ? Math.max(margin, anchorRect.top - panelH - gap)
+      : Math.max(
+          margin,
+          Math.min(anchorRect.bottom + gap, window.innerHeight - panelH - margin),
+        )
+    const left = Math.max(
+      margin,
+      Math.min(anchorRect.left, window.innerWidth - panelW - margin),
+    )
+    panel.style.left = `${left}px`
+    panel.style.top = `${top}px`
+  }
+  positionPanel()
 
   let closed = false
   function close() {
