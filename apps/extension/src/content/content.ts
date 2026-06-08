@@ -16,6 +16,10 @@ import {
 import { injectHostScrollbarStyles } from "./inject-scrollbar"
 import { injectHostFonts } from "./inject-fonts"
 import { createSelectionBar, type SelectionBar } from "./toolbar/selection-bar"
+import {
+  enableSelectionColor,
+  disableSelectionColor,
+} from "./toolbar/selection-highlight"
 
 // Themed scrollbars for in-page UI (save row, Quote+AI, debug panel, etc.)
 injectHostScrollbarStyles()
@@ -387,7 +391,7 @@ const checkSelection = () => {
     return
   }
   const bar = ensureBar()
-  bar.show(text, rect)
+  bar.show(text, rect, range)
 }
 
 // A shown translation result stays pinned through transient page events
@@ -428,8 +432,14 @@ const onSelectionChange = () => {
   if (isResultPinned()) return
   const sel = window.getSelection()
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+    disableSelectionColor()
     hideBar()
+    return
   }
+  // Recolour the in-progress selection to the brand amber the moment it exists,
+  // so the browser's default-blue selection never flashes before the toolbar.
+  if (isAnyToolActive()) return
+  enableSelectionColor()
 }
 
 const onMouseDown = (e: MouseEvent) => {

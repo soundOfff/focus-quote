@@ -4,6 +4,11 @@ import {
   TRANSLATE_LANGUAGES,
 } from "../../shared/translation"
 import { openLangDropdown, type LangDropdownHandle } from "./lang-dropdown"
+import {
+  enableSelectionColor,
+  disableSelectionColor,
+  paintBridge,
+} from "./selection-highlight"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -11,7 +16,7 @@ import { openLangDropdown, type LangDropdownHandle } from "./lang-dropdown"
 
 export interface SelectionBar {
   root: HTMLDivElement
-  show: (text: string, rect: DOMRect) => void
+  show: (text: string, rect: DOMRect, range?: Range) => void
   hide: () => void
   isVisible: () => boolean
   position: (rect: DOMRect) => void
@@ -257,6 +262,8 @@ const createArrowCap = (): HTMLSpanElement => {
   el.style.cssText = [
     "width:18px",
     "height:24px",
+    // Center within the (taller) chips instead of pinning to the frame top.
+    "align-self:center",
     "display:inline-flex",
     "align-items:center",
     "justify-content:center",
@@ -400,6 +407,7 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
   } = opts
 
   let pendingText = ""
+  let pendingRange: Range | null = null
   let visible = false
   let savedTimeout: ReturnType<typeof setTimeout> | null = null
   let hideTimeout: ReturnType<typeof setTimeout> | null = null
@@ -463,10 +471,14 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
       currentDropdown.close()
       return
     }
+    // The dropdown's filter input will steal focus and collapse the native
+    // selection; bridge the amber highlight with an overlay so it persists.
+    if (pendingRange) paintBridge(pendingRange)
     const rect = fromChip.el.getBoundingClientRect()
     currentDropdown = openLangDropdown(rect, {
       currentCode: fromChip.getLang(),
       mode: "from",
+      anchorEl: fromChip.el,
       onSelect: (code) => {
         fromChip.setLang(code)
         onLanguageChange(code, toChip.getLang())
@@ -482,10 +494,14 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
       currentDropdown.close()
       return
     }
+    // The dropdown's filter input will steal focus and collapse the native
+    // selection; bridge the amber highlight with an overlay so it persists.
+    if (pendingRange) paintBridge(pendingRange)
     const rect = toChip.el.getBoundingClientRect()
     currentDropdown = openLangDropdown(rect, {
       currentCode: toChip.getLang(),
       mode: "to",
+      anchorEl: toChip.el,
       onSelect: (code) => {
         toChip.setLang(code)
         onLanguageChange(fromChip.getLang(), code)
@@ -604,12 +620,16 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
 
   // ---- Public API ----
 
-  const show = (text: string, rect: DOMRect) => {
+  const show = (text: string, rect: DOMRect, range?: Range) => {
     if (hideTimeout) {
       clearTimeout(hideTimeout)
       hideTimeout = null
     }
     pendingText = text
+    pendingRange = range ?? null
+    // Recolour the native selection to the brand amber. It's already on from the
+    // mid-drag selectionchange; this just guarantees it for the popup's life.
+    enableSelectionColor()
     position(rect)
     requestAnimationFrame(() => position(rect))
     root.style.zIndex = String(tokens.zPopover)
@@ -621,6 +641,8 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
 
   const hide = () => {
     if (!visible) return
+    disableSelectionColor()
+    pendingRange = null
     if (currentDropdown) {
       currentDropdown.close()
       currentDropdown = null
