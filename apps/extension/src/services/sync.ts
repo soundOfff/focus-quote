@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect"
 import { StorageService } from "./storage"
 import { ApiService } from "./api"
-import { SyncJob } from "@focus-quote/shared"
+import { SyncJob, type Quote } from "@focus-quote/shared"
 import { SyncError } from "../shared/errors"
 import { AUTH_TOKEN_KEY } from "../shared/auth-storage"
 
@@ -122,6 +122,47 @@ export class SyncService extends Effect.Service<SyncService>()(
         ),
       )
 
+      // Pull server quotes down into local storage. Sync is otherwise
+      // push-only (drain), so without this a fresh profile — or one whose
+      // local storage was cleared — never sees quotes captured on other
+      // devices. Union merge: server-only quotes are added, local-only quotes
+      // (e.g. captured offline and still queued) are kept, and on id overlap
+      // the record with the newer updatedAt wins.
+      const pull: Effect.Effect<{ pulled: number }, SyncError> = Effect.gen(
+        function* () {
+          const token = yield* storage
+            .get<string>(AUTH_TOKEN_KEY)
+            .pipe(Effect.catchAll(() => Effect.succeed(null)))
+          if (!token) return { pulled: 0 }
+
+          // limit 200 is the server's max; covers any realistic local total.
+          const res = yield* api.listQuotes({ limit: 200 })
+          const raw = yield* storage
+            .get<Record<string, Quote>>(QUOTES_KEY)
+            .pipe(Effect.catchAll(() => Effect.succeed(null)))
+          const local =
+            raw && typeof raw === "object" ? raw : ({} as Record<string, Quote>)
+
+          const next: Record<string, Quote> = { ...local }
+          let pulled = 0
+          for (const q of res.quotes) {
+            const existing = next[q.id]
+            if (!existing) {
+              next[q.id] = q
+              pulled++
+            } else if (q.updatedAt > existing.updatedAt) {
+              next[q.id] = q
+            }
+          }
+          if (pulled > 0) yield* storage.set(QUOTES_KEY, next)
+          return { pulled }
+        },
+      ).pipe(
+        Effect.mapError(
+          (cause) => new SyncError({ message: "pull failed", cause }),
+        ),
+      )
+
       const queueSize: Effect.Effect<number, SyncError> = readQueue.pipe(
         Effect.map((q) => q.length),
         Effect.mapError(
@@ -129,7 +170,7 @@ export class SyncService extends Effect.Service<SyncService>()(
         ),
       )
 
-      return { enqueue, drain, queueSize }
+      return { enqueue, drain, pull, queueSize }
     }),
     dependencies: [StorageService.Default, ApiService.Default],
   },

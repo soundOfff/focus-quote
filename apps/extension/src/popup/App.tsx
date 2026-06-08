@@ -11,6 +11,7 @@ import { QuotesService } from "../services/quotes"
 import { TagsService } from "../services/tags"
 import { SessionsService } from "../services/sessions"
 import { StorageService } from "../services/storage"
+import { SyncService } from "../services/sync"
 import { AuthService } from "../services/auth"
 import { ApiService } from "../services/api"
 import {
@@ -130,6 +131,11 @@ const loadPopupExtras = Effect.gen(function* () {
   const storage = yield* StorageService
   const sessions = yield* SessionsService
   const quotes = yield* QuotesService
+  const sync = yield* SyncService
+  // Pull server quotes into local storage before counting/listing, so the
+  // popup reflects quotes synced from other devices — not just what was
+  // captured in this profile. Best-effort: offline/guest just no-ops.
+  yield* sync.pull.pipe(Effect.catchAll(() => Effect.succeed({ pulled: 0 })))
   const [todayGoal, sessionStats, allQuotes] = yield* Effect.all([
     loadTodayGoal(storage),
     sessions.stats,
@@ -510,7 +516,7 @@ function StatsLine({
         class="inline-block h-[3px] w-[3px] rounded-pill bg-muted-2"
       />
       <span>
-        <strong class="font-semibold text-ink-2">{today}</strong> today
+        <strong class="font-semibold text-ink-2">{today}</strong> sessions today
       </span>
       <span
         aria-hidden

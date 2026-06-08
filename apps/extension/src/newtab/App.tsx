@@ -3,6 +3,7 @@ import { Effect } from "effect"
 import { QuotesService } from "../services/quotes"
 import { SessionsService } from "../services/sessions"
 import { StorageService } from "../services/storage"
+import { SyncService } from "../services/sync"
 import { ApiService } from "../services/api"
 import { AuthService } from "../services/auth"
 import {
@@ -52,13 +53,15 @@ const loadAll = Effect.gen(function* () {
   const storage = yield* StorageService
   const api = yield* ApiService
   const auth = yield* AuthService
+  const sync = yield* SyncService
 
   const user = yield* auth.currentUser
   const theme = yield* loadTheme(storage)
 
   // Local-first data is always loaded — quotes and stats live in
-  // chrome.storage and work in guest mode. Only the remote pref pull is
-  // skipped when there's no token.
+  // chrome.storage and work in guest mode. Only the remote pulls (quotes,
+  // prefs) are skipped when there's no token.
+  yield* sync.pull.pipe(Effect.catchAll(() => Effect.succeed({ pulled: 0 })))
   const allQuotes = (yield* quotes.list()) as ReadonlyArray<Quote>
   const sessionStats = yield* sessions.stats
   const recentSessions = yield* sessions.list(12)
