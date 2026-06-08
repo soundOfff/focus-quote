@@ -12,3 +12,6 @@ tsconfig.tsbuildinfo
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Claude Code scheduled-task runtime lock (PID/session, not source)
+.claude/scheduled_tasks.lock
