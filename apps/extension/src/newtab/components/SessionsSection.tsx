@@ -164,15 +164,30 @@ export function SessionCard({ session }: CardProps) {
     }
   }
 
-  const categoryBreakdown = useMemo(() => {
+  // Collapse repeat visits to the same URL into one row. The tracker can emit
+  // a URL more than once (e.g. across flush boundaries), which would otherwise
+  // render as consecutive duplicate lines here.
+  const uniqueUrls = useMemo(() => {
     if (!urls) return null
-    const counts = new Map<string, number>()
+    const seen = new Set<string>()
+    const out: UrlRow[] = []
     for (const u of urls) {
+      if (seen.has(u.url)) continue
+      seen.add(u.url)
+      out.push(u)
+    }
+    return out
+  }, [urls])
+
+  const categoryBreakdown = useMemo(() => {
+    if (!uniqueUrls) return null
+    const counts = new Map<string, number>()
+    for (const u of uniqueUrls) {
       const key = (u.category ?? "unclassified").toLowerCase()
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
-  }, [urls])
+  }, [uniqueUrls])
 
   // TEMPORARILY DISABLED — average distraction score (detection paused).
   // const avgScore = useMemo(() => {
@@ -306,11 +321,11 @@ export function SessionCard({ session }: CardProps) {
               No URLs were captured for this session.
             </p>
           )}
-          {!loading && urls && urls.length > 0 && (
+          {!loading && uniqueUrls && uniqueUrls.length > 0 && (
             <>
               <div class="mb-3 flex flex-wrap items-center gap-2">
                 <span class="text-[11px] uppercase tracking-wide text-mute">
-                  {urls.length} URL{urls.length === 1 ? "" : "s"}
+                  {uniqueUrls.length} URL{uniqueUrls.length === 1 ? "" : "s"}
                 </span>
                 {/* TEMPORARILY DISABLED — avg distraction badge (detection paused).
                 {avgScore !== null && (
@@ -337,7 +352,7 @@ export function SessionCard({ session }: CardProps) {
               </div>
 
               <ul class="divide-y divide-hairline-soft">
-                {urls.map((u) => (
+                {uniqueUrls.map((u) => (
                   <li
                     key={u.id}
                     class="flex items-start gap-2 py-2 text-xs first:pt-0 last:pb-0"
