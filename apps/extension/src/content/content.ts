@@ -391,7 +391,7 @@ const checkSelection = () => {
     return
   }
   const bar = ensureBar()
-  bar.show(text, rect, range)
+  bar.show(text, rect)
 }
 
 // A shown translation result stays pinned through transient page events
@@ -448,6 +448,14 @@ const onMouseDown = (e: MouseEvent) => {
   hideBar()
 }
 
+// Remove any selection UI a previous (hot-reloaded) instance of this content
+// script left behind, so a stale toolbar root can't linger next to ours.
+document
+  .querySelectorAll(
+    "[data-focusquote-selection-bar],[data-focusquote-lang-dropdown]",
+  )
+  .forEach((el) => el.remove())
+
 document.addEventListener("mouseup", onMouseUp)
 document.addEventListener("keyup", onKeyUp)
 document.addEventListener("selectionchange", onSelectionChange)
@@ -471,10 +479,31 @@ window.addEventListener("scroll", onScrollOrResize, { passive: true, capture: tr
 window.addEventListener("resize", onScrollOrResize, { passive: true })
 window.addEventListener("blur", onWindowBlur)
 
-subscribeToolState((active) => {
+const unsubscribeToolState = subscribeToolState((active) => {
   if (active) hideBar()
   else setTimeout(checkSelection, 0)
 })
+
+// Dev HMR teardown. Vite re-evaluates this content script on hot update without
+// removing the listeners/DOM the previous instance installed, so each reload
+// would otherwise stack another set of selection listeners and another toolbar
+// root on the page (the duplicate toolbar). Tear this instance down when it's
+// about to be replaced.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    document.removeEventListener("mouseup", onMouseUp)
+    document.removeEventListener("keyup", onKeyUp)
+    document.removeEventListener("selectionchange", onSelectionChange)
+    document.removeEventListener("mousedown", onMouseDown, true)
+    window.removeEventListener("scroll", onScrollOrResize, true)
+    window.removeEventListener("resize", onScrollOrResize)
+    window.removeEventListener("blur", onWindowBlur)
+    unsubscribeToolState()
+    selectionBar?.destroy()
+    selectionBar = null
+    disableSelectionColor()
+  })
+}
 
 // ---------------- Debug overlay (tracker pipeline feed) ----------------
 //

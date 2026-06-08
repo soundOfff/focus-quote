@@ -7,7 +7,6 @@ import { openLangDropdown, type LangDropdownHandle } from "./lang-dropdown"
 import {
   enableSelectionColor,
   disableSelectionColor,
-  paintBridge,
 } from "./selection-highlight"
 
 // ---------------------------------------------------------------------------
@@ -16,7 +15,7 @@ import {
 
 export interface SelectionBar {
   root: HTMLDivElement
-  show: (text: string, rect: DOMRect, range?: Range) => void
+  show: (text: string, rect: DOMRect) => void
   hide: () => void
   isVisible: () => boolean
   position: (rect: DOMRect) => void
@@ -407,7 +406,6 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
   } = opts
 
   let pendingText = ""
-  let pendingRange: Range | null = null
   let visible = false
   let savedTimeout: ReturnType<typeof setTimeout> | null = null
   let hideTimeout: ReturnType<typeof setTimeout> | null = null
@@ -428,7 +426,10 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
     "z-index:-1",
     "display:flex",
     "flex-direction:column",
-    "align-items:flex-start",
+    // Centre the result card under the (wider) toolbar frame. The frame is the
+    // widest child so it defines the width and is unaffected; only the narrower
+    // result card gets centred.
+    "align-items:center",
     "user-select:none",
     "pointer-events:none",
     "opacity:0",
@@ -471,9 +472,6 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
       currentDropdown.close()
       return
     }
-    // The dropdown's filter input will steal focus and collapse the native
-    // selection; bridge the amber highlight with an overlay so it persists.
-    if (pendingRange) paintBridge(pendingRange)
     const rect = fromChip.el.getBoundingClientRect()
     currentDropdown = openLangDropdown(rect, {
       currentCode: fromChip.getLang(),
@@ -494,9 +492,6 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
       currentDropdown.close()
       return
     }
-    // The dropdown's filter input will steal focus and collapse the native
-    // selection; bridge the amber highlight with an overlay so it persists.
-    if (pendingRange) paintBridge(pendingRange)
     const rect = toChip.el.getBoundingClientRect()
     currentDropdown = openLangDropdown(rect, {
       currentCode: toChip.getLang(),
@@ -550,10 +545,10 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
     const frameW = r.width > 0 ? r.width : 380
     const frameH = r.height > 0 ? r.height : 38
 
-    const resultH =
-      resultCard.style.display !== "none"
-        ? resultCard.getBoundingClientRect().height + 6
-        : 0
+    const hasResult = resultCard.style.display !== "none"
+    const resultH = hasResult
+      ? resultCard.getBoundingClientRect().height + 6
+      : 0
     const totalH = frameH + caretDiag + resultH
 
     const aboveTop = rect.top - totalH - margin
@@ -569,10 +564,16 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
     root.style.top = `${top}px`
     root.style.left = `${left}px`
 
-    // Caret offset relative to frame
-    const selMidX = rect.left + rect.width / 2
-    let caretLeft = selMidX - left - 6 // 6 = half of 12px caret
-    caretLeft = Math.max(12, Math.min(caretLeft, frameW - 24))
+    // Caret offset relative to frame. With a translation result shown the popup
+    // reads as a centred popover, so aim the caret at the horizontal centre of
+    // the (now centred) card; otherwise aim it at the selection.
+    let caretLeft: number
+    if (hasResult) {
+      caretLeft = frameW / 2 - 6 // 6 = half of 12px caret
+    } else {
+      const selMidX = rect.left + rect.width / 2
+      caretLeft = Math.max(12, Math.min(selMidX - left - 6, frameW - 24))
+    }
     caret.setOffset(caretLeft)
     caret.setAbove(useAbove)
   }
@@ -620,13 +621,12 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
 
   // ---- Public API ----
 
-  const show = (text: string, rect: DOMRect, range?: Range) => {
+  const show = (text: string, rect: DOMRect) => {
     if (hideTimeout) {
       clearTimeout(hideTimeout)
       hideTimeout = null
     }
     pendingText = text
-    pendingRange = range ?? null
     // Recolour the native selection to the brand amber. It's already on from the
     // mid-drag selectionchange; this just guarantees it for the popup's life.
     enableSelectionColor()
@@ -642,7 +642,6 @@ export function createSelectionBar(opts: SelectionBarOptions): SelectionBar {
   const hide = () => {
     if (!visible) return
     disableSelectionColor()
-    pendingRange = null
     if (currentDropdown) {
       currentDropdown.close()
       currentDropdown = null

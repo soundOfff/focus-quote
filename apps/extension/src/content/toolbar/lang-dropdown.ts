@@ -211,8 +211,9 @@ export function openLangDropdown(
     renderRows(searchInput.value)
   })
 
-  // Focus the search input after the panel is in the DOM
-  requestAnimationFrame(() => searchInput.focus())
+  // Intentionally NOT auto-focusing the search input: focusing it collapses
+  // the page's text selection, which would drop the amber selection highlight
+  // while the dropdown is open. The user can click the field to filter.
 
   // Dismiss handlers
   const onDocMouseDown = (e: MouseEvent) => {
