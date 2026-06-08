@@ -283,7 +283,11 @@ function AppInner() {
         class={`mx-auto flex w-full max-w-6xl flex-1 flex-col overflow-hidden px-4 sm:px-6 ${
           onSessionDetail ? "hidden" : ""
         }`}
-        aria-hidden={onSessionDetail}
+        // Use `inert` rather than `aria-hidden`: it hides the subtree from
+        // assistive tech AND removes its descendants from the tab order,
+        // blurring any focused element. `aria-hidden` alone left a focused
+        // button inside a hidden subtree, which the browser flags as invalid.
+        inert={onSessionDetail}
       >
         {!user ? (
           <div class="flex flex-1 flex-col gap-6 py-8">
