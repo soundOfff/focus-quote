@@ -32,6 +32,8 @@ export const defaultPrivacy: Privacy = {
     "mercadopago.com",
     "myhealthrecord.com",
     "patientportal.com",
+    "americanexpress.com",
+    "citi.com",
   ],
 }
 
