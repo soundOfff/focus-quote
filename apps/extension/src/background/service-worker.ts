@@ -191,6 +191,10 @@ const handleSessionEnd = Effect.gen(function* () {
   yield* syncSvc.drain.pipe(Effect.either)
   yield* tracker.flush.pipe(Effect.catchAll(() => Effect.void))
   yield* stream.closeAll
+  // Also clear the end alarm: harmless when this runs from the alarm itself
+  // (already fired), and required when a manual Finish ends the session early
+  // so a stale alarm doesn't fire later on an already-completed session.
+  yield* Effect.promise(() => chrome.alarms.clear(SESSION_END_ALARM))
   yield* Effect.promise(() => chrome.alarms.clear(SESSION_TICK_ALARM))
   yield* Effect.promise(() => chrome.alarms.clear(URL_FLUSH_ALARM))
   yield* Effect.promise(() => chrome.alarms.clear(ACTION_FLUSH_ALARM))
@@ -789,9 +793,11 @@ chrome.runtime.onMessage.addListener(
         ? handleSessionStart(msg)
         : msg.type === "focusquote.session.cancel"
           ? handleSessionCancel
-          : msg.type === "focusquote.saveQuote"
-            ? handleSaveQuoteMessage(msg, sender)
-            : handleSyncNow
+          : msg.type === "focusquote.session.finish"
+            ? handleSessionEnd
+            : msg.type === "focusquote.saveQuote"
+              ? handleSaveQuoteMessage(msg, sender)
+              : handleSyncNow
     runWithServices(program)
       .then(() => respond({ ok: true }))
       .catch((err) =>

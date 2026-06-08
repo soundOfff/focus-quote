@@ -14,6 +14,16 @@ export interface SessionCancelMessage {
   type: "focusquote.session.cancel"
 }
 
+/**
+ * Ends the active session early as *completed* (distinct from cancel, which
+ * ends it as not-completed). Runs the same path as a natural timer expiry:
+ * marks completed=true, drains to the server, and triggers the completion
+ * pipeline. See issue #35.
+ */
+export interface SessionFinishMessage {
+  type: "focusquote.session.finish"
+}
+
 export interface SyncNowMessage {
   type: "focusquote.sync.now"
 }
@@ -155,6 +165,7 @@ export interface OpenPopupMessage {
 export type RuntimeMessage =
   | SessionStartMessage
   | SessionCancelMessage
+  | SessionFinishMessage
   | SyncNowMessage
   | SaveQuoteMessage
   | OpenPopupMessage
@@ -187,6 +198,7 @@ export const isRuntimeMessage = (msg: unknown): msg is RuntimeMessage => {
   return (
     t === "focusquote.session.start" ||
     t === "focusquote.session.cancel" ||
+    t === "focusquote.session.finish" ||
     t === "focusquote.sync.now" ||
     t === "focusquote.saveQuote" ||
     t === "focusquote.ui.openPopup"

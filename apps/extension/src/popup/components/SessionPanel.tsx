@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
-import { Play, Square, Timer } from "lucide-preact"
+import { Check, Play, Square, Timer } from "lucide-preact"
 import { SessionsService, type ActiveSession } from "../../services/sessions"
 import type { SessionStartMessage } from "../../shared/messages"
 import { runP } from "../runtime"
@@ -115,6 +115,18 @@ export function SessionPanel({
       .catch((err) => console.error("[FocusQuote] cancel session:", err))
   }
 
+  // Finish (complete): ends the session as completed=true and runs the full
+  // completion pipeline — distinct from Stop, which cancels (completed=false).
+  const handleFinish = () => {
+    chrome.runtime
+      .sendMessage({ type: "focusquote.session.finish" })
+      .then(() => {
+        refresh()
+        onChange?.()
+      })
+      .catch((err) => console.error("[FocusQuote] finish session:", err))
+  }
+
   if (active) {
     return (
       <div class="flex flex-col gap-3">
@@ -136,10 +148,16 @@ export function SessionPanel({
               </div>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleStop}>
-            <Square size={11} strokeWidth={2} />
-            Stop
-          </Button>
+          <div class="flex shrink-0 items-center gap-1.5">
+            <Button variant="primary" size="sm" onClick={handleFinish}>
+              <Check size={11} strokeWidth={2.2} />
+              Finish
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleStop}>
+              <Square size={11} strokeWidth={2} />
+              Stop
+            </Button>
+          </div>
         </div>
       </div>
     )
