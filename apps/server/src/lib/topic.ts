@@ -141,7 +141,7 @@ export const maybeGenerateTopic = async (
       .select({
         id: focusSessions.id,
         goal: focusSessions.goal,
-        topic: focusSessions.topic,
+        topicId: focusSessions.topicId,
       })
       .from(focusSessions)
       .where(
@@ -149,7 +149,10 @@ export const maybeGenerateTopic = async (
       )
       .limit(1)
     if (!session) return
-    if (session.topic) return
+    // Gate on the stable topicId (the identity, per ADR-0001) — not the mutable
+    // legacy `topic` label. A session that already resolved a Topic must not be
+    // reclassified even if its label string was cleared or never backfilled.
+    if (session.topicId) return
 
     const urls = await db
       .select({
@@ -187,21 +190,39 @@ export const maybeGenerateTopic = async (
   }
 }
 
-/** Find or create the Topic entity for (userId, name); returns its stable id. */
+/**
+ * Find or create the Topic entity for (userId, name); returns its stable id.
+ * Safe under concurrent first-use of the same brand-new name: the insert is a
+ * no-op on the (userId, name) unique index, then we re-read whichever row won,
+ * so racing completions converge on a single Topic instead of throwing a
+ * UNIQUE-constraint error.
+ */
 export const ensureTopicId = async (
   userId: string,
   name: string,
   database: Database = db,
 ): Promise<string> => {
-  const [existing] = await database
-    .select({ id: topics.id })
-    .from(topics)
-    .where(and(eq(topics.userId, userId), eq(topics.name, name)))
-    .limit(1)
+  const selectId = () =>
+    database
+      .select({ id: topics.id })
+      .from(topics)
+      .where(and(eq(topics.userId, userId), eq(topics.name, name)))
+      .limit(1)
+
+  const [existing] = await selectId()
   if (existing) return existing.id
-  const id = randomUUID()
-  await database.insert(topics).values({ id, userId, name })
-  return id
+
+  await database
+    .insert(topics)
+    .values({ id: randomUUID(), userId, name })
+    .onConflictDoNothing({ target: [topics.userId, topics.name] })
+
+  // Re-read to resolve the winner (our insert, or a concurrent caller's).
+  const [resolved] = await selectId()
+  if (!resolved) {
+    throw new Error(`ensureTopicId: failed to resolve topic "${name}"`)
+  }
+  return resolved.id
 }
 
 export interface BackfillTopicsResult {
