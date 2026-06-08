@@ -2,7 +2,6 @@ import { useEffect, useState } from "preact/hooks"
 import { Effect } from "effect"
 import { Bug, Eye, EyeOff, Plus, Trash2 } from "lucide-preact"
 import { StorageService } from "../../services/storage"
-import { ApiService } from "../../services/api"
 import {
   ensurePrivacyMigrated,
   loadPrivacy,
@@ -19,6 +18,7 @@ import {
   Button,
   MonoLabel,
   SectionHeader,
+  Skeleton,
   Surface,
   Toggle,
 } from "../../ui/primitives"
@@ -58,6 +58,7 @@ export function PrivacySection() {
   const [newRule, setNewRule] = useState("")
   const [ruleError, setRuleError] = useState<string | null>(null)
   const [debugOverlay, setDebugOverlay] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     runP(load)
@@ -66,6 +67,7 @@ export function PrivacySection() {
         setDebugOverlay(d)
       })
       .catch(console.error)
+      .finally(() => setLoaded(true))
   }, [])
 
   const handleToggleDebug = () => {
@@ -101,6 +103,11 @@ export function PrivacySection() {
       ...privacy,
       blocklist: privacy.blocklist.filter((r) => r !== rule),
     })
+
+  // Privacy state is loaded lazily (and over the network) when this tab opens,
+  // so render a shape-matched skeleton until it resolves — otherwise the
+  // hard-coded defaults flash on screen before the real values arrive.
+  if (!loaded) return <PrivacySectionSkeleton />
 
   return (
     <Surface>
@@ -146,7 +153,7 @@ export function PrivacySection() {
           onKeyDown={(e) => {
             if ((e as KeyboardEvent).key === "Enter") handleAdd()
           }}
-          class={`flex-1 rounded-control border bg-paper-2 px-3 py-2 font-mono text-[12.5px] text-ink placeholder:text-muted-2 outline-none focus:bg-paper focus:ring-[3px] focus:ring-amber/15 ${
+          class={`flex-1 rounded-control border bg-paper-2 px-2 py-1 font-mono text-[11px] text-ink placeholder:text-muted-2 outline-none focus:bg-paper focus:ring-[3px] focus:ring-amber/15 ${
             ruleError
               ? "border-clay-ink focus:border-clay-ink"
               : "border-rule-2 focus:border-amber-deep"
@@ -162,20 +169,20 @@ export function PrivacySection() {
       {privacy.blocklist.length === 0 ? (
         <p class="text-[12px] text-muted">No domains blocked.</p>
       ) : (
-        <ul class="space-y-1">
+        <ul class="grid grid-cols-2 gap-1.5">
           {privacy.blocklist.map((rule) => (
             <li
               key={rule}
-              class="flex items-center justify-between rounded-control border border-rule bg-paper-2 px-3 py-1.5 text-[11.5px]"
+              class="flex items-center justify-between gap-1 rounded-control border border-rule bg-paper-2 px-2 py-1 text-[11px]"
             >
-              <span class="font-mono text-ink-2">{rule}</span>
+              <span class="truncate font-mono text-ink-2">{rule}</span>
               <button
                 type="button"
                 onClick={() => handleRemove(rule)}
                 aria-label={`Remove ${rule}`}
-                class="rounded-md p-1 text-muted transition-colors hover:bg-clay-soft hover:text-clay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40"
+                class="shrink-0 rounded-md p-0.5 text-muted transition-colors hover:bg-clay-soft hover:text-clay-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40"
               >
-                <Trash2 size={12} strokeWidth={1.7} />
+                <Trash2 size={11} strokeWidth={1.7} />
               </button>
             </li>
           ))}
@@ -200,6 +207,62 @@ export function PrivacySection() {
             onToggle={handleToggleDebug}
             ariaLabel="Toggle debug overlay"
           />
+        </div>
+      </div>
+    </Surface>
+  )
+}
+
+/**
+ * Placeholder that mirrors {@link PrivacySection}'s layout (header, description,
+ * tracking toggle, blocklist, debug section) so swapping in the real content
+ * causes no layout shift. Toggle pills use the `md` Toggle track size (h-7 w-12).
+ */
+function PrivacySectionSkeleton() {
+  return (
+    <Surface>
+      {/* URL tracking header */}
+      <div class="mb-3 flex items-center gap-2">
+        <Skeleton class="h-3.5 w-3.5 rounded" />
+        <Skeleton class="h-4 w-24" />
+      </div>
+      {/* description */}
+      <div class="mb-4 flex flex-col gap-1.5">
+        <Skeleton class="h-3 w-full" />
+        <Skeleton class="h-3 w-11/12" />
+        <Skeleton class="h-3 w-2/3" />
+      </div>
+      {/* tracking toggle row */}
+      <div class="mb-4 flex items-center justify-between">
+        <Skeleton class="h-3.5 w-28" />
+        <Skeleton class="h-7 w-12 rounded-full" />
+      </div>
+      {/* blocklist label */}
+      <Skeleton class="mb-2 h-2.5 w-16" />
+      {/* add-rule input row */}
+      <div class="mb-2 flex items-center gap-2">
+        <Skeleton class="h-7 flex-1 rounded-control" />
+        <Skeleton class="h-7 w-16 rounded-control" />
+      </div>
+      {/* blocklist chips */}
+      <ul class="grid grid-cols-2 gap-1.5">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} class="h-7 rounded-control" />
+        ))}
+      </ul>
+      {/* debug overlay section */}
+      <div class="mt-5 border-t border-rule pt-4">
+        <div class="mb-1 flex items-center gap-2">
+          <Skeleton class="h-3 w-3 rounded" />
+          <Skeleton class="h-3.5 w-28" />
+        </div>
+        <div class="mb-3 flex flex-col gap-1.5">
+          <Skeleton class="h-3 w-full" />
+          <Skeleton class="h-3 w-3/4" />
+        </div>
+        <div class="flex items-center justify-between">
+          <Skeleton class="h-3.5 w-28" />
+          <Skeleton class="h-7 w-12 rounded-full" />
         </div>
       </div>
     </Surface>
