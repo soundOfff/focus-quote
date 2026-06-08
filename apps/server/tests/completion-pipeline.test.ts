@@ -47,9 +47,6 @@ vi.mock("../src/lib/study-artifacts", () => ({
 }))
 
 vi.mock("../src/lib/topic", () => ({
-  maybeAutoDeriveGoal: vi.fn(async () => {
-    h.calls.push("autoDeriveGoal")
-  }),
   maybeGenerateTitle: vi.fn(async () => {
     h.calls.push("title")
   }),
@@ -146,5 +143,13 @@ describe("runCompletionDownstream (two-phase pipeline, ADR-0004)", () => {
     expect(flushDone).toBeGreaterThanOrEqual(0)
     expect(h.calls.indexOf("recall")).toBeGreaterThan(flushDone)
     expect(h.calls.indexOf("resources")).toBeGreaterThan(flushDone)
+
+    // The AI never authors a Goal (ADR-0004); Title is the only AI label and it
+    // runs after the Topic resolves (it feeds the prompt) and before the flush.
+    expect(h.calls).not.toContain("autoDeriveGoal")
+    const topicDone = h.calls.indexOf("topic:done")
+    const title = h.calls.indexOf("title")
+    expect(title).toBeGreaterThan(topicDone)
+    expect(title).toBeLessThan(h.calls.indexOf("flush:start"))
   })
 })

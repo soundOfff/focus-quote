@@ -41,7 +41,6 @@ export const maybeGenerateSummary = async (
       .select({
         url: sessionUrls.url,
         title: sessionUrls.title,
-        category: sessionUrls.category,
         content: sessionUrls.content,
       })
       .from(sessionUrls)
@@ -61,7 +60,6 @@ export const maybeGenerateSummary = async (
       urls: urls.map((u) => ({
         url: u.url,
         title: u.title,
-        category: u.category,
         content: u.content,
       })),
     })

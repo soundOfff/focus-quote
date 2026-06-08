@@ -144,7 +144,7 @@ export const saveSessionVaultItem = async (
     }
     await database
       .insert(topicVaultItems)
-      .values({ ...common, topicId: session.topicId })
+      .values({ ...common, topicId: session.topicId, sessionId })
     return {
       id,
       topicId: session.topicId,
@@ -292,6 +292,9 @@ export const promoteSessionVaultItems = async (
         id: p.id,
         userId,
         topicId,
+        // Preserve the originating session so vault-aware artifacts can seed at
+        // session scope after promotion (ADR-0004).
+        sessionId: p.sessionId,
         kind: p.kind,
         body: p.body,
         title: p.title,

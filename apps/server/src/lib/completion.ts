@@ -1,18 +1,10 @@
-import { and, eq } from "drizzle-orm"
-import { db } from "../db/client"
-import { focusSessions } from "../db/schema"
-import { aiFeatureEnabledForUser } from "./ai-gate"
 import { maybeGenerateSummary } from "./summary"
 import {
   maybeGenerateRecallQuestions,
   maybeGenerateResourceRecommendations,
   maybeGenerateStudyTips,
 } from "./study-artifacts"
-import {
-  maybeAutoDeriveGoal,
-  maybeGenerateTitle,
-  maybeGenerateTopic,
-} from "./topic"
+import { maybeGenerateTitle, maybeGenerateTopic } from "./topic"
 import { flushPendingSessionVault } from "./vault"
 
 /**
@@ -47,29 +39,17 @@ export const runCompletionDownstream = async (
     maybeGenerateStudyTips(userId, sessionId),
   ])
 
-  // Phase 2 — strictly sequential: label + Topic resolve → Vault flush →
+  // Phase 2 — strictly sequential: Topic resolve → label → Vault flush →
   // Vault-aware generation.
   const phase2 = (async () => {
-    const [session] = await db
-      .select({ goal: focusSessions.goal })
-      .from(focusSessions)
-      .where(
-        and(eq(focusSessions.id, sessionId), eq(focusSessions.userId, userId)),
-      )
-      .limit(1)
-    if (!session) return
-
-    // When the user set no goal, one of two AI fillers labels the session: an
-    // opt-in auto-Title (issue #9) or, by default, an auto-derived Goal. Only
-    // one runs so we never double-spend or compete for the label.
-    const hasGoal = (session.goal ?? "").trim().length > 0
-    const autoTitle =
-      !hasGoal && (await aiFeatureEnabledForUser(userId, "autoTitle"))
-    if (!hasGoal && !autoTitle) await maybeAutoDeriveGoal(userId, sessionId)
-
-    // Topic feeds the title prompt, so resolve it before deriving the title.
+    // Topic feeds the Title prompt and scopes the Vault, so resolve it first.
     await maybeGenerateTopic(userId, sessionId)
-    if (autoTitle) await maybeGenerateTitle(userId, sessionId)
+
+    // The only AI-authored Session label is an opt-in auto-Title, applied when
+    // the user set no Goal (ADR-0004 / glossary): the AI never authors a Goal.
+    // maybeGenerateTitle self-gates on the autoTitle feature + an empty goal, so
+    // calling it unconditionally is a no-op otherwise.
+    await maybeGenerateTitle(userId, sessionId)
 
     // Topic is now resolved (or stayed empty) — promote any vault items the user
     // saved during the session into its topic, falling back to "Uncategorized"
