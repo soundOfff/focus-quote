@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FocusQuote — Session-Finish Research</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #1c2128;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #9198a1;
+    --accent: #7c9cff;
+    --accent-2: #d2a8ff;
+    --green: #3fb950;
+    --amber: #d29922;
+    --red: #f85149;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.65;
+    font-size: 16px;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 24px 96px; }
+
+  /* Header */
+  header.hero {
+    border-bottom: 1px solid var(--border);
+    background: radial-gradient(1200px 400px at 50% -200px, rgba(124,156,255,0.15), transparent 70%);
+    padding: 56px 24px 40px;
+    text-align: center;
+  }
+  .hero .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 12px;
+  }
+  .hero h1 { font-size: 34px; line-height: 1.2; margin: 0 0 12px; letter-spacing: -0.02em; }
+  .hero p.sub { color: var(--muted); max-width: 640px; margin: 0 auto; font-size: 16px; }
+  .hero .meta {
+    margin-top: 20px; font-family: var(--mono); font-size: 12px; color: var(--muted);
+    display: flex; gap: 18px; justify-content: center; flex-wrap: wrap;
+  }
+  .hero .meta span::before { content: "● "; color: var(--accent-2); }
+
+  /* TOC */
+  nav.toc {
+    margin: 36px 0 8px; padding: 18px 22px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  }
+  nav.toc h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin: 0 0 12px; font-family: var(--mono); }
+  nav.toc ol { margin: 0; padding-left: 20px; columns: 2; column-gap: 32px; }
+  nav.toc li { margin: 4px 0; }
+  nav.toc a { color: var(--text); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); }
+
+  /* Sections */
+  section { margin-top: 52px; scroll-margin-top: 20px; }
+  h2.section-title {
+    font-size: 24px; letter-spacing: -0.01em; margin: 0 0 6px;
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  h2.section-title .num {
+    font-family: var(--mono); font-size: 14px; color: var(--accent);
+    border: 1px solid var(--border); border-radius: 8px; padding: 2px 9px; flex: none;
+  }
+  .lede { color: var(--muted); margin: 0 0 22px; }
+  h3 { font-size: 17px; margin: 28px 0 10px; }
+
+  p { margin: 12px 0; }
+  code {
+    font-family: var(--mono); font-size: 0.86em;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 5px; padding: 1px 6px; color: var(--accent-2);
+    white-space: nowrap;
+  }
+  ul, ol { padding-left: 22px; }
+  li { margin: 7px 0; }
+  strong { color: #fff; }
+
+  /* Flow steps */
+  .steps { list-style: none; padding: 0; margin: 16px 0; counter-reset: step; }
+  .steps > li {
+    position: relative; padding: 14px 16px 14px 52px; margin: 10px 0;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  }
+  .steps > li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 14px; top: 14px;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: rgba(124,156,255,0.14); color: var(--accent);
+    border: 1px solid rgba(124,156,255,0.4);
+    display: grid; place-items: center; font-family: var(--mono); font-size: 13px; font-weight: 600;
+  }
+  .stage-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); display:block; margin-bottom: 2px; }
+
+  /* Callouts */
+  .callout {
+    border-radius: 10px; padding: 16px 18px; margin: 22px 0;
+    border: 1px solid var(--border); background: var(--panel);
+    border-left-width: 4px;
+  }
+  .callout .tag { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px; }
+  .callout.warn { border-left-color: var(--amber); }
+  .callout.warn .tag { color: var(--amber); }
+  .callout.bug { border-left-color: var(--red); }
+  .callout.bug .tag { color: var(--red); }
+  .callout.info { border-left-color: var(--accent); }
+  .callout.info .tag { color: var(--accent); }
+  .callout p:first-of-type { margin-top: 0; }
+  .callout p:last-child { margin-bottom: 0; }
+
+  /* Verdict banner */
+  .verdict {
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    background: linear-gradient(135deg, rgba(248,81,73,0.10), rgba(210,153,34,0.06));
+    border: 1px solid var(--border); border-radius: 12px; padding: 20px 22px; margin: 8px 0 24px;
+  }
+  .verdict .badge {
+    font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: 0.04em;
+    color: var(--bg); background: var(--amber); padding: 8px 14px; border-radius: 999px; flex: none;
+    text-transform: uppercase;
+  }
+  .verdict .vtext { flex: 1; min-width: 240px; }
+  .verdict .vtext strong { color: #fff; }
+
+  /* Tables */
+  .table-scroll { overflow-x: auto; margin: 18px 0; border: 1px solid var(--border); border-radius: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--panel-2); color: var(--muted); font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  td code { white-space: normal; }
+  .yes { color: var(--green); font-weight: 600; }
+  .no { color: var(--red); font-weight: 600; }
+
+  /* Two universes diagram */
+  .universes { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: stretch; margin: 22px 0; }
+  .uni {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px;
+  }
+  .uni h4 { margin: 0 0 4px; font-size: 15px; }
+  .uni .uni-sub { color: var(--muted); font-size: 12.5px; margin: 0 0 12px; }
+  .uni ul { padding-left: 18px; margin: 0; font-size: 13.5px; }
+  .uni.a { border-top: 3px solid var(--accent); }
+  .uni.b { border-top: 3px solid var(--accent-2); }
+  .gap {
+    display: grid; place-items: center; text-align: center;
+    font-family: var(--mono); font-size: 11px; color: var(--red);
+  }
+  .gap .bar { writing-mode: vertical-rl; letter-spacing: 0.2em; padding: 8px 0; border-left: 1px dashed var(--red); height: 100%; }
+  @media (max-width: 700px) {
+    .universes { grid-template-columns: 1fr; }
+    .gap .bar { writing-mode: horizontal-tb; border-left: none; border-top: 1px dashed var(--red); height: auto; padding: 6px 0; }
+    nav.toc ol { columns: 1; }
+  }
+
+  /* Improvement cards */
+  .imp {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 20px; margin: 16px 0; position: relative;
+  }
+  .imp .rank {
+    position: absolute; top: -12px; left: 18px;
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    background: var(--accent); color: var(--bg); border-radius: 6px; padding: 3px 9px;
+  }
+  .imp h3 { margin: 6px 0 4px; font-size: 17px; padding-right: 150px; }
+  .imp .badges { position: absolute; top: 16px; right: 18px; display: flex; gap: 6px; }
+  .pill { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; padding: 3px 8px; border-radius: 999px; text-transform: uppercase; border: 1px solid var(--border); }
+  .pill.eff { color: var(--muted); }
+  .pill.imp-high { color: var(--green); border-color: rgba(63,185,80,0.5); background: rgba(63,185,80,0.08); }
+  .pill.imp-med { color: var(--amber); border-color: rgba(210,153,34,0.5); background: rgba(210,153,34,0.08); }
+  .pill.imp-low { color: var(--muted); }
+  .imp .prob { color: var(--muted); font-size: 14.5px; margin: 8px 0; }
+  .imp .prop { font-size: 14.5px; margin: 8px 0 0; }
+  .imp .prop b { color: var(--accent); font-weight: 600; }
+
+  footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; text-align: center; }
+  footer code { white-space: normal; }
+  a.ref { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <p class="eyebrow">FocusQuote · Codebase Research</p>
+  <h1>What happens when a focus session finishes</h1>
+  <p class="sub">An end-to-end trace of the session-finish flow, whether vault data is actually used, the real relationships between quotes&nbsp;·&nbsp;topics&nbsp;·&nbsp;sessions&nbsp;·&nbsp;vault, and the highest-leverage improvements.</p>
+  <div class="meta">
+    <span>Scope: apps/extension + apps/server</span>
+    <span>Findings verified against source</span>
+    <span>2026-06-08</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#finish">What happens at session-finish</a></li>
+      <li><a href="#vault">Is vault data being used?</a></li>
+      <li><a href="#relations">The real quotes / topics / sessions relations</a></li>
+      <li><a href="#improvements">Improvements, ranked by leverage</a></li>
+      <li><a href="#bugs">Latent bugs surfaced</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 1 ============ -->
+  <section id="finish">
+    <h2 class="section-title"><span class="num">1</span> What actually happens when a session finishes</h2>
+    <p class="lede">Two entry points, both in the extension service worker — and there is <strong>no “Complete now” button</strong>. The popup only has <strong>Stop</strong>, which is a <em>cancel</em> (<code>completed=false</code>).</p>
+
+    <ul>
+      <li><strong>Natural completion</strong> — a <code>SESSION_END_ALARM</code> scheduled at start (<code>service-worker.ts:127</code>) fires → <code>handleSessionEnd</code> (<code>service-worker.ts:178</code>).</li>
+      <li><strong>User stop</strong> — Stop sends <code>focusquote.session.cancel</code> (<code>SessionPanel.tsx:108</code>) → <code>handleSessionCancel</code>.</li>
+    </ul>
+
+    <h3>Extension side — <code>handleSessionEnd</code></h3>
+    <ol class="steps">
+      <li><span class="stage-label">Local write first</span><code>sessions.complete(id, true)</code> rewrites the local session record (<code>completed=true</code> + <code>endedAt</code>), <strong>removes</strong> the <code>activeSession</code> key, and <strong>enqueues an <code>upsertSession</code> sync job</strong> (<code>sessions.ts:32</code>).</li>
+      <li><span class="stage-label">Push to server</span><code>SyncService.drain()</code> posts the queue to <code>POST /api/sync/batch</code>. <em>Auth-gated — for signed-out users this is a silent no-op and the row never reaches the server.</em></li>
+      <li><span class="stage-label">URL flush (no-op)</span><code>UrlTracker.flush()</code> — <code>webNavigation</code> URL capture is currently commented out (<code>service-worker.ts:573-588</code>), so the buffer is normally empty.</li>
+      <li><span class="stage-label">Cleanup &amp; notify</span>Clears alarms / badge, fires a Chrome notification, broadcasts <code>focusquote.session.finished</code>. <strong>No LLM call happens on the extension side.</strong></li>
+    </ol>
+
+    <h3>Server side — a side-effect of the batch upsert</h3>
+    <p>Completion logic lives in <code>sync.ts:75-87</code> (the real path), <strong>not</strong> the dedicated <code>focus-sessions.ts</code> handler. When a batched job is <code>completed=true</code>, it fires — all <strong>fire-and-forget / un-awaited</strong>:</p>
+    <ul>
+      <li><code>maybeGenerateSummary</code>, <code>maybeGenerateStudyTips</code>, <code>maybeGenerateRecallQuestions</code>, <code>maybeGenerateResourceRecommendations</code></li>
+      <li><code>maybeGenerateTopic(...).then(() =&gt; flushPendingSessionVault(...))</code> — Haiku classifies the session into 1 of 12 fixed categories, then promotes pending vault items into the resolved topic (or “Uncategorized”)</li>
+      <li><code>maybeGenerateTitle</code></li>
+      <li>Separately sweeps <strong>pending quotes</strong> into the Tag graph</li>
+    </ul>
+
+    <div class="callout warn">
+      <span class="tag">⚠ Two completion paths have diverged</span>
+      <p>The <code>focus-sessions.ts downstream()</code> block (<code>185-208</code>) — which <em>awaits</em> topic before flush, gates auto-title vs. auto-goal, and calls <code>maybeAutoDeriveGoal</code> — sits behind <code>POST /api/focus-sessions</code>, whose client method <strong>has zero call sites</strong>. The extension only ever hits <code>sync.ts</code>. So that careful sequencing is effectively <strong>dead code</strong>, and <code>maybeAutoDeriveGoal</code> never runs on the real finish flow.</p>
+    </div>
+
+    <p><strong>UI reaction is passive:</strong> the newtab toasts + refreshes Home (<code>App.tsx:204</code>); it does <strong>not</strong> navigate to the report. The full report (<code>SessionDetail.tsx</code>) is user-initiated and lazy — its GETs re-fire generation when <code>completed &amp;&amp; artifact missing</code>, so clicking in immediately may show empty panels until background work lands.</p>
+  </section>
+
+  <!-- ============ 2 ============ -->
+  <section id="vault">
+    <h2 class="section-title"><span class="num">2</span> Is vault data being used?</h2>
+
+    <div class="verdict">
+      <span class="badge">Write-mostly-dead</span>
+      <span class="vtext">Vault items are written from <strong>4 surfaces</strong>, read for display in exactly <strong>1</strong>, and feed <strong>zero</strong> LLM prompts. Verified by grep over <code>llm.ts</code>, <code>study-artifacts.ts</code>, <code>summary.ts</code>, <code>topic.ts</code>, <code>tags.ts</code> — none reference <code>topicVaultItems</code> / <code>sessionVaultItems</code>.</span>
+    </div>
+
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Aspect</th><th>Vault items</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Written from</strong></td><td>toolbar bookmark (<code>/focus-sessions/:id/vault-link</code>), annotate “Save to Vault” &amp; right-click image (<code>/vault/save</code>), newtab manual add (<code>/topics/:id/vault</code>)</td></tr>
+          <tr><td><strong>Read for display</strong></td><td>one surface only — <code>GET /topics/:id/vault</code> → newtab Topics-tab per-topic panel (<code>TopicsSection.tsx</code>)</td></tr>
+          <tr><td><strong>Fed into any prompt</strong></td><td class="no">never</td></tr>
+          <tr><td><strong>Dead read path</strong></td><td><code>GET /focus-sessions/:id/vault-pending</code> + clients <code>listSessionVaultPending</code> / <code>attachSessionVaultLink</code> / <code>assignSessionTopic</code> have <strong>zero call sites</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><code>flushPendingSessionVault</code> <em>is</em> called on completion, but it’s pure data movement (promote pending → topic) — it organizes items, it doesn’t surface them anywhere new.</p>
+
+    <div class="callout info">
+      <span class="tag">The same is true of screenshots — the actual broken promise</span>
+      <p><code>topic_media</code> (screenshots) is also fed to <strong>zero prompts</strong>, despite the schema comment at <code>schema.ts:571-573</code> claiming it’s <em>“Used to enrich the LLM prompts for recall + resource recommendations”</em> and the UI copy at <code>TopicsSection.tsx:715</code> echoing it. In lib code <code>topicMedia</code> appears only inside a backfill migration — never in a prompt builder.</p>
+      <p>So <strong>the two richest signals of user intent — what they bookmarked and what they screenshotted — inform none of the AI features</strong>, while the one input that <em>is</em> used (<code>session_urls</code>) is usually empty because URL capture is disabled.</p>
+    </div>
+  </section>
+
+  <!-- ============ 3 ============ -->
+  <section id="relations">
+    <h2 class="section-title"><span class="num">3</span> The real relation between quotes, topics, sessions &amp; vault</h2>
+    <p class="lede">The system is <strong>two disconnected universes</strong>, joined at nothing.</p>
+
+    <div class="universes">
+      <div class="uni a">
+        <h4>Universe A</h4>
+        <p class="uni-sub">Sessions · Topics · Vault — well-connected by FKs</p>
+        <ul>
+          <li><code>focus_sessions.topicId → topics.id</code></li>
+          <li><code>topic_vault_items.topicId → topics.id</code></li>
+          <li><code>session_vault_items.sessionId → focus_sessions.id</code></li>
+          <li><code>session_urls / session_actions → focus_sessions.id</code></li>
+          <li><code>topic_media.topicId → topics.id</code> (half-migrated)</li>
+        </ul>
+      </div>
+      <div class="gap"><div class="bar">NO LINK</div></div>
+      <div class="uni b">
+        <h4>Universe B</h4>
+        <p class="uni-sub">Quotes · Tags — separate by ADR-0003 design</p>
+        <ul>
+          <li><code>quote_tags → quotes + tags</code></li>
+          <li><code>tag_edges</code> form a DAG over tags</li>
+          <li>server-side Haiku files quotes into the taxonomy</li>
+          <li class="no">no <code>quotes.topicId</code></li>
+          <li class="no">no <code>quotes.sessionId</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Relationship</th><th>FK?</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>focus_sessions → topics</code></td><td class="yes">EXISTS</td><td>The grouping key. Sessions the AI labels “Programming” repoint at the same <code>topics</code> row via a <code>(userId, name)</code> unique index. A legacy free-text <code>focus_sessions.topic</code> string is kept in sync alongside the FK — dual source of truth.</td></tr>
+          <tr><td><code>topic_vault_items → topics</code></td><td class="yes">EXISTS</td><td>NOT NULL. The durable curated vault, keyed by topic.</td></tr>
+          <tr><td><code>session_vault_items → focus_sessions</code></td><td class="yes">EXISTS</td><td>Pre-topic staging; no <code>topicId</code> column. Promoted to <code>topic_vault_items</code> at completion.</td></tr>
+          <tr><td><code>session_urls / session_actions → focus_sessions</code></td><td class="yes">EXISTS</td><td><code>session_urls</code> is the <strong>sole</strong> AI input; <code>session_actions</code> are stored but never read into any prompt.</td></tr>
+          <tr><td><code>quote_tags → quotes + tags</code></td><td class="yes">EXISTS</td><td>Many-to-many; tags form a DAG. A user-global taxonomy, independent of sessions/topics by design.</td></tr>
+          <tr><td><code>quotes → topics</code></td><td class="no">DOES NOT EXIST</td><td>Quotes can never be grouped under a Topic.</td></tr>
+          <tr><td><code>quotes → focus_sessions</code></td><td class="no">DOES NOT EXIST</td><td><code>QuotesService.save</code> ignores the active session entirely.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout warn">
+      <span class="tag">Consequence</span>
+      <p>The product <strong>literally cannot answer</strong> “which quotes did I save during this focus session / under this topic.” Two AI taxonomies — a tag DAG over quotes and a topic graph over sessions — evolve in total isolation with no cross-pollination. <em>(Aside: the newtab “DailyQuote” is misnamed — it re-rolls a random quote on every page load, no per-day seed.)</em></p>
+    </div>
+  </section>
+
+  <!-- ============ 4 ============ -->
+  <section id="improvements">
+    <h2 class="section-title"><span class="num">4</span> What could be improved — ranked by leverage</h2>
+
+    <div class="imp">
+      <span class="rank">#1</span>
+      <div class="badges"><span class="pill eff">Effort · M</span><span class="pill imp-high">Impact · High</span></div>
+      <h3>Feed vault items + screenshots into the recall / resources / summary prompts</h3>
+      <p class="prob">The deliberate-curation signal drives none of the AI. Load the resolved topic’s <code>topic_vault_items</code> (+ pending <code>session_vault_items</code>, + <code>topic_media</code> captions, and the image bytes — the model is multimodal) into the prompt builders.</p>
+      <p class="prop"><b>Proposal:</b> extend <code>study-artifacts.ts</code> / <code>summary.ts</code> load steps to include a “savedByUser” block, gated by the existing AI feature switches. Especially valuable because URL capture is off, so the vault is often the only real content. Fulfills the promise the schema/UI already make.</p>
+    </div>
+
+    <div class="imp">
+      <span class="rank">#2</span>
+      <div class="badges"><span class="pill eff">Effort · M</span><span class="pill imp-high">Impact · High</span></div>
+      <h3>Stamp quotes with the active session’s topic at capture</h3>
+      <p class="prob">Quotes are a parallel universe — no <code>sessionId</code>, no <code>topicId</code>; <code>QuotesService.save</code> ignores the active session.</p>
+      <p class="prop"><b>Proposal:</b> read <code>activeSession</code> in <code>QuotesService.save</code> and persist a nullable <code>sessionId</code>/<code>topicId</code> on the quote (backwards-compatible nullable migration). Then surface “quotes saved during this session” in the report, and pass the topic name as a hint into the Haiku quote classifier. Bridges the two universes without violating ADR-0003.</p>
+    </div>
+
+    <div class="imp">
+      <span class="rank">#3</span>
+      <div class="badges"><span class="pill eff">Effort · M</span><span class="pill imp-med">Impact · Med</span></div>
+      <h3>Consolidate the two diverged completion blocks</h3>
+      <p class="prob"><code>sync.ts:75-87</code> and <code>focus-sessions.ts:185-208</code> have drifted; only the latter derives a goal and awaits topic-before-flush, but the extension never hits it — so <code>maybeAutoDeriveGoal</code> is dead and a fix to one path misses the other.</p>
+      <p class="prop"><b>Proposal:</b> extract one <code>runCompletionDownstream(userId, sessionId)</code> called from both endpoints. Also a <strong>precondition</strong> for #1 landing on the path users actually hit.</p>
+    </div>
+
+    <div class="imp">
+      <span class="rank">#4</span>
+      <div class="badges"><span class="pill eff">Effort · S</span><span class="pill imp-med">Impact · Med</span></div>
+      <h3>Fix a latent data-loss bug in <code>promoteSessionVaultItems</code></h3>
+      <p class="prob"><code>vault.ts:269-309</code> does <code>onConflictDoNothing</code> on the stable id, then <strong>unconditionally deletes all pending rows</strong>. If an item was flushed to “Uncategorized” and the session later resolves a real topic, the re-promotion is silently dropped <em>and</em> the source destroyed.</p>
+      <p class="prop"><b>Proposal:</b> upsert the <code>topicId</code> on conflict, or use <code>.returning()</code> and delete only the ids actually inserted.</p>
+    </div>
+
+    <div class="imp">
+      <span class="rank">#5</span>
+      <div class="badges"><span class="pill eff">Effort · S</span><span class="pill imp-med">Impact · Med</span></div>
+      <h3>Decide on URL distraction classification</h3>
+      <p class="prob"><code>classifyBatch</code> is commented out (<code>session-urls.ts:85</code>), so <code>category</code>/<code>distractionScore</code> are always null — yet <code>category</code> is still injected into every prompt as a dead field.</p>
+      <p class="prop"><b>Proposal:</b> either re-enable it behind the AI gate (using the <code>url_classifications</code> hostname cache), or strip <code>category</code> from the prompt builders.</p>
+    </div>
+
+    <div class="imp">
+      <span class="rank">#6</span>
+      <div class="badges"><span class="pill eff">Effort · S</span><span class="pill imp-low">Impact · Low</span></div>
+      <h3>Smaller wins</h3>
+      <p class="prop" style="color:var(--text)">Include <code>topic</code>/<code>topicId</code> in <code>toSessionDTO</code> (currently omitted, so the client can’t show a session’s topic) · add a “View report” action to the finish toast + a generating state in <code>SessionDetail</code> · add a real “Finish as completed” button (today early-finish can only <em>cancel</em>, which never feeds the streak) · add an <code>onConflict</code> upsert to <code>ensureTopicId</code> (concurrent completions into a new category can throw on the unique index).</p>
+    </div>
+  </section>
+
+  <!-- ============ 5 ============ -->
+  <section id="bugs">
+    <h2 class="section-title"><span class="num">5</span> Latent bugs surfaced along the way</h2>
+    <div class="callout bug">
+      <span class="tag">Data loss</span>
+      <p><code>promoteSessionVaultItems</code> (<code>vault.ts:269-309</code>) — <code>onConflictDoNothing</code> + unconditional delete can drop re-promotion to a corrected topic and destroy the source row. <em>(See improvement #4.)</em></p>
+    </div>
+    <div class="callout bug">
+      <span class="tag">Race condition</span>
+      <p><code>ensureTopicId</code> (<code>topic.ts:191-205</code>) is a SELECT-then-INSERT with no <code>onConflict</code>. Two sessions completing concurrently into the same new category can both miss the existing row and the second INSERT throws on the <code>(userId, name)</code> unique index.</p>
+    </div>
+    <div class="callout bug">
+      <span class="tag">Re-trigger</span>
+      <p><code>maybeGenerateTopic</code> gates on <code>session.topic</code> (legacy string) not <code>topicId</code> (<code>topic.ts:152</code>), so a row with <code>topicId</code> set but <code>topic</code> null could re-run the AI classification.</p>
+    </div>
+    <div class="callout bug">
+      <span class="tag">Silent drop on redeploy</span>
+      <p>All completion AI work is fire-and-forget (<code>void downstream()</code>). Lazy-regen on GET covers summary/tips/recall/resources, but <strong>topic/title/goal have no safety net</strong> — a redeploy mid-run silently drops them.</p>
+    </div>
+  </section>
+
+  <footer>
+    <p>The structural theme: FocusQuote captures a lot of intentional user signal (bookmarks, annotations, screenshots, quotes) and stores it carefully, but the AI features consume almost none of it — they run off <code>session_urls</code>, which is currently empty. Wiring curation back into the prompts (#1) and bridging quotes to sessions (#2) is where the product gets its compounding value.</p>
+    <p style="margin-top:14px; opacity:0.7">Generated from a verified multi-agent codebase trace · <code>docs/session-finish-research.html</code></p>
+  </footer>
+
+</div>
+</body>
+</html>
