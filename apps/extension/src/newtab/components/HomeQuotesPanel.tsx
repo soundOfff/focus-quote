@@ -20,7 +20,13 @@ import type {
 import { QuotesService } from "../../services/quotes"
 import { TagsService } from "../../services/tags"
 import { runP } from "../runtime"
-import { Button, EmptyState, Progress, Segmented } from "../../ui/primitives"
+import {
+  Button,
+  EmptyState,
+  Progress,
+  Segmented,
+  Toggle,
+} from "../../ui/primitives"
 import { KnowledgeGraph } from "./KnowledgeGraph"
 import {
   UNTAGGED_LABEL,
@@ -378,27 +384,15 @@ export function HomeQuotesPanel() {
       ) : (
         <>
           {/* Roll-up toggle (list view only) */}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={includeSubTags}
-            onClick={() => setIncludeSubTags((v) => !v)}
-            class={cx(
-              "inline-flex w-fit items-center gap-1.5 rounded-pill border px-2.5 py-1 text-xs font-medium transition-colors",
-              includeSubTags
-                ? "border-ink bg-surface-soft text-ink"
-                : "border-hairline text-mute hover:text-body",
-            )}
-          >
-            <span
-              class={cx(
-                "h-2 w-2 rounded-full",
-                includeSubTags ? "bg-primary" : "bg-hairline",
-              )}
-              aria-hidden
+          <label class="inline-flex w-fit cursor-pointer items-center gap-2 text-xs font-medium text-body">
+            <Toggle
+              size="sm"
+              enabled={includeSubTags}
+              onToggle={() => setIncludeSubTags((v) => !v)}
+              ariaLabel="Include sub-tags"
             />
             Include sub-tags
-          </button>
+          </label>
 
           <div class="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
             {/* Tag tree */}

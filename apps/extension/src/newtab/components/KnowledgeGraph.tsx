@@ -20,7 +20,7 @@ import {
   type Simulation,
 } from "../../shared/force-graph"
 import { quoteIdsForTag, tagsForQuote } from "../../shared/tag-graph"
-import { Button, EmptyState } from "../../ui/primitives"
+import { Button, EmptyState, Toggle } from "../../ui/primitives"
 
 const cx = (...parts: Array<string | false | null | undefined>) =>
   parts.filter(Boolean).join(" ")
@@ -368,27 +368,15 @@ export function KnowledgeGraph({
       {/* Controls row */}
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={includeQuotes}
-            onClick={() => setIncludeQuotes((v) => !v)}
-            class={cx(
-              "inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-1 text-xs font-medium transition-colors",
-              includeQuotes
-                ? "border-ink bg-surface-soft text-ink"
-                : "border-hairline text-mute hover:text-body",
-            )}
-          >
-            <span
-              class={cx(
-                "h-2 w-2 rounded-full",
-                includeQuotes ? "bg-primary" : "bg-hairline",
-              )}
-              aria-hidden
+          <label class="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-body">
+            <Toggle
+              size="sm"
+              enabled={includeQuotes}
+              onToggle={() => setIncludeQuotes((v) => !v)}
+              ariaLabel="Show quotes"
             />
             Show quotes
-          </button>
+          </label>
           <div class="flex h-8 items-center gap-1.5 rounded-control border border-rule-2 bg-paper pl-2.5 pr-1 focus-within:border-amber-deep focus-within:ring-[3px] focus-within:ring-amber/18">
             <Search size={13} class="shrink-0 text-muted-2" aria-hidden />
             <input
