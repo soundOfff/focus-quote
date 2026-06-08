@@ -24,10 +24,10 @@ interface Metrics {
 
 export function HomeSidebar({
   metrics,
-  onJumpToTopics,
+  onOpenTopic,
 }: {
   metrics: Metrics
-  onJumpToTopics: () => void
+  onOpenTopic: (topicId: string) => void
 }) {
   const [topics, setTopics] = useState<ReadonlyArray<Topic>>([])
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null)
@@ -109,7 +109,7 @@ export function HomeSidebar({
                     type="button"
                     onClick={() => {
                       setSelectedTopic(t.name)
-                      onJumpToTopics()
+                      onOpenTopic(t.id)
                     }}
                     class={cx(
                       "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/70",

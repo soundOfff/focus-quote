@@ -161,6 +161,9 @@ function AppInner() {
   const [theme, setTheme] = useState<Theme>("dark")
   const [todayGoal, setTodayGoal] = useState("")
   const [homeTab, setHomeTab] = useState<HomeMainTab>("overview")
+  // Topic id to auto-open in TopicsSection when navigating in from the
+  // sidebar's "Active topics" list. Cleared once TopicsSection consumes it.
+  const [focusTopicId, setFocusTopicId] = useState<string | null>(null)
 
   useEffect(() => {
     chrome.storage?.local?.get(HEADER_TAB_KEY).then((res) => {
@@ -324,7 +327,10 @@ function AppInner() {
             <div class="flex min-h-0 flex-1 flex-col gap-6 py-5 lg:flex-row lg:gap-10 lg:py-6">
               <HomeSidebar
                 metrics={stats}
-                onJumpToTopics={() => setHomeTabPersist("topics")}
+                onOpenTopic={(id) => {
+                  setFocusTopicId(id)
+                  setHomeTabPersist("topics")
+                }}
               />
               <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto pb-6 pr-2  ">
                 {homeTab === "overview" && (
@@ -379,7 +385,10 @@ function AppInner() {
                 )}
                 {homeTab === "topics" && (
                   <div class="flex flex-col gap-4">
-                    <TopicsSection />
+                    <TopicsSection
+                      focusTopicId={focusTopicId}
+                      onFocusHandled={() => setFocusTopicId(null)}
+                    />
                   </div>
                 )}
                 {homeTab === "history" && (

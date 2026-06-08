@@ -205,11 +205,20 @@ function VaultImage({
   )
 }
 
-export function TopicsSection() {
+export function TopicsSection({
+  focusTopicId,
+  onFocusHandled,
+}: {
+  /** Topic id to auto-open + scroll to (e.g. clicked from the home sidebar). */
+  focusTopicId?: string | null
+  onFocusHandled?: () => void
+} = {}) {
   const [topics, setTopics] = useState<ReadonlyArray<Topic>>([])
   const [ready, setReady] = useState(false)
   const [openTopic, setOpenTopic] = useState<string | null>(null)
   const [openTopicId, setOpenTopicId] = useState<string | null>(null)
+  const detailRef = useRef<HTMLElement>(null)
+  const scrollPendingRef = useRef(false)
   const [media, setMedia] = useState<ReadonlyArray<TopicMediaItem>>([])
   const [mediaLoading, setMediaLoading] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -276,6 +285,29 @@ export function TopicsSection() {
     setNoteDraft("")
     setLinkDraft("")
   }
+
+  // Auto-open + scroll to a topic requested from outside (the home sidebar's
+  // "Active topics" list). Wait for the topic list to load, then open the
+  // matching card and flag a scroll once its detail panel renders.
+  useEffect(() => {
+    if (!ready || !focusTopicId) return
+    const match = topics.find((t) => t.id === focusTopicId)
+    if (!match) return
+    if (openTopicId !== match.id) {
+      scrollPendingRef.current = true
+      open(match)
+    }
+    onFocusHandled?.()
+    // `open` is a stable closure over setters; intentionally excluded from deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, focusTopicId, topics])
+
+  useEffect(() => {
+    if (openTopic && scrollPendingRef.current) {
+      scrollPendingRef.current = false
+      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }, [openTopic])
 
   const onPick = (e: Event) => {
     if (!openTopic) return
@@ -564,7 +596,10 @@ export function TopicsSection() {
 
       {/* C) Detail panel */}
       {openTopic && (
-        <section class="rounded-card border border-rule bg-paper-2 p-5">
+        <section
+          ref={detailRef}
+          class="rounded-card border border-rule bg-paper-2 p-5"
+        >
           <div class="flex items-start justify-between gap-4">
             {renaming ? (
               <input
