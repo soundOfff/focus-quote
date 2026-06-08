@@ -14,8 +14,8 @@ import { quoteIdsForTag, rootTagIds } from "./tag-graph"
  *     O(n²) Verlet integrator is both correct and smooth.
  *
  * This module is pure (no Preact, no DOM) so the physics and the TagGraph →
- * nodes/links mapping are unit-testable. The Preact `<KnowledgeGraph>` owns the
- * render loop, the viewport transform, and pointer interaction.
+ * nodes/links mapping are unit-testable. The Preact `<QuotesGraph>` owns the
+ * canvas render loop, the viewport transform, and pointer interaction.
  */
 
 export type GraphNodeKind = "tag" | "quote"
@@ -51,7 +51,7 @@ export interface SimNode {
 export interface SimLink {
   source: string
   target: string
-  kind: "hierarchy" | "membership"
+  kind: "hierarchy" | "membership" | "cooccurrence"
   /** Resolved at build time so the tick loop never re-looks-up nodes. */
   s: SimNode
   t: SimNode
@@ -77,6 +77,15 @@ export interface BuildOptions {
   includeQuotes: boolean
   /** Hard cap on quote leaf nodes to keep the O(n²) sim smooth. */
   quoteCap?: number
+  /** Size tag hubs by rolled-up quote count (sub-tags included) when true, or
+   *  direct memberships only when false. Mirrors the list's "Include sub-tags".
+   *  Defaults to true (original behaviour). */
+  rollupWeight?: boolean
+  /** Add weak tag↔tag springs between tags that share quotes, so co-occurring
+   *  subjects drift into the same cluster. Off by default; the canvas opts in. */
+  coOccurrence?: boolean
+  /** Keep only the strongest N co-occurrence links, to bound link work. */
+  coOccurrenceCap?: number
 }
 
 const TAG_BASE_R = 7
@@ -145,7 +154,7 @@ export const buildGraphModel = (
   const bump = (id: string) => degree.set(id, (degree.get(id) ?? 0) + 1)
 
   graph.tags.forEach((tag, i) => {
-    const weight = quoteIdsForTag(graph, tag.id, true).size
+    const weight = quoteIdsForTag(graph, tag.id, opts.rollupWeight ?? true).size
     const r = tagRadius(weight)
     const seed = seedPosition(i)
     const node: SimNode = {
@@ -215,7 +224,13 @@ export const buildGraphModel = (
   }
 
   // --- links ---
-  const rawLinks: Array<{ source: string; target: string; kind: SimLink["kind"] }> = []
+  const rawLinks: Array<{
+    source: string
+    target: string
+    kind: SimLink["kind"]
+    /** Shared-quote count for co-occurrence links (drives spring strength). */
+    weight?: number
+  }> = []
   for (const e of graph.edges) {
     if (nodeById.has(e.parentId) && nodeById.has(e.childId)) {
       rawLinks.push({ source: e.parentId, target: e.childId, kind: "hierarchy" })
@@ -233,6 +248,46 @@ export const buildGraphModel = (
       }
     }
   }
+  if (opts.coOccurrence) {
+    // Two tags co-occur when a quote carries both; the more quotes they share,
+    // the stronger the pull. Skip pairs already joined by a hierarchy edge —
+    // that spring already holds them, and doubling up over-tightens the tree.
+    const directPair = new Set<string>()
+    for (const e of graph.edges) {
+      directPair.add(`${e.parentId}|${e.childId}`)
+      directPair.add(`${e.childId}|${e.parentId}`)
+    }
+    const tagsByQuote = new Map<string, string[]>()
+    for (const m of graph.memberships) {
+      if (!nodeById.has(m.tagId)) continue
+      const arr = tagsByQuote.get(m.quoteId)
+      if (arr) arr.push(m.tagId)
+      else tagsByQuote.set(m.quoteId, [m.tagId])
+    }
+    const pairCount = new Map<string, number>()
+    for (const tagIds of tagsByQuote.values()) {
+      const uniq = [...new Set(tagIds)]
+      for (let i = 0; i < uniq.length; i++) {
+        for (let j = i + 1; j < uniq.length; j++) {
+          const a = uniq[i]!
+          const b = uniq[j]!
+          const key = a < b ? `${a}|${b}` : `${b}|${a}`
+          pairCount.set(key, (pairCount.get(key) ?? 0) + 1)
+        }
+      }
+    }
+    const cap = opts.coOccurrenceCap ?? 500
+    const pairs = [...pairCount.entries()]
+      .filter(([key]) => !directPair.has(key))
+      .sort((p, q) => q[1] - p[1])
+      .slice(0, cap)
+    for (const [key, count] of pairs) {
+      const [a, b] = key.split("|") as [string, string]
+      rawLinks.push({ source: a, target: b, kind: "cooccurrence", weight: count })
+      bump(a)
+      bump(b)
+    }
+  }
   for (const n of nodes) n.degree = degree.get(n.id) ?? 0
 
   const neighbors = new Map<string, Set<string>>()
@@ -247,19 +302,30 @@ export const buildGraphModel = (
     const t = nodeById.get(l.target)!
     addNeighbor(s.id, t.id)
     addNeighbor(t.id, s.id)
-    const rest =
-      l.kind === "hierarchy"
-        ? 64 + s.r + t.r
-        : 26 + s.r + t.r
     const minDeg = Math.max(1, Math.min(s.degree || 1, t.degree || 1))
+    let length: number
+    let strength: number
+    if (l.kind === "hierarchy") {
+      // Shortest + stiffest: sub-tags hug their parent so the tree reads.
+      length = 64 + s.r + t.r
+      strength = 0.9 / minDeg
+    } else if (l.kind === "membership") {
+      length = 26 + s.r + t.r
+      strength = 0.5 / minDeg
+    } else {
+      // Co-occurrence: longer rest and a gentle, degree-independent pull (so hub
+      // tags still feel it) that firms up with the number of shared quotes.
+      length = 120 + s.r + t.r
+      strength = Math.min(0.16, 0.04 + 0.02 * (l.weight ?? 1))
+    }
     return {
       source: l.source,
       target: l.target,
       kind: l.kind,
       s,
       t,
-      length: rest,
-      strength: (l.kind === "hierarchy" ? 0.9 : 0.5) / minDeg,
+      length,
+      strength,
       bias: (s.degree || 1) / ((s.degree || 1) + (t.degree || 1)),
     }
   })
