@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useState } from "preact/hooks"
 import { Effect } from "effect"
-import {
-  ArrowLeft,
-  Contrast,
-  LogOut,
-  Moon,
-  Sun,
-} from "lucide-preact"
+import { ArrowLeft, LogOut, Moon, Sun } from "lucide-preact"
 import { StorageService } from "../../services/storage"
 import { SyncService } from "../../services/sync"
 import { QuotesService } from "../../services/quotes"
@@ -75,10 +69,6 @@ const formatMb = (bytes: number) => (bytes / (1024 * 1024)).toFixed(1)
 const themeItems: ReadonlyArray<SegmentedItem<Theme>> = [
   { value: "light", label: <><Sun size={13} strokeWidth={1.7} /> Light</> },
   { value: "dark", label: <><Moon size={13} strokeWidth={1.7} /> Dark</> },
-  // "auto" is shown for visual parity with the handoff. We treat it as a
-  // soft alias for whichever variant currently applies — flipping to it
-  // resolves to the current scheme so no behavior breaks.
-  { value: "system" as Theme, label: <><Contrast size={13} strokeWidth={1.7} /> Auto</>, ariaLabel: "Match system" },
 ]
 
 interface Props {
@@ -100,6 +90,9 @@ export function SettingsView({
 }: Props) {
   const [stats, setStats] = useState({ quotes: 0, sessions: 0, queued: 0 })
   const [bytesInUse, setBytesInUse] = useState(0)
+  // Storage figures load asynchronously; until both settle we render a skeleton
+  // so the user never sees placeholder zeros snap to the real counts.
+  const [storageLoaded, setStorageLoaded] = useState(false)
 
   const accountImageSrc = resolveAccountImageSrc(profilePhotoDataUrl, user.image)
   const accountName = (user.name?.trim() || user.email?.split("@")[0] || "—").trim()
@@ -113,20 +106,23 @@ export function SettingsView({
   }, [user])
 
   useEffect(() => {
-    runP(loadStats).then(setStats).catch(() => {})
-    readBytesInUse().then(setBytesInUse).catch(() => setBytesInUse(0))
+    let cancelled = false
+    Promise.allSettled([
+      runP(loadStats).then((s) => {
+        if (!cancelled) setStats(s)
+      }),
+      readBytesInUse().then((b) => {
+        if (!cancelled) setBytesInUse(b)
+      }),
+    ]).finally(() => {
+      if (!cancelled) setStorageLoaded(true)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const setTheme = (theme: Theme) => {
-    // "system" isn't part of our stored Theme type; ignore for storage but
-    // still trigger applyTheme so the visual segmented control feels live.
-    if (theme === ("system" as Theme)) {
-      const prefers = window.matchMedia?.("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light"
-      applyTheme(prefers)
-      return
-    }
     applyTheme(theme)
     onPrefsChange({ ...prefs, theme })
   }
@@ -222,7 +218,7 @@ export function SettingsView({
             value={prefs.theme}
             onChange={setTheme}
             variant="amber"
-            class="w-full"
+            fill
           />
         </section>
 
@@ -279,28 +275,59 @@ export function SettingsView({
         <section class="flex flex-col gap-2">
           <MonoLabel as="h3">Storage</MonoLabel>
           <div class="rounded-card border border-rule bg-paper-2 p-[11px]">
-            <div class="mb-[6px] flex items-baseline justify-between">
-              <span class="text-[12px] font-medium text-ink-2">
-                Local cache
-              </span>
-              <span class="font-mono text-[10px] text-muted">
-                {formatMb(bytesInUse)} / {formatMb(CACHE_CEILING_BYTES)} MB
-              </span>
-            </div>
-            <div class="h-[5px] overflow-hidden rounded-pill border border-rule bg-paper">
-              <div
-                class="h-full bg-amber-gradient"
-                style={{ width: `${cachePct.toFixed(2)}%` }}
-                aria-hidden
-              />
-            </div>
-            <div class="mt-[10px] grid grid-cols-3 gap-2 text-center">
-              <StatCell value={stats.quotes} label="Quotes" />
-              <StatCell value={stats.sessions} label="Sessions" />
-              <StatCell value={stats.queued} label="Queued" />
-            </div>
+            {storageLoaded ? (
+              <>
+                <div class="mb-[6px] flex items-baseline justify-between">
+                  <span class="text-[12px] font-medium text-ink-2">
+                    Local cache
+                  </span>
+                  <span class="font-mono text-[10px] text-muted">
+                    {formatMb(bytesInUse)} / {formatMb(CACHE_CEILING_BYTES)} MB
+                  </span>
+                </div>
+                <div class="h-[5px] overflow-hidden rounded-pill border border-rule bg-paper">
+                  <div
+                    class="h-full bg-amber-gradient"
+                    style={{ width: `${cachePct.toFixed(2)}%` }}
+                    aria-hidden
+                  />
+                </div>
+                <div class="mt-[10px] grid grid-cols-3 gap-2 text-center">
+                  <StatCell value={stats.quotes} label="Quotes" />
+                  <StatCell value={stats.sessions} label="Sessions" />
+                  <StatCell value={stats.queued} label="Queued" />
+                </div>
+              </>
+            ) : (
+              <StorageSkeleton />
+            )}
           </div>
         </section>
+      </div>
+    </div>
+  )
+}
+
+// Mirrors the loaded Storage layout (cache bar + three stat cells) with pulsing
+// placeholders so the section keeps a stable height while figures load.
+function StorageSkeleton() {
+  return (
+    <div class="animate-pulse" aria-hidden>
+      <div class="mb-[6px] flex items-baseline justify-between">
+        <span class="text-[12px] font-medium text-ink-2">Local cache</span>
+        <span class="h-[10px] w-[68px] rounded bg-rule" />
+      </div>
+      <div class="h-[5px] overflow-hidden rounded-pill border border-rule bg-paper" />
+      <div class="mt-[10px] grid grid-cols-3 gap-2">
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            class="rounded-control border border-rule bg-paper px-2 py-2"
+          >
+            <div class="mx-auto h-[14px] w-[22px] rounded bg-rule" />
+            <div class="mx-auto mt-[6px] h-[9px] w-[36px] rounded bg-rule" />
+          </div>
+        ))}
       </div>
     </div>
   )
