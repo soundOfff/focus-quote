@@ -1,0 +1,2 @@
+ALTER TABLE `topic_vault_items` ADD `session_id` text REFERENCES focus_sessions(id) ON DELETE set null;--> statement-breakpoint
+CREATE INDEX `topic_vault_items_user_session_idx` ON `topic_vault_items` (`user_id`,`session_id`);

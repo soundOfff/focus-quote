@@ -614,6 +614,14 @@ export const topicVaultItems = sqliteTable(
     topicId: text("topic_id")
       .notNull()
       .references(() => topics.id, { onDelete: "cascade" }),
+    // Originating session, preserved through promotion from session_vault_items.
+    // Lets vault-aware completion artifacts seed at *session* scope (ADR-0004)
+    // while still excluding at the coarser Topic scope. Null for direct/
+    // session-less saves. Detaches (not cascades) when the session is deleted so
+    // the curated item survives.
+    sessionId: text("session_id").references(() => focusSessions.id, {
+      onDelete: "set null",
+    }),
     kind: text("kind").notNull(),
     body: text("body").notNull(),
     title: text("title"),
@@ -628,6 +636,10 @@ export const topicVaultItems = sqliteTable(
     userTopicCreatedIdx: index(
       "topic_vault_items_user_topic_created_idx",
     ).on(t.userId, t.topicId, t.createdAt),
+    userSessionIdx: index("topic_vault_items_user_session_idx").on(
+      t.userId,
+      t.sessionId,
+    ),
   }),
 )
 

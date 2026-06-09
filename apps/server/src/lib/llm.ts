@@ -26,7 +26,7 @@ For each URL the user visits during a focus session, you respond with strict JSO
 Reply with ONLY the JSON object, no prose, no markdown fences.`
 
 const SYSTEM_SUMMARY = `You are a focus coach summarizing a completed session.
-You receive the session goal and a list of visited pages with category and optional text snippets from those pages.
+You receive the session goal and a list of visited pages with optional text snippets from those pages.
 Ground your claims in the provided page text whenever possible. Do not invent facts not supported by the snippets.
 Reply with strict JSON: {"summary": string} containing 2-3 short sentences in the user's language reviewing what they did, on-goal vs off-goal patterns, and one actionable tip.
 No prose outside JSON, no markdown fences.`
@@ -44,8 +44,8 @@ const buildRecallSystem = (count: number, depth: string) => {
         ? "Make the questions challenging — multi-step reasoning, edge cases, comparisons across the visited content."
         : "Use standard difficulty — concrete questions on the core ideas."
   return `You are a study coach designing active-recall prompts for a learner.
-You receive the session goal and the URLs they visited (with titles).
-Generate EXACTLY ${count} short questions that test the core ideas the user just engaged with. Each question must be answerable from the visited content. For each, also include the correct answer (one to three sentences).
+You receive the session goal, the URLs they visited (with titles), and the learner's own saved Vault notes and screenshot captions for this topic.
+Treat the Vault notes and captions as PRIMARY source material — they are what the learner deliberately chose to keep, and they may be the only material present when no pages were tracked. Generate EXACTLY ${count} short questions that test the core ideas the learner engaged with, drawing on the visited content AND the Vault notes/captions. Each question must be answerable from that material (the visited pages and/or the saved notes). For each, also include the correct answer (one to three sentences).
 ${depthHint}
 Reply with strict JSON: {"questions": [{"q": string, "a": string}]} in the user's language. No prose outside JSON, no markdown fences.`
 }
@@ -121,12 +121,6 @@ Each step: { "ref": number|null, "instruction": string, "description": string, "
 Order the steps as the user would perform them. Strongly prefer real catalog elements over guesses.
 Reply with strict JSON: {"steps": [...]}. No markdown fences, no prose outside the JSON.`
 
-const SYSTEM_GOAL_SUMMARY = `You are summarizing what a user was working on during a completed focus session, in the user's language.
-You receive the URLs they visited (with titles).
-Produce ONE short phrase (4-8 words, no period, no markdown) describing the most likely goal of the session — e.g. "Learning Rust borrow checker", "Researching travel insurance", "Job applications for senior PM roles".
-Avoid generic phrases like "Browsing the web" unless the URLs are truly mixed/unfocused.
-Reply with strict JSON: {"goal": string}. No prose outside JSON, no markdown fences.`
-
 const SYSTEM_TITLE = `You are titling a focus session for a tidy history list, in the user's language.
 You receive the session's broad topic category and the pages visited (with titles).
 Produce ONE concise title (2-6 words, Title Case, no period, no quotes, no markdown) naming the specific subject of the session — e.g. "React Server Components", "Borrow Checker Lifetimes", "Senior PM Applications".
@@ -134,8 +128,8 @@ Be specific to the visited content; lean on the topic category only for framing.
 Reply with strict JSON: {"title": string}. No prose outside JSON, no markdown fences.`
 
 const SYSTEM_RESOURCES = `You are a study coach recommending additional resources after a focus session.
-You receive the session goal and the URLs the user visited.
-Recommend 3 to 5 ADDITIONAL resources (not already in their visited list) that fill gaps or deepen the topic. Aim for at least 3 — if you can only find 3 high-confidence resources, that is fine.
+You receive the session goal, the URLs the user visited, and the user's Vault — material they have ALREADY saved and are familiar with (saved links, notes, and screenshot captions).
+Recommend 3 to 5 ADDITIONAL resources that are NOT in the visited list and NOT in the Vault. Treat the Vault as the user's already-known set: build on it by suggesting adjacent, novel material that goes one step further, rather than repeating what they already have. Aim for at least 3 — if you can only find 3 high-confidence resources, that is fine.
 CRITICAL: only return real, well-known, stable URLs you are highly confident exist (official docs, well-known blogs, established YouTube channels, canonical references). Do NOT fabricate URLs. If you are not confident a URL exists, do not include it — fewer high-quality items is better than fabricated ones.
 For each resource provide: url, title, and one sentence on why it's valuable for THIS user given their goal.
 Reply with strict JSON: {"resources": [{"url": string, "title": string, "why": string}]} in the user's language. No prose outside JSON, no markdown fences.`
@@ -340,7 +334,7 @@ export interface ResourceRecommendation {
 
 interface StudyInput {
   goal: string | null
-  urls: Array<{ url: string; category: string | null; title: string | null }>
+  urls: Array<{ url: string; title: string | null }>
 }
 
 const buildStudyUserMessage = (input: StudyInput) =>
@@ -377,17 +371,36 @@ export interface RecallOptions {
   depth?: "easy" | "standard" | "challenging"
 }
 
+/** A learner's saved Vault note or screenshot caption fed into recall (ADR-0004). */
+export interface RecallVaultNote {
+  kind: "note" | "screenshot"
+  text: string
+}
+
+const buildRecallUserMessage = (
+  input: StudyInput,
+  vault: ReadonlyArray<RecallVaultNote>,
+) =>
+  JSON.stringify({
+    goal: input.goal ?? "(no explicit goal)",
+    urls: input.urls.slice(0, 60),
+    vault: vault.slice(0, 40),
+  })
+
 export const generateRecallQuestions = async (
   input: StudyInput,
-  opts: RecallOptions = {},
+  opts: RecallOptions & { vault?: ReadonlyArray<RecallVaultNote> } = {},
 ): Promise<RecallQuestion[] | null> => {
-  if (input.urls.length === 0) return null
+  const vault = opts.vault ?? []
+  // Vault-first (ADR-0004): generate from the saved notes/captions even when no
+  // pages were tracked, so long as there is *some* material to draw on.
+  if (input.urls.length === 0 && vault.length === 0) return null
   const count = opts.count ?? 5
   const depth = opts.depth ?? "standard"
   try {
     const text = await generate({
       system: buildRecallSystem(count, depth),
-      user: buildStudyUserMessage(input),
+      user: buildRecallUserMessage(input, vault),
       maxTokens: 800,
       tier: "smart",
       expectJson: true,
@@ -410,30 +423,6 @@ export const generateRecallQuestions = async (
     return questions.length > 0 ? questions : null
   } catch (err) {
     console.warn("[llm] generateRecallQuestions failed:", err)
-    return null
-  }
-}
-
-export const generateGoalSummary = async (
-  input: StudyInput,
-): Promise<string | null> => {
-  if (input.urls.length === 0) return null
-  try {
-    const text = await generate({
-      system: SYSTEM_GOAL_SUMMARY,
-      user: JSON.stringify({ urls: input.urls.slice(0, 30) }),
-      maxTokens: 60,
-      tier: "fast",
-      expectJson: true,
-    })
-    if (!text) return null
-    const parsed = JSON.parse(stripFences(text)) as { goal?: unknown }
-    if (typeof parsed.goal !== "string") return null
-    const trimmed = parsed.goal.trim().replace(/\.$/, "")
-    if (!trimmed) return null
-    return trimmed.slice(0, 80)
-  } catch (err) {
-    console.warn("[llm] generateGoalSummary failed:", err)
     return null
   }
 }
@@ -469,7 +458,7 @@ export const generateTopic = async (
 
 export const generateSessionTitle = async (input: {
   topic: string | null
-  urls: Array<{ url: string; category: string | null; title: string | null }>
+  urls: Array<{ url: string; title: string | null }>
 }): Promise<string | null> => {
   if (input.urls.length === 0) return null
   try {
@@ -542,12 +531,35 @@ export const gradeRecallAnswer = async (input: {
   }
 }
 
+/** An item from the session's Vault used to seed novelty in recommendations. */
+export interface ResourceVaultSeed {
+  kind: string
+  body: string
+  title: string | null
+}
+
+const buildResourcesUserMessage = (
+  input: StudyInput,
+  vault: ReadonlyArray<ResourceVaultSeed>,
+) =>
+  JSON.stringify({
+    goal: input.goal ?? "(no explicit goal)",
+    urls: input.urls.slice(0, 60),
+    vault: vault.slice(0, 40).map((v) => ({
+      kind: v.kind,
+      url: v.kind === "url" ? v.body : undefined,
+      note: v.kind === "note" ? v.body : undefined,
+      title: v.title ?? undefined,
+    })),
+  })
+
 const callResourcesOnce = async (
   input: StudyInput,
+  vault: ReadonlyArray<ResourceVaultSeed>,
 ): Promise<ResourceRecommendation[]> => {
   const text = await generate({
     system: SYSTEM_RESOURCES,
-    user: buildStudyUserMessage(input),
+    user: buildResourcesUserMessage(input, vault),
     maxTokens: 700,
     tier: "smart",
     expectJson: true,
@@ -569,21 +581,96 @@ const callResourcesOnce = async (
   })
 }
 
+/**
+ * Canonicalize a URL for "same-page" comparison (ADR-0004 Layer A exclusion):
+ * scheme-agnostic (http and https are the same page), lowercase host with a
+ * leading "www." stripped so apex and www collapse, fragment dropped, and a
+ * trailing slash ignored — so trivial variants of the same page reduce to one
+ * key. Falls back to a trimmed, lowercased string for inputs the URL parser
+ * rejects.
+ */
+export const normalizeUrl = (u: string): string => {
+  try {
+    const url = new URL(u.trim())
+    const host = url.host.toLowerCase().replace(/^www\./, "")
+    const path = url.pathname.replace(/\/+$/, "")
+    return `${host}${path}${url.search}`
+  } catch {
+    return u
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/^www\./, "")
+      .replace(/#.*$/, "")
+      .replace(/\/+$/, "")
+  }
+}
+
+/**
+ * Hard exclusion (ADR-0004 Layer A): drop any recommendation whose URL matches —
+ * by {@link normalizeUrl} — the user's already-known set. Done in code, never
+ * left to the model.
+ */
+export const dropExcludedRecommendations = (
+  resources: ReadonlyArray<ResourceRecommendation>,
+  excludeUrls: ReadonlyArray<string>,
+): ResourceRecommendation[] => {
+  const exclude = new Set(excludeUrls.map(normalizeUrl))
+  return resources.filter((r) => !exclude.has(normalizeUrl(r.url)))
+}
+
 const MIN_RECOMMENDATIONS = 3
 const MAX_RECOMMENDATIONS = 5
 
+/**
+ * Vault-first gate (ADR-0004 #38): resource recommendations need *some* material
+ * to ground or constrain generation. Generate when this session has tracked
+ * visits or seed saves, OR when the resolved Topic already carries a known-set
+ * to exclude — so a Topic whose Vault holds only *earlier* sessions' saves still
+ * produces output, keeping this gate aligned with the caller's "has material"
+ * decision rather than silently returning null.
+ */
+export const hasResourceMaterial = (
+  input: StudyInput,
+  opts: {
+    excludeUrls?: ReadonlyArray<string>
+    vault?: ReadonlyArray<ResourceVaultSeed>
+  },
+): boolean =>
+  input.urls.length > 0 ||
+  (opts.vault?.length ?? 0) > 0 ||
+  (opts.excludeUrls?.length ?? 0) > 0
+
 export const generateResourceRecommendations = async (
   input: StudyInput,
+  opts: {
+    /** Known-set URLs to never recommend (Topic Vault ∪ session visits). */
+    excludeUrls?: ReadonlyArray<string>
+    /** This session's Vault saves, fed as "already familiar" seed material. */
+    vault?: ReadonlyArray<ResourceVaultSeed>
+  } = {},
 ): Promise<ResourceRecommendation[] | null> => {
-  if (input.urls.length === 0) return null
+  // Vault-first (ADR-0004): produce recommendations from Goal + Topic + Vault
+  // even with zero tracked visits. A non-empty known-set counts as material, so
+  // a Topic carrying only earlier sessions' saves still generates (#38).
+  if (!hasResourceMaterial(input, opts)) return null
+  const vault = opts.vault ?? []
+  // Layer A known-set: visited pages ∪ the caller-supplied Topic Vault URLs.
+  const excludeUrls = [...input.urls.map((u) => u.url), ...(opts.excludeUrls ?? [])]
   try {
-    let candidates = await callResourcesOnce(input)
+    let candidates = dropExcludedRecommendations(
+      await callResourcesOnce(input, vault),
+      excludeUrls,
+    )
     let verified = await validateUrls(candidates)
     // If too few survived validation, retry once. The retry's randomness
     // usually produces a different set, increasing the chance we hit the
     // floor without bloating cost.
     if (verified.length < MIN_RECOMMENDATIONS) {
-      const more = await callResourcesOnce(input)
+      const more = dropExcludedRecommendations(
+        await callResourcesOnce(input, vault),
+        excludeUrls,
+      )
       const dedup = new Map<string, ResourceRecommendation>()
       for (const r of [...candidates, ...more]) dedup.set(r.url, r)
       candidates = Array.from(dedup.values())
@@ -642,7 +729,6 @@ export const summarizeSession = async (input: {
   goal: string | null
   urls: Array<{
     url: string
-    category: string | null
     title: string | null
     content: string | null
   }>
@@ -652,7 +738,6 @@ export const summarizeSession = async (input: {
   const pages = input.urls.slice(0, 60).map((u) => ({
     url: u.url,
     title: u.title,
-    category: u.category,
     contentSnippet: u.content ? u.content.slice(0, 600) : null,
   }))
 

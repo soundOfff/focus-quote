@@ -2,65 +2,10 @@ import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { db } from "../db/client"
 import { focusSessions, sessionUrls, topicMedia, topics } from "../db/schema"
-import { generateGoalSummary, generateSessionTitle, generateTopic } from "./llm"
+import { generateSessionTitle, generateTopic } from "./llm"
 import { aiFeatureEnabledForUser, loadAiGateSettings } from "./ai-gate"
 
 type Database = typeof db
-
-/**
- * If a session was started without a goal, try to infer one from the URLs
- * visited during the session and persist it. Fail open — if the LLM is
- * unavailable, the goal stays null and the UI shows "No goal".
- */
-export const maybeAutoDeriveGoal = async (
-  userId: string,
-  sessionId: string,
-): Promise<void> => {
-  try {
-    if (!(await loadAiGateSettings(userId)).masterEnabled) return
-    const [session] = await db
-      .select({
-        id: focusSessions.id,
-        goal: focusSessions.goal,
-      })
-      .from(focusSessions)
-      .where(
-        and(eq(focusSessions.id, sessionId), eq(focusSessions.userId, userId)),
-      )
-      .limit(1)
-    if (!session) return
-    if (session.goal && session.goal.trim().length > 0) return
-
-    const urls = await db
-      .select({
-        url: sessionUrls.url,
-        title: sessionUrls.title,
-        category: sessionUrls.category,
-      })
-      .from(sessionUrls)
-      .where(
-        and(
-          eq(sessionUrls.sessionId, sessionId),
-          eq(sessionUrls.userId, userId),
-        ),
-      )
-      .orderBy(asc(sessionUrls.visitedAt))
-      .limit(30)
-    if (urls.length === 0) return
-
-    const goal = await generateGoalSummary({ goal: null, urls })
-    if (!goal) return
-
-    await db
-      .update(focusSessions)
-      .set({ goal })
-      .where(
-        and(eq(focusSessions.id, sessionId), eq(focusSessions.userId, userId)),
-      )
-  } catch (err) {
-    console.warn("[topic] auto-derive goal failed for", sessionId, err)
-  }
-}
 
 /**
  * Auto-Title (issue #9). When the autoTitle feature is opted in AND the user
@@ -98,7 +43,6 @@ export const maybeGenerateTitle = async (
       .select({
         url: sessionUrls.url,
         title: sessionUrls.title,
-        category: sessionUrls.category,
       })
       .from(sessionUrls)
       .where(
@@ -158,7 +102,6 @@ export const maybeGenerateTopic = async (
       .select({
         url: sessionUrls.url,
         title: sessionUrls.title,
-        category: sessionUrls.category,
       })
       .from(sessionUrls)
       .where(
