@@ -105,6 +105,10 @@ const wouldCreateCycle = (
   return false
 }
 
+/** Fold a Tag name for dedup: trimmed, whitespace-collapsed, case-insensitive. */
+const normalizeTagName = (name: string): string =>
+  name.trim().replace(/\s+/g, " ").toLowerCase()
+
 const markCategorized = (userId: string, quoteId: string) =>
   db
     .update(quotes)
@@ -140,23 +144,33 @@ const applyClassification = async (
   }
 
   if (plan.newTag) {
-    const tagId = randomUUID()
-    const name = plan.newTag.slice(0, 60)
-    await db.insert(tags).values({
-      id: tagId,
-      userId,
-      name,
-      userEdited: false,
-      createdAt: now,
-      updatedAt: now,
-    })
-    await db
-      .insert(quoteTags)
-      .values({ userId, quoteId, tagId, userEdited: false, createdAt: now })
-      .onConflictDoNothing()
-    liveTags.push({ id: tagId, name })
-    await markCategorized(userId, quoteId)
-    return { attached: 1, createdTag: true }
+    const name = plan.newTag.trim().slice(0, 60)
+    if (name) {
+      // Before minting, reuse a same-named Tag if one already exists (the model
+      // sometimes proposes a "new" Tag whose name matches an existing one,
+      // case/whitespace aside). Minting anyway would leave two Tags — and two
+      // graph nodes — under one label. Attach to the existing Tag instead.
+      const norm = normalizeTagName(name)
+      const existing = liveTags.find((t) => normalizeTagName(t.name) === norm)
+      const tagId = existing ? existing.id : randomUUID()
+      if (!existing) {
+        await db.insert(tags).values({
+          id: tagId,
+          userId,
+          name,
+          userEdited: false,
+          createdAt: now,
+          updatedAt: now,
+        })
+        liveTags.push({ id: tagId, name })
+      }
+      await db
+        .insert(quoteTags)
+        .values({ userId, quoteId, tagId, userEdited: false, createdAt: now })
+        .onConflictDoNothing()
+      await markCategorized(userId, quoteId)
+      return { attached: 1, createdTag: !existing }
+    }
   }
 
   // The model returned a definitive empty plan — file it as processed.
@@ -392,16 +406,27 @@ export const consolidateGraph = async (
       let edges = edgeRows.map((e) => ({ ...e }))
       const now = new Date().toISOString()
 
-      // Renames — skip pinned tags, unknown ids, and no-ops.
+      // Renames — skip pinned tags, unknown ids, and no-ops. Also skip when the
+      // new name collides with another live Tag: renaming into it would leave two
+      // same-named Tags (two graph nodes under one label). A real consolidation
+      // there is the model's job via `merges`, not a rename.
+      const liveNames = new Set(
+        [...byId.values()].map((t) => normalizeTagName(t.name)),
+      )
       for (const r of plan.renames) {
         const t = byId.get(r.id)
         if (!t || pinned.has(r.id)) continue
         const name = r.name.trim().slice(0, 60)
         if (!name || name === t.name) continue
+        const norm = normalizeTagName(name)
+        const prevNorm = normalizeTagName(t.name)
+        if (norm !== prevNorm && liveNames.has(norm)) continue
         await db
           .update(tags)
           .set({ name, updatedAt: now })
           .where(and(eq(tags.id, r.id), eq(tags.userId, userId)))
+        liveNames.delete(prevNorm)
+        liveNames.add(norm)
         t.name = name
         result.renamed++
       }

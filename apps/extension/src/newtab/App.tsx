@@ -361,7 +361,7 @@ function AppInner() {
                   setHomeTabPersist("topics")
                 }}
               />
-              <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto pb-6 pr-2  ">
+              <div class={`flex min-h-0 min-w-0 flex-1 flex-col pb-6 pr-2 ${homeTab === "quotes" ? "overflow-hidden" : "overflow-y-auto"}`}>
                 {homeTab === "overview" && (
                   <>
                     <header class="mb-6 shrink-0 space-y-1">

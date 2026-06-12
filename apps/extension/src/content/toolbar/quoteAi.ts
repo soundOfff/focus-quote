@@ -633,6 +633,22 @@ export const installQuoteAiButton = (shell: ToolbarShell): (() => void) => {
       })
     }
 
+    // Render the "Sources to visit" block (#26). Sources ride along with each
+    // assistant reply rather than living in the chat history, so this is driven
+    // straight from sendTurn — cleared while a request is in flight, then
+    // repopulated from the response. An empty list hides the whole block.
+    const renderSources = (items: ReadonlyArray<QuoteAssistantSource>) => {
+      sources.list.replaceChildren()
+      if (items.length === 0) {
+        sources.wrap.style.display = "none"
+        return
+      }
+      sources.wrap.style.display = ""
+      items.forEach((source) => {
+        sources.list.appendChild(buildSourceLink(source))
+      })
+    }
+
     renderFromStore()
     // Re-render only when the chat slice actually changes. The store also fires
     // on unrelated writes — notably actionCapture's per-event `appendAction`

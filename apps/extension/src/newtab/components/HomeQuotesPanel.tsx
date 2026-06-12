@@ -2,6 +2,8 @@ import { Effect } from "effect"
 import {
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   List,
   Network,
   Plus,
@@ -9,7 +11,7 @@ import {
   Trash2,
   X,
 } from "lucide-preact"
-import { useEffect, useMemo, useState } from "preact/hooks"
+import { useEffect, useMemo, useRef, useState } from "preact/hooks"
 import type {
   ConsolidateProgressEvent,
   Quote,
@@ -80,21 +82,30 @@ const consolidateEff = (
     return yield* tags.consolidate(onProgress)
   })
 
+// Tidy runs through fixed phases of unequal length, so we map each to a band of
+// the bar rather than spinning indeterminately: the value only ever advances,
+// giving an honest sense of overall progress. Filing is the one phase with real
+// sub-steps (one frame per quote), so it fills its band smoothly.
+const TIDY_BANDS = { classifying: 10, filingStart: 15, filingEnd: 70, restructuring: 85 }
+
 /** Map a streamed progress frame to a determinate bar value + caption. */
 const tidyBar = (
   e: ConsolidateProgressEvent | null,
-): { value: number | null; label: string } => {
-  if (!e) return { value: null, label: "Starting…" }
+): { value: number; label: string } => {
+  if (!e) return { value: 0, label: "Starting…" }
   switch (e.phase) {
     case "classifying":
-      return { value: null, label: `Reading ${e.total} quotes…` }
-    case "filing":
+      return { value: TIDY_BANDS.classifying, label: `Reading ${e.total} quotes…` }
+    case "filing": {
+      const frac = e.total > 0 ? e.processed / e.total : 1
+      const span = TIDY_BANDS.filingEnd - TIDY_BANDS.filingStart
       return {
-        value: e.total > 0 ? (e.processed / e.total) * 100 : 100,
+        value: TIDY_BANDS.filingStart + frac * span,
         label: `Filed ${e.processed} / ${e.total}`,
       }
+    }
     case "restructuring":
-      return { value: null, label: "Tidying tags…" }
+      return { value: TIDY_BANDS.restructuring, label: "Tidying tags…" }
     case "done":
       return { value: 100, label: "Done" }
   }
@@ -102,6 +113,20 @@ const tidyBar = (
 
 const cx = (...parts: Array<string | false | null | undefined>) =>
   parts.filter(Boolean).join(" ")
+
+/** Ids of every tree node that has children — i.e. the ones with a chevron. */
+const collapsibleTagIds = (
+  nodes: ReadonlyArray<TagTreeNode>,
+): Set<string> => {
+  const out = new Set<string>()
+  const walk = (n: TagTreeNode) => {
+    if (n.children.length === 0) return
+    out.add(n.tag.id)
+    n.children.forEach(walk)
+  }
+  nodes.forEach(walk)
+  return out
+}
 
 type QuotesView = "list" | "graph"
 const VIEW_KEY = "focusquote.quotes.view"
@@ -155,10 +180,34 @@ export function HomeQuotesPanel() {
   }
 
   const tree = useMemo(() => buildTagTree(graph), [graph])
-  const untaggedIds = useMemo(
+  // Every tag with sub-tags — the set the "Collapse/Expand all" toggle acts on.
+  const collapsibleIds = useMemo(() => collapsibleTagIds(tree), [tree])
+  const allCollapsed =
+    collapsibleIds.size > 0 &&
+    [...collapsibleIds].every((id) => collapsed.has(id))
+  const toggleAllCollapsed = () =>
+    setCollapsed(allCollapsed ? new Set<string>() : new Set(collapsibleIds))
+  // Collapse the whole tree the first time it loads so the browser opens compact
+  // — the user expands the branches they care about. Runs once (guarded by the
+  // ref) so it never fights a manual expand on later graph refreshes.
+  const didInitCollapse = useRef(false)
+  useEffect(() => {
+    if (didInitCollapse.current || collapsibleIds.size === 0) return
+    didInitCollapse.current = true
+    setCollapsed(new Set(collapsibleIds))
+  }, [collapsibleIds])
+  const liveUntaggedIds = useMemo(
     () => untaggedQuoteIds(graph, quotes.map((q) => q.id)),
     [graph, quotes],
   )
+  // Snapshot of the Untagged set taken when "Tidy now" starts. The filing step
+  // empties this bucket, so while the pass runs we render the count + list from
+  // this frozen copy instead of the live set — the bucket stays put through the
+  // whole bar and updates in a single swap the instant Tidy finishes (when
+  // `tidying` flips false the live set has not yet diverged, so there's no
+  // intermediate flash before the graph refresh lands).
+  const untaggedSnapshot = useRef<ReadonlySet<string>>(new Set())
+  const untaggedIds = tidying ? untaggedSnapshot.current : liveUntaggedIds
 
   const visibleQuoteIds = useMemo<ReadonlySet<string>>(() => {
     if (selected.kind === "all") return new Set(quotes.map((q) => q.id))
@@ -207,6 +256,9 @@ export function HomeQuotesPanel() {
   }
 
   const tidyNow = () => {
+    // Freeze the Untagged bucket to its current contents for the duration of the
+    // run; rendering reads this snapshot while `tidying` is true (see above).
+    untaggedSnapshot.current = liveUntaggedIds
     setTidying(true)
     setTidyNote(null)
     setTidyProgress(null)
@@ -398,15 +450,21 @@ export function HomeQuotesPanel() {
         />
       ) : (
         <>
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr] max-h-[calc(100vh-250px)]">
             {/* Tag tree */}
-            <nav class="flex flex-col gap-0.5" aria-label="Tags">
+            {/* Only the tag tree scrolls; "All quotes" and "Untagged" are pinned
+                top and bottom so neither ever slides out of view — the Untagged
+                bucket stays reachable no matter how tall the tree grows. */}
+            <nav
+              class="flex flex-col gap-0.5 overflow-hidden min-h-0"
+              aria-label="Tags"
+            >
               <button
                 type="button"
                 onClick={() => setSelected({ kind: "all" })}
                 aria-pressed={selected.kind === "all"}
                 class={cx(
-                  "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                  "shrink-0 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
                   selected.kind === "all"
                     ? "bg-surface-soft text-ink"
                     : "text-mute hover:text-body",
@@ -417,36 +475,69 @@ export function HomeQuotesPanel() {
                   {quotes.length}
                 </span>
               </button>
-              {tree.length > 0 && (
-                <ul class="flex flex-col">{tree.map((n) => renderNode(n, 0))}</ul>
-              )}
-              {untaggedIds.size > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelected({ kind: "untagged" })}
-                  aria-pressed={selected.kind === "untagged"}
-                  class={cx(
-                    "mt-0.5 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                    selected.kind === "untagged"
-                      ? "bg-surface-soft text-ink"
-                      : "text-mute hover:text-body",
-                  )}
-                >
-                  <span class="flex-1 text-left">{UNTAGGED_LABEL}</span>
-                  <span class="tabular-nums text-[11px] text-mute">
-                    {untaggedIds.size}
+              {/* Collapse/Expand every sub-tag at once — only worth showing when
+                  there's actually a hierarchy to fold. */}
+              {collapsibleIds.size > 0 && (
+                <div class="shrink-0 flex items-center justify-between px-2 pb-0.5 pt-1.5">
+                  <span class="text-[10px] font-semibold uppercase tracking-wide text-mute">
+                    Quotes
                   </span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={toggleAllCollapsed}
+                    aria-label={
+                      allCollapsed ? "Expand all tags" : "Collapse all tags"
+                    }
+                    class="inline-flex items-center gap-1 rounded px-1 py-0.5 text-[11px] font-medium text-mute transition-colors hover:text-ink"
+                  >
+                    {allCollapsed ? (
+                      <>
+                        <ChevronsUpDown size={12} aria-hidden /> Expand all
+                      </>
+                    ) : (
+                      <>
+                        <ChevronsDownUp size={12} aria-hidden /> Collapse all
+                      </>
+                    )}
+                  </button>
+                </div>
               )}
+              {tree.length > 0 && (
+                <ul class="flex flex-col flex-1 overflow-y-auto min-h-0">
+                  {tree.map((n) => renderNode(n, 0))}
+                </ul>
+              )}
+              {/* Always shown (like "All quotes") so the bucket never vanishes
+                  from under you when Tidy files the last loose quote — you can
+                  still see that nothing's left, count and all. */}
+              <button
+                type="button"
+                onClick={() => setSelected({ kind: "untagged" })}
+                aria-pressed={selected.kind === "untagged"}
+                class={cx(
+                  "shrink-0 mt-0.5 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                  selected.kind === "untagged"
+                    ? "bg-surface-soft text-ink"
+                    : "text-mute hover:text-body",
+                )}
+              >
+                <span class="flex-1 text-left">{UNTAGGED_LABEL}</span>
+                <span class="tabular-nums text-[11px] text-mute">
+                  {untaggedIds.size}
+                </span>
+              </button>
             </nav>
 
             {/* Quote list */}
-            {visible.length === 0 ? (
-              <p class="px-1 py-6 text-center text-xs text-mute">
-                No quotes under this tag.
-              </p>
-            ) : (
-              <ul class="flex flex-col gap-2">
+            <div class="overflow-y-auto">
+              {visible.length === 0 ? (
+                <p class="px-1 py-6 text-center text-xs text-mute">
+                  {selected.kind === "untagged"
+                    ? "Nothing untagged — every quote is filed under a tag."
+                    : "No quotes under this tag."}
+                </p>
+              ) : (
+                <ul class="flex flex-col gap-2">
                 {visible.map((q) => {
                   const qTags = tagsForQuote(graph, q.id)
                   const editing = taggingId === q.id
@@ -539,7 +630,8 @@ export function HomeQuotesPanel() {
                   )
                 })}
               </ul>
-            )}
+              )}
+            </div>
           </div>
         </>
       )}
