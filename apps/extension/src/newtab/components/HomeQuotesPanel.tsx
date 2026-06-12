@@ -30,6 +30,7 @@ import {
   Toggle,
 } from "../../ui/primitives"
 import { QuotesGraph } from "./QuotesGraph"
+import { TagCombobox } from "./TagCombobox"
 import {
   UNTAGGED_LABEL,
   buildTagTree,
@@ -143,7 +144,6 @@ export function HomeQuotesPanel() {
   const [includeSubTags, setIncludeSubTags] = useState(true)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [taggingId, setTaggingId] = useState<string | null>(null)
-  const [tagInput, setTagInput] = useState("")
   const [tidying, setTidying] = useState(false)
   const [tidyNote, setTidyNote] = useState<string | null>(null)
   const [tidyProgress, setTidyProgress] =
@@ -222,12 +222,10 @@ export function HomeQuotesPanel() {
 
   const beginTagging = (id: string) => {
     setTaggingId(id)
-    setTagInput("")
   }
-  const commitTag = (quoteId: QuoteId) => {
-    const name = tagInput.trim()
+  const commitTag = (quoteId: QuoteId, rawName: string) => {
+    const name = rawName.trim()
     setTaggingId(null)
-    setTagInput("")
     if (!name) return
     runP(manualTagEff(quoteId, name)).then(reload).catch(() => {})
   }
@@ -480,7 +478,7 @@ export function HomeQuotesPanel() {
               {collapsibleIds.size > 0 && (
                 <div class="shrink-0 flex items-center justify-between px-2 pb-0.5 pt-1.5">
                   <span class="text-[10px] font-semibold uppercase tracking-wide text-mute">
-                    Quotes
+                    Tags
                   </span>
                   <button
                     type="button"
@@ -596,22 +594,13 @@ export function HomeQuotesPanel() {
                             </span>
                           ))}
                           {editing ? (
-                            <input
-                              type="text"
-                              value={tagInput}
-                              placeholder="Tag name"
-                              autoFocus
-                              onInput={(e) =>
-                                setTagInput(
-                                  (e.currentTarget as HTMLInputElement).value,
-                                )
+                            <TagCombobox
+                              allTags={graph.tags}
+                              existingTagIds={
+                                new Set(qTags.map((t) => t.id))
                               }
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") commitTag(q.id)
-                                if (e.key === "Escape") setTaggingId(null)
-                              }}
-                              onBlur={() => commitTag(q.id)}
-                              class="h-7 w-32 rounded-md border border-hairline-soft bg-canvas px-2 text-xs text-ink outline-none focus:ring-1 focus:ring-focus-ring/70"
+                              onSelect={(name) => commitTag(q.id, name)}
+                              onClose={() => setTaggingId(null)}
                             />
                           ) : (
                             <button
