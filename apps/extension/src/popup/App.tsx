@@ -274,6 +274,7 @@ function AppInner() {
       if (typeof msg !== "object" || msg === null) return
       const type = (msg as { type?: string }).type
       if (type === "focusquote.auth.signedIn") refreshAuth()
+      else if (type === "focusquote.auth.signedOut") window.location.reload()
     }
     chrome.runtime.onMessage.addListener(onMessage)
     return () => chrome.runtime.onMessage.removeListener(onMessage)
@@ -371,16 +372,7 @@ function AppInner() {
           </span>
         </div>
         <div class="flex items-center gap-1">
-          {isGuest ? (
-            <button
-              type="button"
-              onClick={() => setView("signin")}
-              class="inline-flex items-center gap-1 rounded-chip border border-amber-deep/40 bg-amber-deep/10 px-[10px] py-[5px] text-[11px] font-medium text-amber-deep transition-colors hover:bg-amber-deep/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-deep/40"
-            >
-              <LogIn size={11} strokeWidth={2} />
-              Sign in
-            </button>
-          ) : (
+          {!isGuest && (
             <button
               type="button"
               onClick={() => setView("settings")}

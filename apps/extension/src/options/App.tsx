@@ -375,8 +375,12 @@ function AppInner() {
 
   const handleSignOut = () => {
     runP(signOut)
-      .then(() => setUser(null))
-      .catch(() => setUser(null))
+      // signOut wipes local storage; reload so the page rebuilds from a clean,
+      // signed-out state rather than rendering stale in-memory data.
+      .finally(() => {
+        setUser(null)
+        window.location.reload()
+      })
   }
 
   const handleToggleTheme = () => {

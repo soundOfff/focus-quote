@@ -7,7 +7,7 @@ import { focusSessionsRoutes } from "./routes/focus-sessions"
 import { sessionUrlsRoutes } from "./routes/session-urls"
 import { streamRoutes } from "./routes/stream"
 import { syncRoutes } from "./routes/sync"
-import { authBridgeRoutes } from "./routes/auth-bridge"
+import { authBridgeRoutes, oauthBridgeRoutes } from "./routes/auth-bridge"
 import { topicsRoutes } from "./routes/topics"
 import { vaultRoutes } from "./routes/vault"
 import { tagsRoutes } from "./routes/tags"
@@ -41,6 +41,9 @@ app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw))
 
 // Bridge page for chrome-extension magic-link sign-in. See route file.
 app.route("/auth/magic-bridge", authBridgeRoutes)
+
+// Bridge page for chrome-extension Google (OAuth) sign-in. See route file.
+app.route("/auth/oauth-bridge", oauthBridgeRoutes)
 
 app.route("/api/quotes", quotesRoutes)
 app.route("/api/focus-sessions", focusSessionsRoutes)

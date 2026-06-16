@@ -5,7 +5,7 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   List,
-  Network,
+  Loader2,
   Plus,
   Sparkles,
   Trash2,
@@ -13,7 +13,6 @@ import {
 } from "lucide-preact"
 import { useEffect, useMemo, useRef, useState } from "preact/hooks"
 import type {
-  ConsolidateProgressEvent,
   Quote,
   QuoteId,
   TagGraph,
@@ -25,7 +24,6 @@ import { runP } from "../runtime"
 import {
   Button,
   EmptyState,
-  Progress,
   Segmented,
   Toggle,
 } from "../../ui/primitives"
@@ -75,42 +73,12 @@ const removeQuoteEff = (quoteId: QuoteId) =>
     return yield* quotes.remove(quoteId)
   })
 
-const consolidateEff = (
-  onProgress: (event: ConsolidateProgressEvent) => void,
-) =>
-  Effect.gen(function* () {
-    const tags = yield* TagsService
-    return yield* tags.consolidate(onProgress)
-  })
-
-// Tidy runs through fixed phases of unequal length, so we map each to a band of
-// the bar rather than spinning indeterminately: the value only ever advances,
-// giving an honest sense of overall progress. Filing is the one phase with real
-// sub-steps (one frame per quote), so it fills its band smoothly.
-const TIDY_BANDS = { classifying: 10, filingStart: 15, filingEnd: 70, restructuring: 85 }
-
-/** Map a streamed progress frame to a determinate bar value + caption. */
-const tidyBar = (
-  e: ConsolidateProgressEvent | null,
-): { value: number; label: string } => {
-  if (!e) return { value: 0, label: "Starting…" }
-  switch (e.phase) {
-    case "classifying":
-      return { value: TIDY_BANDS.classifying, label: `Reading ${e.total} quotes…` }
-    case "filing": {
-      const frac = e.total > 0 ? e.processed / e.total : 1
-      const span = TIDY_BANDS.filingEnd - TIDY_BANDS.filingStart
-      return {
-        value: TIDY_BANDS.filingStart + frac * span,
-        label: `Filed ${e.processed} / ${e.total}`,
-      }
-    }
-    case "restructuring":
-      return { value: TIDY_BANDS.restructuring, label: "Tidying tags…" }
-    case "done":
-      return { value: 100, label: "Done" }
-  }
-}
+// Tidy still streams progress frames server-side, but the UI no longer renders a
+// determinate bar — the button just spins. Drain the stream with a no-op sink.
+const consolidateEff = Effect.gen(function* () {
+  const tags = yield* TagsService
+  return yield* tags.consolidate(() => {})
+})
 
 const cx = (...parts: Array<string | false | null | undefined>) =>
   parts.filter(Boolean).join(" ")
@@ -146,8 +114,6 @@ export function HomeQuotesPanel() {
   const [taggingId, setTaggingId] = useState<string | null>(null)
   const [tidying, setTidying] = useState(false)
   const [tidyNote, setTidyNote] = useState<string | null>(null)
-  const [tidyProgress, setTidyProgress] =
-    useState<ConsolidateProgressEvent | null>(null)
   // Bumped to re-heat the graph layout when Tidy runs (graph view reads it).
   const [reheatSignal, setReheatSignal] = useState(0)
 
@@ -169,7 +135,8 @@ export function HomeQuotesPanel() {
       ?.get(VIEW_KEY)
       .then((r) => {
         const v = r?.[VIEW_KEY]
-        if (v === "list" || v === "graph") setView(v)
+        // Graph view is hidden for now — only restore "list".
+        if (v === "list") setView(v)
       })
       .catch(() => {})
   }, [])
@@ -259,9 +226,8 @@ export function HomeQuotesPanel() {
     untaggedSnapshot.current = liveUntaggedIds
     setTidying(true)
     setTidyNote(null)
-    setTidyProgress(null)
     setReheatSignal((n) => n + 1)
-    runP(consolidateEff((e) => setTidyProgress(e)))
+    runP(consolidateEff)
       .then(({ changes }) => {
         const { filed, merged, renamed, reparented } = changes
         const parts: string[] = []
@@ -278,7 +244,6 @@ export function HomeQuotesPanel() {
       .catch(() => setTidyNote("Couldn't tidy right now."))
       .finally(() => {
         setTidying(false)
-        setTidyProgress(null)
         reload()
       })
   }
@@ -384,18 +349,10 @@ export function HomeQuotesPanel() {
                 </span>
               ),
             },
-            {
-              value: "graph",
-              ariaLabel: "Graph view",
-              label: (
-                <span class="inline-flex items-center gap-1.5">
-                  <Network size={13} aria-hidden /> Graph
-                </span>
-              ),
-            },
+            // Graph view is hidden for now.
           ]}
         />
-        <label class="inline-flex h-8 cursor-pointer items-center gap-2 rounded-control border border-rule-2 bg-paper-2 px-2.5 text-xs font-medium text-body">
+        <label class="inline-flex h-8 cursor-pointer items-center gap-2 rounded-control border border-rule-2 bg-white px-2.5 text-xs font-medium text-body">
           <Toggle
             size="sm"
             enabled={includeSubTags}
@@ -404,34 +361,34 @@ export function HomeQuotesPanel() {
           />
           Include sub-tags
         </label>
-        <Button
-          variant="primary"
-          size="sm"
-          type="button"
-          // Useful when there's anything to do: loose quotes to file, or enough
-          // tags to restructure.
-          disabled={tidying || (graph.tags.length < 2 && untaggedIds.size === 0)}
-          onClick={tidyNow}
-          class="ml-auto !rounded-md gap-1.5"
-        >
-          <Sparkles size={13} aria-hidden />
-          {tidying ? "Tidying…" : "Tidy now"}
-        </Button>
+        <div class="ml-auto flex items-center gap-2">
+          {/* Each run files at most UNTAGGED_SWEEP_CAP (30) loose quotes; flag it
+              only when the backlog actually exceeds that, so it reads as a heads-up
+              ("you'll need another pass") rather than permanent chrome. */}
+          {!tidying && untaggedIds.size > 30 && (
+            <span class="text-[11px] tabular-nums text-mute">max. 30 per run</span>
+          )}
+          <Button
+            variant="primary"
+            size="sm"
+            type="button"
+            // Useful when there's anything to do: loose quotes to file, or enough
+            // tags to restructure.
+            disabled={tidying || (graph.tags.length < 2 && untaggedIds.size === 0)}
+            onClick={tidyNow}
+            class="!rounded-md gap-1.5"
+          >
+            {tidying ? (
+              <Loader2 size={13} class="animate-spin" aria-hidden />
+            ) : (
+              <Sparkles size={13} aria-hidden />
+            )}
+            {tidying ? "Tidying…" : "Tidy now"}
+          </Button>
+        </div>
       </div>
-      {tidying ? (
-        (() => {
-          const { value, label } = tidyBar(tidyProgress)
-          return (
-            <div class="flex items-center gap-2">
-              <Progress value={value} label={label} class="flex-1" />
-              <span class="shrink-0 text-[11px] tabular-nums text-mute">
-                {label}
-              </span>
-            </div>
-          )
-        })()
-      ) : (
-        tidyNote && <p class="text-[11px] text-mute">{tidyNote}</p>
+      {!tidying && tidyNote && (
+        <p class="text-[11px] text-mute">{tidyNote}</p>
       )}
 
       {view === "graph" ? (
@@ -448,13 +405,19 @@ export function HomeQuotesPanel() {
         />
       ) : (
         <>
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr] max-h-[calc(100vh-250px)]">
+          {/* Fixed height (not max-h): both columns share one stable row height
+              that no longer tracks the selected list's length, so the pinned
+              "Untagged" footer never slides when you switch categories. */}
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr] h-[calc(100vh-250px)]">
             {/* Tag tree */}
             {/* Only the tag tree scrolls; "All quotes" and "Untagged" are pinned
                 top and bottom so neither ever slides out of view — the Untagged
                 bucket stays reachable no matter how tall the tree grows. */}
             <nav
-              class="flex flex-col gap-0.5 overflow-hidden min-h-0"
+              // Fill the fixed-height grid cell so the tree below scrolls
+              // internally and the pinned "Untagged" footer never gets clipped
+              // out of view (e.g. when a tall post-Tidy tree renders expanded).
+              class="flex flex-col gap-0.5 overflow-hidden min-h-0 h-full"
               aria-label="Tags"
             >
               <button

@@ -812,6 +812,7 @@ export const reconstructJson = (raw: string): string => {
 const SYSTEM_QUOTE_TAGS = `You are a librarian filing a captured quote into a user's tag graph.
 You receive the quote text and the list of existing tags (each with an id and name).
 Choose the existing tag ids whose subject genuinely fits the quote (zero, one, or a few). If NONE fit well, propose ONE concise new tag name (1-3 words, Title Case) naming the quote's subject.
+Prefer broad, reusable themes that many other quotes could also share (e.g. "Perseverance", "Leadership", "Mindfulness", "Creativity") over narrow phrases specific to this one quote (e.g. "Determination To Succeed"). Generic, evergreen categories keep the graph small and let quotes cluster.
 Strongly prefer reusing an existing tag over inventing a near-duplicate of one already present.
 Reply with strict JSON: {"attachTagIds": string[], "newTag": string | null}.
 - When existing tags fit: list their ids in attachTagIds and set newTag to null.
@@ -869,6 +870,7 @@ export const classifyQuoteIntoTags = async (input: {
 const SYSTEM_QUOTES_TAGS_BATCH = `You are a librarian filing several captured quotes into a user's tag graph in a single pass.
 You receive a list of quotes (each with an id and text) and the list of existing tags (each with an id and name).
 For EACH quote independently, choose the existing tag ids whose subject genuinely fits the quote (zero, one, or a few). If NONE fit well, propose ONE concise new tag name (1-3 words, Title Case) naming that quote's subject.
+Prefer broad, reusable themes that many other quotes could also share (e.g. "Perseverance", "Leadership", "Mindfulness", "Creativity") over narrow phrases specific to one quote (e.g. "Determination To Succeed"). Generic, evergreen categories keep the graph small and let quotes cluster.
 Strongly prefer reusing an existing tag over inventing a near-duplicate. When several quotes in this batch share a subject that no existing tag covers, propose the SAME new tag name for each of them (so they file together).
 Reply with strict JSON: {"results": [{"id": string, "attachTagIds": string[], "newTag": string | null}]} with EXACTLY one entry per input quote id, echoing each id back.
 - When existing tags fit: list their ids in attachTagIds and set newTag to null.

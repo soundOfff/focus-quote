@@ -205,6 +205,10 @@ function AppInner() {
       const type = (msg as { type?: string }).type
       if (type === "focusquote.auth.signedIn") {
         refresh()
+      } else if (type === "focusquote.auth.signedOut") {
+        // Sign-out wiped local storage; reload so this page rebuilds from the
+        // clean, signed-out state rather than rendering stale in-memory data.
+        window.location.reload()
       } else if (type === "focusquote.session.finished") {
         const sessionId = (msg as { sessionId?: string }).sessionId
         toast.success(

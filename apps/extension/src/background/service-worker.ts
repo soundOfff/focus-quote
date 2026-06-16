@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect"
 import { StorageService } from "../services/storage"
+import { AuthService } from "../services/auth"
 import { ApiService } from "../services/api"
 import { SyncService } from "../services/sync"
 import { QuotesService } from "../services/quotes"
@@ -13,6 +14,7 @@ import {
   isApiProxyMessage,
   isCaptureVisibleTabMessage,
   isRuntimeMessage,
+  isSignInGoogleMessage,
   isSpaNavMessage,
   isSyncConversationMessage,
   type ApiProxyResponse,
@@ -22,6 +24,7 @@ import {
   type RuntimeMessage,
   type RuntimeResponse,
   type SaveQuoteMessage,
+  type SignInGoogleResponse,
   type SpaNavMessage,
   type SyncConversationMessage,
 } from "../shared/messages"
@@ -46,6 +49,7 @@ const ACTIVE_SESSION_KEY = "focusquote.activeSession"
 
 const ServicesLayer = Layer.mergeAll(
   StorageService.Default,
+  AuthService.Default,
   ApiService.Default,
   SyncService.Default,
   QuotesService.Default,
@@ -58,6 +62,7 @@ const ServicesLayer = Layer.mergeAll(
 
 type AllServices =
   | StorageService
+  | AuthService
   | ApiService
   | SyncService
   | QuotesService
@@ -730,6 +735,39 @@ chrome.runtime.onMessage.addListener(
   (msg: unknown, sender, respond: (r: CaptureVisibleTabResponse) => void) => {
     if (!isCaptureVisibleTabMessage(msg)) return false
     handleCaptureVisibleTab(msg, sender).then(respond)
+    return true
+  },
+)
+
+/**
+ * Google (OAuth) sign-in, driven from the popup but executed HERE. The popup
+ * can't host `chrome.identity.launchWebAuthFlow`: opening the Google window
+ * blurs and destroys the popup, killing the in-flight flow before the token is
+ * persisted. Running it in the SW (which survives) fixes that. On success we
+ * broadcast `focusquote.auth.signedIn` so any open surface (popup, newtab)
+ * re-renders, and kick a sync so guest-mode writes migrate to the account.
+ */
+chrome.runtime.onMessage.addListener(
+  (msg: unknown, _sender, respond: (r: SignInGoogleResponse) => void) => {
+    if (!isSignInGoogleMessage(msg)) return false
+    const signIn = Effect.gen(function* () {
+      const auth = yield* AuthService
+      return yield* auth.signInGoogle
+    })
+    runWithServices(signIn)
+      .then((user) => {
+        chrome.runtime
+          .sendMessage({ type: "focusquote.auth.signedIn" })
+          .catch(() => {})
+        void runWithServices(handleSyncNow).catch(() => {})
+        respond({ ok: true, user })
+      })
+      .catch((err) =>
+        respond({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      )
     return true
   },
 )

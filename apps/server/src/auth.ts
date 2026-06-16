@@ -15,11 +15,31 @@ const socialProviders =
       }
     : undefined
 
+/**
+ * Chrome's `chrome.identity.launchWebAuthFlow` redirects OAuth back to
+ * `https://<extension-id>.chromiumapp.org/...`. The extension passes that URL
+ * as `callbackURL` to `/sign-in/social`, and Better Auth rejects any
+ * callbackURL whose origin isn't trusted (a 403 "Invalid callbackURL").
+ * Derive that origin from EXTENSION_ORIGIN so it stays in sync with the
+ * extension ID without a second env var.
+ */
+const extensionId = env.EXTENSION_ORIGIN.replace(
+  /^chrome-extension:\/\//,
+  "",
+).replace(/\/+$/, "")
+export const chromiumAppOrigin =
+  extensionId && extensionId !== "INVALID"
+    ? `https://${extensionId}.chromiumapp.org`
+    : null
+
+const trustedOrigins = [env.EXTENSION_ORIGIN, env.BETTER_AUTH_URL]
+if (chromiumAppOrigin) trustedOrigins.push(chromiumAppOrigin)
+
 export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, { provider: "sqlite", usePlural: true }),
-  trustedOrigins: [env.EXTENSION_ORIGIN, env.BETTER_AUTH_URL],
+  trustedOrigins,
   emailAndPassword: { enabled: false },
   socialProviders,
   plugins: [

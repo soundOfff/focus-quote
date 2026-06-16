@@ -265,7 +265,7 @@ const emptyResult = (): ConsolidateResult => ({
 // sweep is ONE batched LLM call, so keep the batch modest — bounds prompt size
 // and keeps the progress bar quick; the rest are filed on the next click (and
 // the Untagged count keeps showing what's left).
-const UNTAGGED_SWEEP_CAP = 10
+const UNTAGGED_SWEEP_CAP = 30
 
 /**
  * Tidy's filing step (the user-visible point of "Tidy now"): sweep quotes that

@@ -42,6 +42,18 @@ export class StorageService extends Effect.Service<StorageService>()(
             resume(Effect.void)
           })
         }),
+
+      /** Wipes all locally cached extension state (used on sign out). */
+      clear: (): Effect.Effect<void, StorageError> =>
+        Effect.async<void, StorageError>((resume) => {
+          chrome.storage.local.clear(() => {
+            if (chrome.runtime.lastError) {
+              resume(Effect.fail(wrapLastError("storage.clear")))
+              return
+            }
+            resume(Effect.void)
+          })
+        }),
     }),
   },
 ) {}

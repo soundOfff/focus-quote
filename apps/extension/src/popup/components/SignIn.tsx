@@ -2,6 +2,7 @@ import { useState } from "preact/hooks"
 import { Effect } from "effect"
 import { ArrowLeft, LogIn, Mail } from "lucide-preact"
 import { AuthService } from "../../services/auth"
+import type { SignInGoogleResponse } from "../../shared/messages"
 import { runP } from "../runtime"
 import { BrandMark, Button, MonoLabel } from "../../ui/primitives"
 
@@ -19,13 +20,19 @@ export function SignIn({ onSignedIn }: Props) {
   const handleGoogle = () => {
     setBusy(true)
     setError(null)
-    runP(
-      Effect.gen(function* () {
-        const auth = yield* AuthService
-        return yield* auth.signInGoogle
-      }),
-    )
-      .then(() => onSignedIn())
+    // Run the OAuth flow in the background service worker, not here. Opening the
+    // Google window blurs this popup and Chrome destroys it, which would tear
+    // down launchWebAuthFlow mid-flight (the bug: window closes, never signed
+    // in). The SW survives, persists the session, and broadcasts
+    // focusquote.auth.signedIn — so reopening the popup shows the signed-in
+    // state. If this popup happens to still be alive, reflect the result now.
+    chrome.runtime
+      .sendMessage({ type: "focusquote.auth.signInGoogle" })
+      .then((res: SignInGoogleResponse | undefined) => {
+        if (!res) return // popup was torn down; the SW finished the flow
+        if (res.ok) onSignedIn()
+        else setError(res.error)
+      })
       .catch((e) => setError(e?.message ?? String(e)))
       .finally(() => setBusy(false))
   }

@@ -162,6 +162,28 @@ export interface OpenPopupMessage {
   type: "focusquote.ui.openPopup"
 }
 
+/**
+ * Asks the service worker to run the Google (OAuth) sign-in flow. This MUST run
+ * in the SW, not the popup: `chrome.identity.launchWebAuthFlow` opens a window
+ * that steals focus, and Chrome destroys the popup the moment it loses focus —
+ * tearing down the in-flight flow before the token can be persisted. The SW
+ * survives, persists the session, and broadcasts `focusquote.auth.signedIn`.
+ */
+export interface SignInGoogleMessage {
+  type: "focusquote.auth.signInGoogle"
+}
+
+export type SignInGoogleResponse =
+  | { ok: true; user: import("@focus-quote/shared").User }
+  | { ok: false; error: string }
+
+export const isSignInGoogleMessage = (
+  msg: unknown,
+): msg is SignInGoogleMessage => {
+  if (typeof msg !== "object" || msg === null) return false
+  return (msg as { type?: unknown }).type === "focusquote.auth.signInGoogle"
+}
+
 export type RuntimeMessage =
   | SessionStartMessage
   | SessionCancelMessage

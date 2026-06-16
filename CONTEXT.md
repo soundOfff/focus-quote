@@ -5,7 +5,7 @@ The shared language for FocusQuote — a Chrome extension and backend for captur
 ## Language
 
 **Session**:
-A timed period of focused work toward a goal, during which the extension tracks the pages visited and actions taken.
+The consent-and-capture window during which the coach observes what the user studies: a period of focused work toward a Goal, opened by the user, throughout which the extension tracks the pages visited (URLs) so the coach can work from them. The timer is incidental; the session's reason to exist is that it gates when capture happens — no session, no capture.
 _Avoid_: Pomodoro, timer
 
 **History**:

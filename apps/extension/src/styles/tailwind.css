@@ -366,7 +366,10 @@
       var(--amber-grad-to) 100%
     );
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4);
-    transition: width 0.3s ease;
+    /* Decelerate curve (skill: cubic-bezier(0.2, 0, 0, 1)) reads as the fill
+     * settling into each band rather than a linear lurch; specific property
+     * only, never `transition: all`. */
+    transition: width 0.45s cubic-bezier(0.2, 0, 0, 1);
   }
   .fq-progress--indeterminate .fq-progress__bar {
     width: 40%;
@@ -385,8 +388,28 @@
   }
 }
 
+/* Tidy's progress region appears the instant a sweep starts; a soft fade + small
+ * fixed rise (skill: subtle enter, translateY in px not full height) keeps it
+ * from popping in. Children stagger via inline animation-delay at the call site. */
+@keyframes fq-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fq-rise-in {
+  animation: fq-rise-in 0.32s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fq-progress--indeterminate .fq-progress__bar {
     animation-duration: 2.4s;
+  }
+  .fq-rise-in {
+    animation: none;
   }
 }

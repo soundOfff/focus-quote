@@ -12,6 +12,13 @@ const AUTH_PATH_SIGN_OUT = "/api/auth/sign-out"
 const apiUrl = (path: string) =>
   `${__API_BASE_URL__.replace(/\/+$/, "")}${path}`
 
+/** Decodes the base64(utf8(JSON)) user payload produced by the server bridges. */
+const decodeUser = (encoded: string): User => {
+  const bin = atob(encoded)
+  const json = decodeURIComponent(escape(bin))
+  return JSON.parse(json) as User
+}
+
 export class AuthService extends Effect.Service<AuthService>()("AuthService", {
   effect: Effect.gen(function* () {
     const storage = yield* StorageService
@@ -115,7 +122,16 @@ export class AuthService extends Effect.Service<AuthService>()("AuthService", {
 
     const signInGoogle: Effect.Effect<User, AuthError> = Effect.gen(
       function* () {
-        const callbackURL = chrome.identity.getRedirectURL("oauth")
+        // Where launchWebAuthFlow must land for Chrome to close the flow.
+        const extRedirect = chrome.identity.getRedirectURL("oauth")
+        // Point Better Auth's social callback at the same-origin OAuth bridge
+        // (not directly at chromiumapp.org). The bridge reads the session
+        // same-origin — where the SameSite cookie is actually sent — and
+        // forwards the bearer token + user back to `extRedirect` in the URL
+        // fragment. See apps/server/src/routes/auth-bridge.ts.
+        const callbackURL = `${apiUrl("/auth/oauth-bridge")}?ext=${encodeURIComponent(
+          extRedirect,
+        )}`
 
         // Ask Better Auth for the Google authorization URL.
         const initRes = yield* Effect.tryPromise({
@@ -132,7 +148,7 @@ export class AuthService extends Effect.Service<AuthService>()("AuthService", {
         if (!initRes.ok) {
           return yield* Effect.fail(
             new AuthError({
-              message: `init social ${initRes.status} (is GOOGLE_CLIENT_ID set on the server?)`,
+              message: `init social ${initRes.status} (check GOOGLE_CLIENT_ID/SECRET and EXTENSION_ORIGIN on the server)`,
             }),
           )
         }
@@ -147,9 +163,9 @@ export class AuthService extends Effect.Service<AuthService>()("AuthService", {
           )
         }
 
-        // Open the OAuth flow; resolves with the chromiumapp.org URL after
-        // Better Auth completes the dance.
-        yield* Effect.async<string, AuthError>((resume) => {
+        // Open the OAuth flow; resolves with the chromiumapp.org URL (carrying
+        // the token + user in its fragment) after the bridge redirects back.
+        const responseUrl = yield* Effect.async<string, AuthError>((resume) => {
           chrome.identity.launchWebAuthFlow(
             { url: initData.url!, interactive: true },
             (responseUrl) => {
@@ -176,7 +192,32 @@ export class AuthService extends Effect.Service<AuthService>()("AuthService", {
           )
         })
 
-        return yield* fetchSessionAndPersist
+        // The bridge put the bearer token + user in the URL fragment.
+        const parsed = yield* Effect.try({
+          try: () => new URL(responseUrl),
+          catch: (cause) =>
+            new AuthError({ message: "bad OAuth response URL", cause }),
+        })
+        const hash = parsed.hash.startsWith("#")
+          ? parsed.hash.slice(1)
+          : parsed.hash
+        const fragment = new URLSearchParams(hash)
+        const token = fragment.get("token")
+        const userParam = fragment.get("user")
+        if (!token || !userParam) {
+          return yield* Effect.fail(
+            new AuthError({
+              message: "OAuth callback missing token or user",
+            }),
+          )
+        }
+        const user = yield* Effect.try({
+          try: () => decodeUser(userParam),
+          catch: (cause) =>
+            new AuthError({ message: "OAuth user decode failed", cause }),
+        })
+        yield* persistAuth(token, user)
+        return user
       },
     )
 
@@ -216,7 +257,25 @@ export class AuthService extends Effect.Service<AuthService>()("AuthService", {
           }),
         catch: () => null,
       }).pipe(Effect.catchAll(() => Effect.void))
-      yield* clearAuth
+      // Wipe all locally cached state so no data from the signed-in account
+      // lingers for the next session. Falls back to clearing just the auth
+      // keys if a full clear fails for any reason.
+      yield* storage
+        .clear()
+        .pipe(Effect.catchAll(() => clearAuth))
+      // Tell every other open extension surface (new tab, options, popup) that
+      // the session ended so they can reload from the now-empty storage instead
+      // of rendering stale in-memory data. Fire-and-forget — a surface that
+      // isn't listening must not fail the sign-out.
+      yield* Effect.sync(() => {
+        try {
+          void chrome.runtime
+            .sendMessage({ type: "focusquote.auth.signedOut" } as const)
+            .catch(() => {})
+        } catch {
+          // chrome.runtime may not be available in some test contexts.
+        }
+      })
     })
 
     return {

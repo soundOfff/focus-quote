@@ -167,14 +167,28 @@ export function BrandMark({
 export function Progress({
   value,
   label,
+  creep,
   class: className,
 }: {
   value?: number | null
   label?: string
+  /** Approach `value` slowly with a long decelerating ease instead of the snappy
+   *  default — for an unmeasurable wait the bar should trickle toward, not jump to. */
+  creep?: boolean
   class?: string
 }) {
   const indeterminate = value == null
   const clamped = indeterminate ? 0 : Math.max(0, Math.min(100, value))
+  const barStyle = indeterminate
+    ? undefined
+    : {
+        width: `${clamped}%`,
+        // Long ease-out: most of the band is consumed early, then it asymptotes
+        // toward the ceiling so it keeps inching without ever quite arriving.
+        ...(creep
+          ? { transition: "width 14s cubic-bezier(0.05, 0.7, 0.1, 1)" }
+          : null),
+      }
   return (
     <div
       role="progressbar"
@@ -190,7 +204,7 @@ export function Progress({
     >
       <div
         class="fq-progress__bar h-full rounded-pill"
-        style={indeterminate ? undefined : { width: `${clamped}%` }}
+        style={barStyle}
       />
     </div>
   )

@@ -142,8 +142,12 @@ export function SettingsView({
         yield* auth.signOut
       }),
     )
-      .then(() => onSignedOut())
-      .catch(() => onSignedOut())
+      // signOut wipes local storage; reload so the UI rebuilds from a clean,
+      // signed-out state rather than rendering stale in-memory data.
+      .finally(() => {
+        onSignedOut()
+        window.location.reload()
+      })
   }
 
   const fromLangLabel =
