@@ -44,10 +44,18 @@ npm run dev:server   # auto-applies migrations on first start, then Ctrl+C
 | `BETTER_AUTH_SECRET` | yes | `openssl rand -base64 32` |
 | `BETTER_AUTH_URL` | yes | `http://localhost:3000` for dev |
 | `EXTENSION_ORIGIN` | yes | `chrome-extension://<your-extension-id>` (visible in `chrome://extensions`) |
-| `DATABASE_URL` | no | defaults to `file:./data.db` |
+| `DATABASE_URL` | no | defaults to `file:./data.db`; Turso `libsql://…` in prod |
+| `DATABASE_AUTH_TOKEN` | no | required when `DATABASE_URL` is a Turso URL |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | no | enables Google sign-in |
 | `RESEND_API_KEY` | no | enables magic-link emails (otherwise links log to stdout) |
+| `RESEND_FROM_EMAIL` | no | verified sender address for Resend |
+| `LLM_PROVIDER` | no | `anthropic` \| `openrouter`; auto-detects from the keys below if unset |
 | `ANTHROPIC_API_KEY` | no | enables AI URL classification + session summaries |
+| `OPENROUTER_API_KEY` | no | OpenAI-compatible LLM gateway alternative to Anthropic |
+| `OPENROUTER_MODEL` | no | defaults to `google/gemini-2.0-flash-001` |
+| `SECRETS_ENCRYPTION_KEY` | no (dev) / yes (prod) | 32-byte base64; encrypts user-provided secrets at rest |
+
+> Authoritative list and validation rules live in `apps/server/src/env.ts`.
 
 ## Running locally
 
@@ -118,6 +126,12 @@ apps/server/src/
 - **AI session analysis** *(opt-in)* — when enabled, URLs visited during a session are classified by AI (Anthropic Haiku); distractions surface as nudges in real time via SSE
 
 See `/Users/User/.claude/plans/1-panel-de-snappy-token.md` for the roadmap beyond Phase 1 (stats dashboard, deep-focus mode, AI quote suggestions, social features).
+
+## Deployment
+
+Shipping the server (Turso + Node host) and the extension (Chrome Web Store) is
+documented in **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**, including the full
+env-var reference, migration/backfill steps, and a release checklist.
 
 ## Troubleshooting
 
