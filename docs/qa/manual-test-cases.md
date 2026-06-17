@@ -97,10 +97,12 @@ device (or a fresh load) sees the same server state.
 
 ## Findings (running bug list)
 
-| # | Severity | Case | Summary | Issue |
-|---|----------|------|---------|-------|
-| 1 | 🔴 Critical (security) | UC-X2 | Authenticated user can silently overwrite another user's session/quote via unscoped `onConflictDoUpdate` (REST `POST /api/focus-sessions`, sync `upsertSession`/`upsertQuote`) | [#46](https://github.com/soundOfff/focus-quote/issues/46) |
-| 2 | 🟡 Low | UC-Q5 | Quote search treats `%` and `_` as SQL `LIKE` wildcards (unescaped) — `?q=%` returns all quotes | [#47](https://github.com/soundOfff/focus-quote/issues/47) |
-| 3 | 🟠 High (security) | UC-X4 | Cross-user media read leak: `POST /api/topics/:label/media` skips file-ownership check, so a user can attach + read another user's `fileId` (profile photos) | [#48](https://github.com/soundOfff/focus-quote/issues/48) |
-| 4 | 🟡 Medium | UC-M1 | Media 10 MB cap bypassable — `byteSize` is client-supplied, `dataBase64` unbounded, no global body limit | [#49](https://github.com/soundOfff/focus-quote/issues/49) |
-| 5 | 🟡 Medium | UC-AI1 | Rate limiting only covers `guide-steps`; `quote-assistant`/`recall-grade`/`regenerate` paid LLM calls are unthrottled | [#50](https://github.com/soundOfff/focus-quote/issues/50) |
+All findings below were fixed and verified live on branch `qa/security-fixes`.
+
+| # | Severity | Case | Summary | Issue | Status |
+|---|----------|------|---------|-------|--------|
+| 1 | 🔴 Critical (security) | UC-X2 | Authenticated user can silently overwrite another user's session/quote via unscoped `onConflictDoUpdate` (REST `POST /api/focus-sessions`, sync `upsertSession`/`upsertQuote`) | [#46](https://github.com/soundOfff/focus-quote/issues/46) | ✅ fixed (`b585252`) |
+| 2 | 🟡 Low | UC-Q5 | Quote search treats `%` and `_` as SQL `LIKE` wildcards (unescaped) — `?q=%` returns all quotes | [#47](https://github.com/soundOfff/focus-quote/issues/47) | ✅ fixed (`0cee3f4`) |
+| 3 | 🟠 High (security) | UC-X4 | Cross-user media read leak: `POST /api/topics/:label/media` skips file-ownership check, so a user can attach + read another user's `fileId` (profile photos) | [#48](https://github.com/soundOfff/focus-quote/issues/48) | ✅ fixed (`b585252`) |
+| 4 | 🟡 Medium | UC-M1 | Media 10 MB cap bypassable — `byteSize` is client-supplied, `dataBase64` unbounded, no global body limit | [#49](https://github.com/soundOfff/focus-quote/issues/49) | ✅ fixed (`0cee3f4`) |
+| 5 | 🟡 Medium | UC-AI1 | Rate limiting only covers `guide-steps`; `quote-assistant`/`recall-grade`/`regenerate` paid LLM calls are unthrottled | [#50](https://github.com/soundOfff/focus-quote/issues/50) | ✅ fixed (`0cee3f4`) |
