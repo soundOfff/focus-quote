@@ -76,8 +76,14 @@ export const aiToolbarRoutes = new Hono<{ Variables: RequireUserVariables }>()
     // Server-side AI gate (ADR 0002): the toolbar pre-gates client-side, but
     // we re-check here so a disabled feature never spends tokens even if a
     // request reaches us (stale prefs, a direct call, etc.).
-    if (!(await aiFeatureEnabledForUser(c.get("user").id, "quoteAssistant"))) {
+    const userId = c.get("user").id
+    if (!(await aiFeatureEnabledForUser(userId, "quoteAssistant"))) {
       return c.json({ error: "AI is turned off", code: "AI_DISABLED" }, 403)
+    }
+    // Throttle per user: this is a paid LLM call accepting a large prompt
+    // (passage + page content + history), so a stale/stolen token can't spin it.
+    if (!tryConsume(userId)) {
+      return c.json({ error: "Too many requests", code: "RATE_LIMITED" }, 429)
     }
     const body = c.req.valid("json")
     const result = await generateQuoteAssistantReply({

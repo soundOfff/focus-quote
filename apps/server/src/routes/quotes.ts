@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { zValidator } from "@hono/zod-validator"
-import { and, desc, eq, like, sql } from "drizzle-orm"
+import { and, desc, eq, sql } from "drizzle-orm"
 import { createHash, randomUUID } from "node:crypto"
 import { db } from "../db/client"
 import { quotes } from "../db/schema"
@@ -28,8 +28,15 @@ export const quotesRoutes = new Hono<{ Variables: RequireUserVariables }>()
   .get("/", zValidator("query", ListQuotesQuery), async (c) => {
     const userId = c.get("user").id
     const { limit = 50, q } = c.req.valid("query")
+    // Escape LIKE metacharacters so a literal `%` / `_` in the query matches
+    // itself instead of acting as a wildcard. `\` is the escape char (declared
+    // via ESCAPE below); escape it first so it doesn't double-escape the others.
+    const escapeLike = (s: string) => s.replace(/[\\%_]/g, (ch) => `\\${ch}`)
     const filters = q
-      ? and(eq(quotes.userId, userId), like(quotes.text, `%${q}%`))
+      ? and(
+          eq(quotes.userId, userId),
+          sql`${quotes.text} like ${`%${escapeLike(q)}%`} escape '\\'`,
+        )
       : eq(quotes.userId, userId)
     const rows = await db
       .select()
@@ -95,6 +102,3 @@ const toQuoteDTO = (row: typeof quotes.$inferSelect) => ({
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
 })
-
-// silence unused warning when sql helper isn't needed elsewhere
-void sql

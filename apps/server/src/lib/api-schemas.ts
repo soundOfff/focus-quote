@@ -87,11 +87,17 @@ export type ListSessionActionsQuery = z.infer<typeof ListSessionActionsQuery>
 
 export const MediaKindInput = z.enum(["profile_photo", "screenshot"])
 
+// Max decoded payload: 10 MiB. base64 inflates by 4/3, so cap the encoded
+// string a bit above that — the handler additionally verifies the *decoded*
+// size so a client can't lie via `byteSize`.
+export const MAX_MEDIA_BYTES = 10 * 1024 * 1024
+const MAX_MEDIA_BASE64_CHARS = Math.ceil((MAX_MEDIA_BYTES * 4) / 3) + 4
+
 export const UploadMediaInput = z.object({
   kind: MediaKindInput,
   mimeType: z.string().min(1).max(120),
-  dataBase64: z.string().min(1),
-  byteSize: z.number().int().min(1).max(10 * 1024 * 1024),
+  dataBase64: z.string().min(1).max(MAX_MEDIA_BASE64_CHARS),
+  byteSize: z.number().int().min(1).max(MAX_MEDIA_BYTES),
   sessionId: z.string().min(1).nullable().optional(),
 })
 export type UploadMediaInput = z.infer<typeof UploadMediaInput>

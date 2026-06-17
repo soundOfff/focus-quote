@@ -1,5 +1,6 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
+import { bodyLimit } from "hono/body-limit"
 import { env } from "./env"
 import { auth } from "./auth"
 import { quotesRoutes } from "./routes/quotes"
@@ -23,6 +24,19 @@ import { recallRoutes } from "./routes/recall"
 import { toolbarStateRoutes } from "./routes/toolbar-state"
 
 export const app = new Hono()
+
+// Hard backstop on request body size. The largest legitimate payload is a media
+// upload (~13.4 MB of base64 for a 10 MB file) plus JSON overhead; 16 MB leaves
+// headroom for that and sync batches while rejecting abusive blobs before they
+// reach a handler. Per-route validation still enforces tighter, typed limits.
+app.use(
+  "*",
+  bodyLimit({
+    maxSize: 16 * 1024 * 1024,
+    onError: (c) =>
+      c.json({ error: "Payload too large", code: "PAYLOAD_TOO_LARGE" }, 413),
+  }),
+)
 
 app.use(
   "*",

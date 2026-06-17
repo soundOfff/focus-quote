@@ -8,7 +8,11 @@ import {
   requireUser,
   type RequireUserVariables,
 } from "../middleware/require-user"
-import { ListMediaQuery, UploadMediaInput } from "../lib/api-schemas"
+import {
+  ListMediaQuery,
+  MAX_MEDIA_BYTES,
+  UploadMediaInput,
+} from "../lib/api-schemas"
 
 const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/webp"])
 
@@ -42,6 +46,20 @@ export const mediaRoutes = new Hono<{ Variables: RequireUserVariables }>()
     if (!ALLOWED_MIME.has(body.mimeType)) {
       return c.json({ error: "Unsupported mime type", code: "BAD_REQUEST" }, 400)
     }
+
+    // Trust the bytes, not the client's claim. Decode the payload to get the
+    // real size: the schema's `byteSize` cap is on a self-reported number, so
+    // without this a client could send `byteSize: 1` with a huge blob. Reject
+    // invalid base64 and anything over the limit, then persist the true size.
+    const decoded = Buffer.from(body.dataBase64, "base64")
+    if (decoded.length === 0) {
+      return c.json({ error: "Invalid base64 payload", code: "BAD_REQUEST" }, 400)
+    }
+    if (decoded.length > MAX_MEDIA_BYTES) {
+      return c.json({ error: "Payload too large", code: "PAYLOAD_TOO_LARGE" }, 413)
+    }
+    const actualByteSize = decoded.length
+
     if (body.sessionId) {
       const [owned] = await db
         .select({ id: focusSessions.id })
@@ -64,7 +82,7 @@ export const mediaRoutes = new Hono<{ Variables: RequireUserVariables }>()
       id: fileId,
       mimeType: body.mimeType,
       dataBase64: body.dataBase64,
-      byteSize: body.byteSize,
+      byteSize: actualByteSize,
     })
     await db.insert(userMediaRefs).values({
       id: refId,

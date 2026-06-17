@@ -34,6 +34,7 @@ import {
 } from "../lib/vault"
 import { runCompletionDownstream } from "../lib/completion"
 import { gradeRecallAnswer } from "../lib/llm"
+import { tryConsume } from "../lib/rate-limit"
 
 const VaultLinkInput = z.object({
   url: z.string().min(1).max(2000),
@@ -332,6 +333,11 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
         .limit(1)
       if (!row) return c.json({ error: "Not found", code: "NOT_FOUND" }, 404)
 
+      // Throttle: regeneration triggers paid LLM calls.
+      if (!tryConsume(userId)) {
+        return c.json({ error: "Too many requests", code: "RATE_LIMITED" }, 429)
+      }
+
       // Null the relevant column, then regenerate.
       if (artifact === "summary") {
         await db
@@ -403,6 +409,10 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
         return c.json({ error: "Question not found", code: "NOT_FOUND" }, 404)
       }
       const q = questions[questionIndex]!
+      // Throttle: grading is a paid LLM call.
+      if (!tryConsume(userId)) {
+        return c.json({ error: "Too many requests", code: "RATE_LIMITED" }, 429)
+      }
       const grade = await gradeRecallAnswer({
         question: q.q,
         expectedAnswer: q.a,
