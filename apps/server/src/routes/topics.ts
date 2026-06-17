@@ -10,6 +10,7 @@ import {
   topicMedia,
   topicVaultItems,
   topics,
+  userMediaRefs,
 } from "../db/schema"
 import {
   requireUser,
@@ -203,12 +204,20 @@ export const topicsRoutes = new Hono<{ Variables: RequireUserVariables }>()
       return c.json({ error: "Invalid topic", code: "BAD_REQUEST" }, 400)
     }
     const body = c.req.valid("json")
-    const [file] = await db
-      .select({ id: mediaBucketFiles.id })
-      .from(mediaBucketFiles)
-      .where(eq(mediaBucketFiles.id, body.fileId))
+    // Resolve the file through the caller's own media refs — NOT the global
+    // bucket — so a user can't attach (and then read back via GET) another
+    // user's file by guessing its id. Mirrors GET /api/media/:id scoping.
+    const [ref] = await db
+      .select({ fileId: userMediaRefs.fileId })
+      .from(userMediaRefs)
+      .where(
+        and(
+          eq(userMediaRefs.fileId, body.fileId),
+          eq(userMediaRefs.userId, userId),
+        ),
+      )
       .limit(1)
-    if (!file) {
+    if (!ref) {
       return c.json({ error: "File not found", code: "NOT_FOUND" }, 404)
     }
     const id = randomUUID()

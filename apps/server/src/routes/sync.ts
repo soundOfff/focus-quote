@@ -127,6 +127,10 @@ async function applyJob(
           })
           .onConflictDoUpdate({
             target: quotes.id,
+            // Scope the conflict update to the owner so a re-sent id from one
+            // user can't overwrite another user's quote (the conflict resolves
+            // on `id` alone). Foreign-owned rows become a silent no-op.
+            setWhere: eq(quotes.userId, userId),
             set: {
               text: job.text,
               sourceUrl: job.sourceUrl,
@@ -190,6 +194,10 @@ async function applyJob(
         })
         .onConflictDoUpdate({
           target: focusSessions.id,
+          // Scope the conflict update to the owner so a re-sent id from one
+          // user can't overwrite another user's session (the conflict resolves
+          // on `id` alone). Foreign-owned rows become a silent no-op.
+          setWhere: eq(focusSessions.userId, userId),
           set: {
             goal: job.goal,
             durationMinutes: job.durationMinutes,

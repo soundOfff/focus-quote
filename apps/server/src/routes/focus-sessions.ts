@@ -144,6 +144,22 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
     const id = body.id ?? randomUUID()
     const startedAt = body.startedAt ?? new Date().toISOString()
 
+    // Ownership guard: an upsert that targets an existing id must own that row.
+    // Without this, `onConflictDoUpdate` on the bare primary key would let one
+    // user overwrite another user's session (the conflict resolves on `id`
+    // alone). Reject foreign rows up front, and additionally scope the conflict
+    // update with `setWhere` as defense-in-depth against a TOCTOU race.
+    if (body.id) {
+      const [existing] = await db
+        .select({ userId: focusSessions.userId })
+        .from(focusSessions)
+        .where(eq(focusSessions.id, body.id))
+        .limit(1)
+      if (existing && existing.userId !== userId) {
+        return c.json({ error: "Not found", code: "NOT_FOUND" }, 404)
+      }
+    }
+
     await db
       .insert(focusSessions)
       .values({
@@ -158,6 +174,7 @@ export const focusSessionsRoutes = new Hono<{ Variables: RequireUserVariables }>
       })
       .onConflictDoUpdate({
         target: focusSessions.id,
+        setWhere: eq(focusSessions.userId, userId),
         set: {
           goal: body.goal ?? null,
           durationMinutes: body.durationMinutes,
