@@ -152,7 +152,15 @@ export const loadPrefs = (storage: StorageService): Effect.Effect<Prefs> =>
     const raw = yield* storage
       .get<unknown>(PREFS_KEY)
       .pipe(Effect.catchAll(() => Effect.succeed(null)))
-    if (raw === null) return defaultPrefs
+    if (raw === null) {
+      // Fresh install: nothing to migrate, so mark the polarity flip as already
+      // done. Without this the flip below stays armed and inverts the user's
+      // first explicit theme choice on the next load.
+      yield* storage
+        .set(THEME_POLARITY_MIGRATION_KEY, true)
+        .pipe(Effect.catchAll(() => Effect.void))
+      return defaultPrefs
+    }
     const parsed = normalizePrefs(raw)
 
     const migrated = yield* storage
