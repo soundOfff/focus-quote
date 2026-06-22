@@ -14,6 +14,9 @@ type SessionRecord = Schema.Schema.Type<typeof SessionRecord>
 const ActiveSession = Schema.Struct({
   sessionId: Schema.String,
   goal: Schema.NullOr(Schema.String),
+  // The Topic the active session is filed under (chosen at start). Nullable so
+  // an active session persisted before this field existed still decodes.
+  topicId: Schema.optional(Schema.NullOr(Schema.String)),
   durationMinutes: Schema.Number,
   breakMinutes: Schema.Number,
   startedAt: Schema.String,
@@ -32,6 +35,7 @@ const enqueueSession = (sync: SyncService, session: Session) =>
     kind: "upsertSession",
     id: session.id,
     goal: session.goal,
+    topicId: session.topicId,
     durationMinutes: session.durationMinutes,
     breakMinutes: session.breakMinutes,
     completed: session.completed,
@@ -98,6 +102,7 @@ export class SessionsService extends Effect.Service<SessionsService>()(
           const session: Session = {
             id: crypto.randomUUID() as SessionId,
             goal: validated.goal,
+            topicId: validated.topicId,
             durationMinutes: validated.durationMinutes,
             breakMinutes: validated.breakMinutes,
             completed: false,
@@ -109,6 +114,7 @@ export class SessionsService extends Effect.Service<SessionsService>()(
           const active: ActiveSession = {
             sessionId: session.id,
             goal: session.goal,
+            topicId: validated.topicId,
             durationMinutes: session.durationMinutes,
             breakMinutes: session.breakMinutes,
             startedAt: session.startedAt,

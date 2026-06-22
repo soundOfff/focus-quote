@@ -4,11 +4,15 @@ import { SessionsService } from "@/services/sessions"
 import { StorageService } from "@/services/storage"
 import { SyncService } from "@/services/sync"
 import { ApiService } from "@/services/api"
+import type { Session, TopicId } from "@focus-quote/shared"
 import { resetChromeStorage } from "./setup"
+
+const TOPIC = "topic-1" as TopicId
 
 const TestApi = Layer.succeed(ApiService, {
   syncBatch: ({ jobs }: { jobs: ReadonlyArray<unknown> }) =>
     Effect.succeed({ results: jobs.map(() => ({ ok: true as const })) }),
+  listSessions: () => Effect.succeed({ sessions: [] as ReadonlyArray<Session> }),
 } as unknown as ApiService)
 
 const baseDeps = Layer.merge(StorageService.Default, TestApi)
@@ -27,6 +31,7 @@ describe("SessionsService", () => {
       const sessions = yield* SessionsService
       const { session, active } = yield* sessions.start({
         goal: "ship MVP",
+        topicId: TOPIC,
         durationMinutes: 25,
         breakMinutes: 5,
       })
@@ -45,7 +50,8 @@ describe("SessionsService", () => {
     const program = Effect.gen(function* () {
       const sessions = yield* SessionsService
       const { session } = yield* sessions.start({
-        goal: null,
+        goal: "read a chapter",
+        topicId: TOPIC,
         durationMinutes: 25,
         breakMinutes: 5,
       })
@@ -64,7 +70,8 @@ describe("SessionsService", () => {
     const program = Effect.gen(function* () {
       const sessions = yield* SessionsService
       yield* sessions.start({
-        goal: null,
+        goal: "write tests",
+        topicId: TOPIC,
         durationMinutes: 25,
         breakMinutes: 5,
       })
@@ -82,7 +89,8 @@ describe("SessionsService", () => {
     const program = Effect.gen(function* () {
       const sessions = yield* SessionsService
       const { session } = yield* sessions.start({
-        goal: null,
+        goal: "review PR",
+        topicId: TOPIC,
         durationMinutes: 25,
         breakMinutes: 5,
       })

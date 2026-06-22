@@ -120,7 +120,14 @@ export const Session = Schema.Struct({
 export type Session = Schema.Schema.Type<typeof Session>
 
 export const NewSession = Schema.Struct({
-  goal: NullableString,
+  // The session's human-authored label, now required at start (no AI auto-title).
+  // Stored in the `goal` column for backwards compatibility; surfaced in the UI
+  // as the session "title".
+  goal: Schema.String.pipe(Schema.minLength(1)),
+  // The Topic ("vault") the session is filed under. Chosen manually at start —
+  // the AI no longer classifies sessions into topics (the user picks one, or
+  // creates one, in the popup before the timer runs).
+  topicId: TopicId,
   durationMinutes: Schema.Number.pipe(Schema.positive()),
   breakMinutes: Schema.Number.pipe(Schema.nonNegative()),
 })
@@ -384,6 +391,10 @@ export const SyncJob = Schema.Union(
     kind: Schema.Literal("upsertSession"),
     id: SessionId,
     goal: NullableString,
+    // The chosen Topic. Optional+nullable on the wire so a re-sent completion
+    // upsert and any pre-existing queued job (enqueued before topics became
+    // required) still decode; the server resolves + ownership-checks it.
+    topicId: Schema.optional(Schema.NullOr(TopicId)),
     durationMinutes: Schema.Number,
     breakMinutes: Schema.Number,
     completed: Schema.Boolean,

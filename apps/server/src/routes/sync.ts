@@ -9,6 +9,7 @@ import {
   sessionActions,
   aiChatThreads,
   aiChatMessages,
+  topics,
 } from "../db/schema"
 import { requireUser, type RequireUserVariables } from "../middleware/require-user"
 import { SyncBatchInput, type SyncJobInput } from "../lib/api-schemas"
@@ -180,12 +181,32 @@ async function applyJob(
       return
     }
     case "upsertSession": {
+      // Resolve the chosen Topic, ownership-checked against this user. An
+      // unknown or foreign-owned topicId is ignored (the session still files,
+      // just unfiled) rather than failing the whole job. Setting topicId here
+      // also suppresses AI topic reclassification at completion, which gates on
+      // a resolved topicId (see maybeGenerateTopic).
+      let topicName: string | null = null
+      let resolvedTopicId: string | null = null
+      if (job.topicId) {
+        const [topic] = await db
+          .select({ id: topics.id, name: topics.name })
+          .from(topics)
+          .where(and(eq(topics.id, job.topicId), eq(topics.userId, userId)))
+          .limit(1)
+        if (topic) {
+          topicName = topic.name
+          resolvedTopicId = topic.id
+        }
+      }
       await db
         .insert(focusSessions)
         .values({
           id: job.id,
           userId,
           goal: job.goal,
+          topic: topicName,
+          topicId: resolvedTopicId,
           durationMinutes: job.durationMinutes,
           breakMinutes: job.breakMinutes,
           completed: job.completed,
@@ -200,6 +221,12 @@ async function applyJob(
           setWhere: eq(focusSessions.userId, userId),
           set: {
             goal: job.goal,
+            // Only (re)assign the Topic when the client sent a resolvable one,
+            // so a re-sent completion upsert that omits topicId doesn't clear an
+            // existing assignment.
+            ...(resolvedTopicId
+              ? { topic: topicName, topicId: resolvedTopicId }
+              : {}),
             durationMinutes: job.durationMinutes,
             breakMinutes: job.breakMinutes,
             completed: job.completed,

@@ -151,6 +151,10 @@ export const SyncJobInput = z.discriminatedUnion("kind", [
     kind: z.literal("upsertSession"),
     id: z.string().min(1),
     goal: z.string().nullable(),
+    // The Topic chosen at start. Optional + nullable so legacy queued jobs
+    // (enqueued before topics became required) still validate; the handler
+    // resolves + ownership-checks it before filing the session.
+    topicId: z.string().min(1).max(120).nullish(),
     durationMinutes: z.number().int().min(1).max(180),
     breakMinutes: z.number().int().min(0).max(60),
     completed: z.boolean(),

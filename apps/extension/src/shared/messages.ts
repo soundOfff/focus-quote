@@ -7,7 +7,12 @@ export interface SessionStartMessage {
   type: "focusquote.session.start"
   durationMinutes: number
   breakMinutes: number
-  goal: string | null
+  // The session title — required at start (no AI auto-title). Non-empty;
+  // stored in the `goal` column for backwards compatibility.
+  goal: string
+  // The Topic ("vault") the session is filed under, chosen in the popup before
+  // the timer runs. The server resolves + ownership-checks it.
+  topicId: string
 }
 
 export interface SessionCancelMessage {

@@ -33,7 +33,7 @@ import {
   conversationThreadId,
 } from "../services/conversation-sync"
 import { AUTH_TOKEN_KEY } from "../shared/auth-storage"
-import type { SessionId } from "@focus-quote/shared"
+import type { SessionId, TopicId } from "@focus-quote/shared"
 import { emitDebug } from "../shared/debug"
 
 const SYNC_ALARM = "focusquote.sync.tick"
@@ -126,6 +126,7 @@ const handleSessionStart = (msg: RuntimeMessage) =>
     const sessions = yield* SessionsService
     const { session, active } = yield* sessions.start({
       goal: msg.goal,
+      topicId: msg.topicId as TopicId,
       durationMinutes: msg.durationMinutes,
       breakMinutes: msg.breakMinutes,
     })

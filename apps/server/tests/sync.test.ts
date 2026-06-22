@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest"
 import { app } from "../src/app"
+import { ensureTopicId } from "../src/lib/topic"
 import { authedFetch, createTestUser, json } from "./helpers"
+
+type SessionRow = { id: string; topic: string | null; topicId: string | null }
 
 describe("/api/sync/batch", () => {
   it("rejects unauthenticated requests", async () => {
@@ -167,6 +170,76 @@ describe("/api/sync/batch", () => {
     expect(
       ((await threadsB.json()) as { threads: unknown[] }).threads,
     ).toHaveLength(0)
+  })
+
+  it("files an upsertSession under the chosen topicId", async () => {
+    const { userId, token } = await createTestUser()
+    const fetch = authedFetch(token)
+    const topicId = await ensureTopicId(userId, "Linear Algebra")
+    const now = new Date().toISOString()
+
+    const res = await fetch("/api/sync/batch", {
+      ...json({
+        jobs: [
+          {
+            kind: "upsertSession",
+            id: "s-topic",
+            goal: "study eigenvectors",
+            topicId,
+            durationMinutes: 25,
+            breakMinutes: 5,
+            completed: false,
+            startedAt: now,
+            endedAt: null,
+          },
+        ],
+      }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { results: Array<{ ok: boolean }> }
+    expect(body.results[0]!.ok).toBe(true)
+
+    const sessions = await fetch("/api/focus-sessions")
+    const row = (
+      (await sessions.json()) as { sessions: SessionRow[] }
+    ).sessions.find((s) => s.id === "s-topic")
+    expect(row!.topic).toBe("Linear Algebra")
+    expect(row!.topicId).toBe(topicId)
+  })
+
+  it("ignores a foreign-owned topicId — the session still files, unfiled", async () => {
+    const { userId: userA } = await createTestUser()
+    const { token: tokenB } = await createTestUser()
+    const foreignTopicId = await ensureTopicId(userA, "A's private topic")
+    const fetchB = authedFetch(tokenB)
+    const now = new Date().toISOString()
+
+    const res = await fetchB("/api/sync/batch", {
+      ...json({
+        jobs: [
+          {
+            kind: "upsertSession",
+            id: "s-foreign",
+            goal: "sneaky",
+            topicId: foreignTopicId,
+            durationMinutes: 25,
+            breakMinutes: 5,
+            completed: false,
+            startedAt: now,
+            endedAt: null,
+          },
+        ],
+      }),
+    })
+    const body = (await res.json()) as { results: Array<{ ok: boolean }> }
+    expect(body.results[0]!.ok).toBe(true)
+
+    const sessions = await fetchB("/api/focus-sessions")
+    const row = (
+      (await sessions.json()) as { sessions: SessionRow[] }
+    ).sessions.find((s) => s.id === "s-foreign")
+    expect(row!.topic).toBeNull()
+    expect(row!.topicId).toBeNull()
   })
 
   it("upsertQuote is idempotent (last-write-wins on updatedAt)", async () => {
