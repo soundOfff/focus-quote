@@ -309,6 +309,206 @@ const testQuotes = [
     sourceUrl: "https://example.com/theophrastus",
     sourceTitle: "Theophrastus",
   },
+  {
+    text: "The unexamined assumption is the most dangerous one.",
+    sourceUrl: "https://example.com/assumption",
+    sourceTitle: "On Critical Thinking",
+  },
+  {
+    text: "Wisdom begins in wonder.",
+    sourceUrl: "https://example.com/socrates-wonder",
+    sourceTitle: "Socrates - Wonder",
+  },
+  {
+    text: "To improve is to change; to be perfect is to change often.",
+    sourceUrl: "https://example.com/churchill-change",
+    sourceTitle: "Winston Churchill - Change",
+  },
+  {
+    text: "A ship in harbor is safe, but that is not what ships are built for.",
+    sourceUrl: "https://example.com/john-shedd",
+    sourceTitle: "John A. Shedd",
+  },
+  {
+    text: "What you do speaks so loudly that I cannot hear what you say.",
+    sourceUrl: "https://example.com/emerson-action",
+    sourceTitle: "Ralph Waldo Emerson",
+  },
+  {
+    text: "The only true wisdom is in knowing you know nothing.",
+    sourceUrl: "https://example.com/socrates-2",
+    sourceTitle: "Socrates - Humility",
+  },
+  {
+    text: "First, solve the problem. Then, write the code.",
+    sourceUrl: "https://example.com/john-johnson",
+    sourceTitle: "John Johnson - Engineering",
+  },
+  {
+    text: "Programs must be written for people to read, and only incidentally for machines to execute.",
+    sourceUrl: "https://example.com/abelson",
+    sourceTitle: "Harold Abelson - SICP",
+  },
+  {
+    text: "Simplicity is prerequisite for reliability.",
+    sourceUrl: "https://example.com/dijkstra",
+    sourceTitle: "Edsger Dijkstra",
+  },
+  {
+    text: "Premature optimization is the root of all evil.",
+    sourceUrl: "https://example.com/knuth",
+    sourceTitle: "Donald Knuth - Programming",
+  },
+  {
+    text: "Talk is cheap. Show me the code.",
+    sourceUrl: "https://example.com/torvalds",
+    sourceTitle: "Linus Torvalds",
+  },
+  {
+    text: "The best way to predict the future is to invent it.",
+    sourceUrl: "https://example.com/alan-kay",
+    sourceTitle: "Alan Kay - Computing",
+  },
+  {
+    text: "Any sufficiently advanced technology is indistinguishable from magic.",
+    sourceUrl: "https://example.com/arthur-clarke",
+    sourceTitle: "Arthur C. Clarke",
+  },
+  {
+    text: "The science of today is the technology of tomorrow.",
+    sourceUrl: "https://example.com/edward-teller",
+    sourceTitle: "Edward Teller - Science",
+  },
+  {
+    text: "Nature does not hurry, yet everything is accomplished.",
+    sourceUrl: "https://example.com/lao-tzu-2",
+    sourceTitle: "Lao Tzu - Nature",
+  },
+  {
+    text: "In every walk with nature one receives far more than he seeks.",
+    sourceUrl: "https://example.com/john-muir",
+    sourceTitle: "John Muir - Nature",
+  },
+  {
+    text: "Look deep into nature, and then you will understand everything better.",
+    sourceUrl: "https://example.com/einstein-nature",
+    sourceTitle: "Albert Einstein - Nature",
+  },
+  {
+    text: "The earth has music for those who listen.",
+    sourceUrl: "https://example.com/santayana",
+    sourceTitle: "George Santayana",
+  },
+  {
+    text: "Adopt the pace of nature: her secret is patience.",
+    sourceUrl: "https://example.com/emerson-nature",
+    sourceTitle: "Ralph Waldo Emerson - Patience",
+  },
+  {
+    text: "To eat is a necessity, but to eat intelligently is an art.",
+    sourceUrl: "https://example.com/la-rochefoucauld",
+    sourceTitle: "La Rochefoucauld - Food",
+  },
+  {
+    text: "One cannot think well, love well, sleep well, if one has not dined well.",
+    sourceUrl: "https://example.com/virginia-woolf",
+    sourceTitle: "Virginia Woolf - Food",
+  },
+  {
+    text: "Tell me what you eat, and I will tell you what you are.",
+    sourceUrl: "https://example.com/brillat-savarin",
+    sourceTitle: "Brillat-Savarin - Food",
+  },
+  {
+    text: "Travel makes one modest. You see what a tiny place you occupy in the world.",
+    sourceUrl: "https://example.com/flaubert",
+    sourceTitle: "Gustave Flaubert - Travel",
+  },
+  {
+    text: "The world is a book and those who do not travel read only one page.",
+    sourceUrl: "https://example.com/augustine",
+    sourceTitle: "Saint Augustine - Travel",
+  },
+  {
+    text: "Not all those who wander are lost.",
+    sourceUrl: "https://example.com/tolkien",
+    sourceTitle: "J.R.R. Tolkien - Travel",
+  },
+  {
+    text: "Money is a terrible master but an excellent servant.",
+    sourceUrl: "https://example.com/pt-barnum",
+    sourceTitle: "P.T. Barnum - Money",
+  },
+  {
+    text: "An investment in knowledge pays the best interest.",
+    sourceUrl: "https://example.com/franklin-money",
+    sourceTitle: "Benjamin Franklin - Money",
+  },
+  {
+    text: "Do not save what is left after spending, but spend what is left after saving.",
+    sourceUrl: "https://example.com/buffett",
+    sourceTitle: "Warren Buffett - Money",
+  },
+  {
+    text: "Price is what you pay. Value is what you get.",
+    sourceUrl: "https://example.com/buffett-2",
+    sourceTitle: "Warren Buffett - Value",
+  },
+  {
+    text: "The art of being wise is the art of knowing what to overlook.",
+    sourceUrl: "https://example.com/william-james-2",
+    sourceTitle: "William James - Wisdom",
+  },
+  {
+    text: "He who opens a school door, closes a prison.",
+    sourceUrl: "https://example.com/victor-hugo",
+    sourceTitle: "Victor Hugo - Education",
+  },
+  {
+    text: "Education is the most powerful weapon which you can use to change the world.",
+    sourceUrl: "https://example.com/mandela-education",
+    sourceTitle: "Nelson Mandela - Education",
+  },
+  {
+    text: "The beautiful thing about learning is that no one can take it away from you.",
+    sourceUrl: "https://example.com/bb-king",
+    sourceTitle: "B.B. King - Learning",
+  },
+  {
+    text: "Tell me and I forget, teach me and I may remember, involve me and I learn.",
+    sourceUrl: "https://example.com/franklin-learning",
+    sourceTitle: "Benjamin Franklin - Learning",
+  },
+  {
+    text: "Music is the universal language of mankind.",
+    sourceUrl: "https://example.com/longfellow",
+    sourceTitle: "Henry Wadsworth Longfellow - Music",
+  },
+  {
+    text: "Where words fail, music speaks.",
+    sourceUrl: "https://example.com/andersen",
+    sourceTitle: "Hans Christian Andersen - Music",
+  },
+  {
+    text: "Art washes away from the soul the dust of everyday life.",
+    sourceUrl: "https://example.com/picasso",
+    sourceTitle: "Pablo Picasso - Art",
+  },
+  {
+    text: "Every artist was first an amateur.",
+    sourceUrl: "https://example.com/emerson-art",
+    sourceTitle: "Ralph Waldo Emerson - Art",
+  },
+  {
+    text: "Creativity takes courage.",
+    sourceUrl: "https://example.com/matisse",
+    sourceTitle: "Henri Matisse - Art",
+  },
+  {
+    text: "The healthy body is the guest chamber of the soul; the sick, its prison.",
+    sourceUrl: "https://example.com/bacon",
+    sourceTitle: "Francis Bacon - Health",
+  },
 ]
 
 async function main() {
