@@ -163,18 +163,14 @@ export function HomeQuotesPanel() {
     didInitCollapse.current = true
     setCollapsed(new Set(collapsibleIds))
   }, [collapsibleIds])
-  const liveUntaggedIds = useMemo(
+  // The Untagged set is derived straight from the synced graph + quote list. It
+  // stays stable while a Tidy pass runs (nothing mutates this state until the
+  // post-Tidy reload lands) and then updates in a single clean swap — no frozen
+  // snapshot needed.
+  const untaggedIds = useMemo(
     () => untaggedQuoteIds(graph, quotes.map((q) => q.id)),
     [graph, quotes],
   )
-  // Snapshot of the Untagged set taken when "Tidy now" starts. The filing step
-  // empties this bucket, so while the pass runs we render the count + list from
-  // this frozen copy instead of the live set — the bucket stays put through the
-  // whole bar and updates in a single swap the instant Tidy finishes (when
-  // `tidying` flips false the live set has not yet diverged, so there's no
-  // intermediate flash before the graph refresh lands).
-  const untaggedSnapshot = useRef<ReadonlySet<string>>(new Set())
-  const untaggedIds = tidying ? untaggedSnapshot.current : liveUntaggedIds
 
   const visibleQuoteIds = useMemo<ReadonlySet<string>>(() => {
     if (selected.kind === "all") return new Set(quotes.map((q) => q.id))
@@ -221,27 +217,31 @@ export function HomeQuotesPanel() {
   }
 
   const tidyNow = () => {
-    // Freeze the Untagged bucket to its current contents for the duration of the
-    // run; rendering reads this snapshot while `tidying` is true (see above).
-    untaggedSnapshot.current = liveUntaggedIds
+    const hadUntagged = untaggedIds.size > 0
     setTidying(true)
     setTidyNote(null)
     setReheatSignal((n) => n + 1)
     runP(consolidateEff)
       .then(({ changes }) => {
         const { filed, merged, renamed, reparented } = changes
+        const n = (count: number, noun: string) =>
+          `${count} ${noun}${count === 1 ? "" : "s"}`
         const parts: string[] = []
-        if (filed) parts.push(`${filed} filed`)
-        if (merged) parts.push(`${merged} merged`)
-        if (renamed) parts.push(`${renamed} renamed`)
-        if (reparented) parts.push(`${reparented} re-parented`)
-        setTidyNote(
-          parts.length === 0
-            ? "Already tidy — no changes."
-            : `Tidied: ${parts.join(", ")}.`,
-        )
+        if (filed) parts.push(`filed ${n(filed, "quote")}`)
+        if (merged) parts.push(`merged ${n(merged, "tag")}`)
+        if (renamed) parts.push(`renamed ${n(renamed, "tag")}`)
+        if (reparented) parts.push(`nested ${n(reparented, "tag")}`)
+        if (parts.length > 0) {
+          setTidyNote(`Done — ${parts.join(", ")}.`)
+        } else if (hadUntagged) {
+          // Untagged quotes remained but nothing got filed — the per-session AI
+          // budget refills over a minute, so the actionable answer is "wait".
+          setTidyNote("No changes this time — try again in a moment.")
+        } else {
+          setTidyNote("Already tidy — nothing to file.")
+        }
       })
-      .catch(() => setTidyNote("Couldn't tidy right now."))
+      .catch(() => setTidyNote("Couldn't tidy right now — check your connection."))
       .finally(() => {
         setTidying(false)
         reload()
@@ -352,7 +352,7 @@ export function HomeQuotesPanel() {
             // Graph view is hidden for now.
           ]}
         />
-        <label class="inline-flex h-8 cursor-pointer items-center gap-2 rounded-control border border-rule-2 bg-white px-2.5 text-xs font-medium text-body">
+        <label class="inline-flex h-8 cursor-pointer items-center gap-2 rounded-control border border-rule-2 bg-white dark:bg-transparent px-2.5 text-xs font-medium text-body">
           <Toggle
             size="sm"
             enabled={includeSubTags}
