@@ -770,11 +770,15 @@ export const summarizeSession = async (input: {
  * object/array by slicing from the first opening brace to its matching last
  * closing brace. Falls back to the trimmed string when no brace is present.
  */
-export const stripFences = (s: string): string => {
-  const cleaned = s
+/** Strip ```json fences and surrounding whitespace (no brace extraction). */
+const stripCodeFences = (s: string): string =>
+  s
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/```\s*$/i, "")
     .trim()
+
+export const stripFences = (s: string): string => {
+  const cleaned = stripCodeFences(s)
   for (const [open, close] of [
     ["{", "}"],
     ["[", "]"],
@@ -787,16 +791,67 @@ export const stripFences = (s: string): string => {
 }
 
 /**
+ * Best-effort repair of a truncated/partial JSON string so JSON.parse can still
+ * recover the prefix the model *did* emit. The cheap classifiers occasionally
+ * end their turn mid-object — e.g. `{"merges": [], "renames": []` with the
+ * closing brace (and a later key) dropped — and stripFences's brace-matching
+ * then mis-slices an inner array out of the wreckage, throwing the whole reply
+ * away. Walking the text bracket-by-bracket (string-aware, so brackets inside
+ * string values don't count), trimming a dangling trailing comma or a key with
+ * no value, then closing the still-open strings/brackets recovers the keys that
+ * arrived and lets the missing ones default to undefined. Only ever appends —
+ * never reorders or invents values — so a recovered object is a strict prefix of
+ * what the model intended, which every caller then validates field-by-field.
+ */
+const repairJson = (raw: string): string => {
+  const s = stripCodeFences(raw)
+  const stack: Array<"{" | "["> = []
+  let inString = false
+  let escaped = false
+  for (const ch of s) {
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === "\\") escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') inString = true
+    else if (ch === "{" || ch === "[") stack.push(ch)
+    else if (ch === "}" && stack[stack.length - 1] === "{") stack.pop()
+    else if (ch === "]" && stack[stack.length - 1] === "[") stack.pop()
+  }
+  // Close a dangling string, dropping a trailing escape char first (a lone `\`
+  // would otherwise escape the quote we append and leave the string open).
+  let out = s
+  if (inString) out = `${escaped ? s.slice(0, -1) : s}"`
+  // A trailing `,` or a key awaiting its value (`… "renames":`) would make the
+  // appended closer invalid — drop it first.
+  out = out.replace(/,\s*$/, "").replace(/(?:,\s*)?"[^"]*"\s*:\s*$/, "")
+  for (let i = stack.length - 1; i >= 0; i--) {
+    out += stack[i] === "{" ? "}" : "]"
+  }
+  return out
+}
+
+/**
  * Reconstruct the JSON object the model was asked for, given that we prefill the
- * assistant turn with "{". Depending on the provider/model the reply is either
- * the *continuation* (no leading brace — prepend it) or, when the prefill is
- * ignored, the full text (possibly wrapped in prose — extract it). Try both
- * readings and return whichever actually parses; on neither (e.g. the reply was
- * truncated mid-object) hand back a best-effort string so the caller's own
- * try/catch logs once and falls back to null.
+ * assistant turn with "{". The reply is usually the object's *continuation* (no
+ * leading brace), but the cheap models also (a) re-emit the brace themselves,
+ * (b) wrap the object in prose, or (c) truncate mid-object. Try, in order: the
+ * balanced repair of the brace-prepended continuation (the common case, and the
+ * truncation fix), the same sliced for a trailing-prose tail, then the bare
+ * reply (prefill ignored / prose-wrapped), then a last-ditch repair. Return the
+ * first that parses; if none do, hand back a best-effort string so the caller's
+ * own try/catch logs once and falls back to null.
  */
 export const reconstructJson = (raw: string): string => {
-  for (const candidate of [stripFences(`{${raw}`), stripFences(raw)]) {
+  const candidates = [
+    repairJson(`{${raw}`),
+    stripFences(`{${raw}`),
+    stripFences(raw),
+    repairJson(raw),
+  ]
+  for (const candidate of candidates) {
     try {
       JSON.parse(candidate)
       return candidate

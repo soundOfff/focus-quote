@@ -67,8 +67,29 @@ describe("reconstructJson", () => {
     expect(parse('{"newTag":"AI"}')).toEqual({ newTag: "AI" })
   })
 
-  it("returns an unparseable best-effort string when truncated", () => {
-    // No closing brace — nothing can recover it; the caller's try/catch nulls.
-    expect(() => parse('"attachTagIds":["t1"')).toThrow()
+  // The cheap classifiers sometimes end their turn mid-object. Rather than
+  // discard the whole reply (which left "Tidy now" silently doing nothing), we
+  // balance the open brackets and recover the keys that did arrive.
+  it("recovers a continuation truncated before its closing brace", () => {
+    expect(parse('"attachTagIds":["t1"')).toEqual({ attachTagIds: ["t1"] })
+  })
+
+  // Regression for the consolidation crash: Haiku returned `"merges": [],
+  // "renames": []` with "parents" and the closing brace dropped. The old code
+  // mis-sliced an inner `[]` and threw; now the partial plan is recovered and
+  // the missing key defaults to undefined (the caller treats it as empty).
+  it("recovers a truncated tag-consolidation plan", () => {
+    expect(parse('"merges": [],\n  "renames": []')).toEqual({
+      merges: [],
+      renames: [],
+    })
+  })
+
+  // A merge truncated mid-list (with a dangling trailing comma) keeps the
+  // complete entries and drops the incomplete tail.
+  it("keeps complete entries when an array is truncated", () => {
+    expect(parse('"merges": [{"fromId":"a","intoId":"b"},')).toEqual({
+      merges: [{ fromId: "a", intoId: "b" }],
+    })
   })
 })
