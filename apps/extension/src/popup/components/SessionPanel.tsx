@@ -12,6 +12,7 @@ import {
   Segmented,
   type SegmentedItem,
 } from "../../ui/primitives"
+import { Dropdown, type DropdownOption } from "../../ui/Dropdown"
 
 const NEW_TOPIC = "__new__"
 
@@ -146,6 +147,16 @@ export function SessionPanel({
     return topics.find((t) => t.id === active.topicId)?.name ?? null
   }, [active, topics])
 
+  // Options for the topic <Dropdown>: the user's topics plus a trailing entry
+  // that swaps the picker for the create-name input.
+  const topicOptions = useMemo<ReadonlyArray<DropdownOption<string>>>(
+    () => [
+      ...topics.map((t) => ({ value: t.id, label: t.name })),
+      { value: NEW_TOPIC, label: "+ New topic…" },
+    ],
+    [topics],
+  )
+
   const handleStart = () => {
     if (!canStart) return
     const payload: SessionStartMessage = {
@@ -252,10 +263,9 @@ export function SessionPanel({
         class="rounded-control border border-rule-2 bg-paper-2 px-[11px] py-[9px] text-[13px] text-ink placeholder:text-muted-2 focus:border-amber-deep focus:outline-none focus:ring-[3px] focus:ring-amber/15"
       />
       {topicMode === "pick" ? (
-        <select
+        <Dropdown
           value={topicId}
-          onChange={(e) => {
-            const value = (e.currentTarget as HTMLSelectElement).value
+          onChange={(value) => {
             if (value === NEW_TOPIC) {
               setTopicError(null)
               setTopicMode("create")
@@ -263,16 +273,11 @@ export function SessionPanel({
               setTopicId(value)
             }
           }}
-          class="rounded-control border border-rule-2 bg-paper-2 px-[11px] py-[9px] text-[13px] text-ink focus:border-amber-deep focus:outline-none focus:ring-[3px] focus:ring-amber/15"
-          aria-label="Topic"
-        >
-          {topics.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-          <option value={NEW_TOPIC}>+ New topic…</option>
-        </select>
+          ariaLabel="Topic"
+          options={topicOptions}
+          placeholder="Choose a topic"
+          triggerClass="rounded-control border border-rule-2 bg-paper-2 px-[11px] py-[9px] text-[13px] text-ink aria-expanded:border-amber-deep"
+        />
       ) : (
         <div class="flex flex-col gap-1">
           <div class="flex items-stretch gap-2">
