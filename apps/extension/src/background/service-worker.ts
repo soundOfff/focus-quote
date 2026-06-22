@@ -155,9 +155,10 @@ const handleSessionStart = (msg: RuntimeMessage) =>
     const syncSvc = yield* SyncService
     yield* syncSvc.drain.pipe(Effect.either)
 
-    // TEMPORARILY DISABLED — distraction detection paused. The real-time SSE
-    // channel only carried AI distraction nudges, so it's off while paused.
-    // Re-enable together with URL tracking + the server classifier.
+    // STILL PAUSED — the real-time SSE channel only carried AI distraction
+    // nudges (token spend). URL tracking has been re-enabled without it; the
+    // session-end artifacts don't need the live channel. Re-enable this only
+    // when resuming real-time distraction detection + the server classifier.
     // const stream = yield* RealtimeStreamService
     // yield* stream.open(session.id).pipe(Effect.catchAll(() => Effect.void))
   })
@@ -315,19 +316,19 @@ const handleActionEvent = (msg: ActionEventMessage) =>
 
 const handleSpaNav = (msg: SpaNavMessage, sender: chrome.runtime.MessageSender) =>
   Effect.gen(function* () {
-    // TEMPORARILY DISABLED — distraction-detection URL tracking is paused.
-    // The SPA-nav bridge still feeds the session action log below; only the
-    // URL-tracking call is commented out. Re-enable with the rest of the
-    // distraction pipeline.
-    // const details = {
-    //   frameId: 0,
-    //   tabId: sender.tab?.id ?? -1,
-    //   url: msg.url,
-    //   title: msg.title,
-    //   content: msg.content,
-    // }
-    // yield* handleNavigation(details)
-    void sender
+    // URL tracking is back on — it feeds session_urls, the source material the
+    // session-end AI artifacts (summary, study tips, recall) need. The
+    // expensive per-URL distraction classifier + SSE nudges stay paused
+    // server-side (see classifyBatch / the session-urls route), so this only
+    // records the visited page; it doesn't spend classification tokens.
+    const details = {
+      frameId: 0,
+      tabId: sender.tab?.id ?? -1,
+      url: msg.url,
+      title: msg.title,
+      content: msg.content,
+    }
+    yield* handleNavigation(details)
     const sessions = yield* SessionsService
     const active = yield* sessions.getActive.pipe(Effect.orElseSucceed(() => null))
     if (!active) return
@@ -580,22 +581,22 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // that the user never actually navigated to. handleNavigation re-checks this,
 // but we early-out at the listener boundary too so the runtime never even
 // spins up the Effect runtime for a subframe event.
-// TEMPORARILY DISABLED — distraction detection paused. These listeners were the
-// entry point for URL tracking (they feed handleNavigation -> UrlTracker.record).
-// Re-enable together with the SPA-nav call, the SSE channel, and the server
-// classifier to turn distraction detection back on.
-// chrome.webNavigation.onCompleted.addListener((details) => {
-//   if (details.frameId !== 0) return
-//   runWithServices(handleNavigation(details)).catch((err) =>
-//     console.warn("[FocusQuote] nav handle failed:", err),
-//   )
-// })
-// chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
-//   if (details.frameId !== 0) return
-//   runWithServices(handleNavigation(details)).catch((err) =>
-//     console.warn("[FocusQuote] history nav handle failed:", err),
-//   )
-// })
+// URL tracking is back on: these listeners feed handleNavigation ->
+// UrlTracker.record, which writes session_urls (the source material for the
+// session-end AI artifacts). The SSE channel and the server-side distraction
+// classifier (classifyBatch) stay paused — those are the token-spend parts.
+chrome.webNavigation.onCompleted.addListener((details) => {
+  if (details.frameId !== 0) return
+  runWithServices(handleNavigation(details)).catch((err) =>
+    console.warn("[FocusQuote] nav handle failed:", err),
+  )
+})
+chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+  if (details.frameId !== 0) return
+  runWithServices(handleNavigation(details)).catch((err) =>
+    console.warn("[FocusQuote] history nav handle failed:", err),
+  )
+})
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === CONTEXT_MENU_ID) {

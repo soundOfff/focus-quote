@@ -324,11 +324,13 @@ function SummaryPanel({
   onRegenerate,
   regenerating,
   generating,
+  noMaterial,
 }: {
   summary: string | null
   onRegenerate: () => void
   regenerating: boolean
   generating?: boolean
+  noMaterial?: boolean
 }) {
   return (
     <Panel
@@ -340,7 +342,14 @@ function SummaryPanel({
       {summary ? (
         <p class="summary-text">{summary}</p>
       ) : (
-        <EmptyNote generating={generating} label="No summary generated yet." />
+        <EmptyNote
+          generating={generating}
+          label={
+            noMaterial
+              ? "No pages were tracked this session, so there's nothing to summarize."
+              : "No summary generated yet."
+          }
+        />
       )}
     </Panel>
   )
@@ -351,11 +360,13 @@ function TipsPanel({
   onRegenerate,
   regenerating,
   generating,
+  noMaterial,
 }: {
   tips: ReadonlyArray<string> | null
   onRegenerate: () => void
   regenerating: boolean
   generating?: boolean
+  noMaterial?: boolean
 }) {
   return (
     <Panel
@@ -374,7 +385,14 @@ function TipsPanel({
           ))}
         </ol>
       ) : (
-        <EmptyNote generating={generating} label="No study tips generated yet." />
+        <EmptyNote
+          generating={generating}
+          label={
+            noMaterial
+              ? "No pages were tracked this session, so there are no study tips."
+              : "No study tips generated yet."
+          }
+        />
       )}
     </Panel>
   )
@@ -398,12 +416,14 @@ function RecallPanel({
   onRegenerate,
   regenerating,
   generating,
+  noMaterial,
 }: {
   sessionId: string
   questions: ReadonlyArray<RecallQuestion> | null
   onRegenerate: () => void
   regenerating: boolean
   generating?: boolean
+  noMaterial?: boolean
 }) {
   const total = questions?.length ?? 0
   const [idx, setIdx] = useState(0)
@@ -541,7 +561,11 @@ function RecallPanel({
       ) : (
         <EmptyNote
           generating={generating}
-          label="No recall questions generated yet."
+          label={
+            noMaterial
+              ? "No pages or notes were available, so there are no recall questions."
+              : "No recall questions generated yet."
+          }
         />
       )}
     </Panel>
@@ -929,6 +953,13 @@ export function SessionDetail({ sessionId }: Props) {
     !!s.endedAt &&
     Date.now() - new Date(s.endedAt).getTime() < RECENTLY_FINISHED_MS
 
+  // The session-end generators for summary/tips/recall need at least one
+  // tracked page to work from (recall can also use saved notes, but those are
+  // surfaced as questions when they exist). With no captured URLs there's
+  // nothing to generate, so show an explanatory empty state instead of an
+  // endless "Generating…" spinner. Resources still generate from goal+topic.
+  const noMaterial = data.urls.length === 0
+
   const statusClass =
     d.status === "completed"
       ? ""
@@ -1008,13 +1039,19 @@ export function SessionDetail({ sessionId }: Props) {
               summary={data.summary}
               onRegenerate={() => regenerate("summary")}
               regenerating={regenerating.has("summary")}
-              generating={recentlyFinished && !data.summary}
+              generating={recentlyFinished && !data.summary && !noMaterial}
+              noMaterial={noMaterial}
             />
             <TipsPanel
               tips={data.tips}
               onRegenerate={() => regenerate("studyTips")}
               regenerating={regenerating.has("studyTips")}
-              generating={recentlyFinished && !(data.tips && data.tips.length)}
+              generating={
+                recentlyFinished &&
+                !(data.tips && data.tips.length) &&
+                !noMaterial
+              }
+              noMaterial={noMaterial}
             />
             <RecallPanel
               sessionId={sessionId}
@@ -1022,8 +1059,11 @@ export function SessionDetail({ sessionId }: Props) {
               onRegenerate={() => regenerate("recallQuestions")}
               regenerating={regenerating.has("recallQuestions")}
               generating={
-                recentlyFinished && !(data.questions && data.questions.length)
+                recentlyFinished &&
+                !(data.questions && data.questions.length) &&
+                !noMaterial
               }
+              noMaterial={noMaterial}
             />
             <ReadsPanel
               resources={data.resources}
