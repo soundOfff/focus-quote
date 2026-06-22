@@ -10,6 +10,7 @@ export default defineConfig({
   define: {
     __TURSO_DB_URL__: JSON.stringify("test://"),
     __TURSO_AUTH_TOKEN__: JSON.stringify("test-token"),
+    __API_BASE_URL__: JSON.stringify("http://localhost:3000"),
   },
   test: {
     environment: "node",
