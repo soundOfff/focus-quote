@@ -13,6 +13,10 @@
     "dev:extension": "npm run dev --workspace apps/extension",
     "dev:server": "npm run dev --workspace apps/server",
     "build:extension": "npm run build --workspace apps/extension",
-    "build:server": "npm run build --workspace apps/server"
+    "build:server": "npm run build --workspace apps/server",
+    "demo:record": "node scripts/demo/record.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
   }
 }

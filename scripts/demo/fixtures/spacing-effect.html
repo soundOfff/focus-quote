@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why forgetting helps you remember | Margins</title>
+<style>
+  :root {
+    --ink: #1d1b18;
+    --muted: #6b665d;
+    --rule: #e6e0d4;
+    --paper: #fbf8f2;
+    --accent: #9a3b1f;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--paper); }
+  body {
+    margin: 0;
+    color: var(--ink);
+    font: 20px/1.62 "Iowan Old Style", "Charter", Georgia, serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header.site {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 22px 32px;
+    border-bottom: 1px solid var(--rule);
+    font: 600 15px/1 -apple-system, "Helvetica Neue", sans-serif;
+    letter-spacing: 0.02em;
+  }
+  header.site .brand { font: italic 600 24px/1 "Iowan Old Style", Georgia, serif; letter-spacing: 0; }
+  header.site nav { color: var(--muted); display: flex; gap: 24px; }
+  article { max-width: 680px; margin: 0 auto; padding: 48px 32px 120px; }
+  .kicker {
+    color: var(--accent);
+    font: 700 13px/1 -apple-system, "Helvetica Neue", sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  h1 { font-size: 46px; line-height: 1.1; letter-spacing: -0.01em; margin: 14px 0 14px; font-weight: 700; }
+  .dek { font-size: 23px; line-height: 1.45; color: var(--muted); margin: 0 0 22px; font-style: italic; }
+  .byline {
+    font: 14px/1.4 -apple-system, "Helvetica Neue", sans-serif;
+    color: var(--muted);
+    padding-bottom: 26px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 30px;
+  }
+  p { margin: 0 0 1.05em; text-wrap: pretty; }
+  p.lede::first-letter { float: left; font-size: 74px; line-height: 0.86; padding: 6px 10px 0 0; font-weight: 700; }
+  ::selection { background: #f3d9a4; }
+</style>
+</head>
+<body>
+<header class="site">
+  <span class="brand">Margins</span>
+  <nav><span>Learning</span><span>Memory</span><span>Archive</span></nav>
+</header>
+<article>
+  <div class="kicker">Memory</div>
+  <h1>Why forgetting helps you remember</h1>
+  <p class="dek">The spacing effect, and what a century of research says about how to study.</p>
+  <div class="byline">By the Margins desk &middot; 6 min read</div>
+  <p class="lede">In 1885 Hermann Ebbinghaus memorised lists of nonsense syllables and tested himself at intervals. Most of what he learned was gone within a day, yet each review brought it back faster than the last, and it then stayed longer.</p>
+  <p><span id="quote-target">Forgetting is not the enemy of memory; it is the signal that tells the brain a memory is worth keeping.</span> When a fact has started to fade, retrieving it takes effort, and that effort is what strengthens the trace.</p>
+  <p>Cramming feels productive because the material is fresh. Spreading the same hours over several days feels harder, and it is: you keep meeting the material just as it slips away. That friction is the point.</p>
+  <p>The practical rule is simple. Review new material after a day, then after three days, then after a week. Each gap should be long enough that recall takes a moment of real work.</p>
+</article>
+</body>
+</html>

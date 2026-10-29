@@ -245,7 +245,12 @@ cd apps/server && npm run db:generate
 
 # Drizzle: apply pending migrations manually
 cd apps/server && npm run db:migrate
+
+# Re-record the portfolio demo loop (fake account, fixture AI, localhost only)
+npm run demo:record -- --out <dir>
 ```
+
+`demo:record` builds the extension against a demo API port, seeds a scratch database in `.demo/` as "Ada Lovelace", and runs the server with `DEMO_FIXTURES=1`. In that mode every AI call returns a canned reply from `apps/server/src/lib/demo-fixtures.ts`. The server refuses to start in demo mode if any provider key is set or if `DATABASE_URL` points at a `data.db`. The recorder fails if any request leaves localhost.
 
 ## Tech stack
 
