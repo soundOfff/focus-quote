@@ -48,6 +48,13 @@ const EnvSchema = z.object({
   // the `user_secrets` table. Must be 32 raw bytes (`openssl rand -base64 32`).
   // Optional in dev/test — when unset, secrets endpoints reject writes.
   SECRETS_ENCRYPTION_KEY: z.string().optional(),
+
+  // Portfolio demo mode: every LLM, embedding and URL-check call returns a
+  // deterministic fixture (src/lib/demo-fixtures.ts) and nothing leaves the host.
+  DEMO_FIXTURES: z
+    .enum(["0", "1"])
+    .default("0")
+    .transform((v) => v === "1"),
 })
 
 export type Env = z.infer<typeof EnvSchema>
@@ -62,3 +69,23 @@ if (!parsed.success) {
 }
 
 export const env: Env = parsed.data
+
+if (env.DEMO_FIXTURES) {
+  const liveKeys = (
+    [
+      "ANTHROPIC_API_KEY",
+      "OPENROUTER_API_KEY",
+      "RESEND_API_KEY",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "SECRETS_ENCRYPTION_KEY",
+    ] as const
+  ).filter((k) => Boolean(env[k]))
+  if (liveKeys.length > 0 || /data\.db$/.test(env.DATABASE_URL)) {
+    console.error(
+      `[demo] refusing to start: demo mode needs a scratch DATABASE_URL and no live keys (set: ${liveKeys.join(", ") || "none"}; database: ${env.DATABASE_URL})`,
+    )
+    process.exit(1)
+  }
+  console.log(`[demo] fixtures on; database ${env.DATABASE_URL}; live keys set: none`)
+}

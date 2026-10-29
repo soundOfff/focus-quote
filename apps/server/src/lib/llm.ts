@@ -1,6 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 import { env } from "../env"
+import {
+  demoCompletion,
+  demoEmbedding,
+  demoQuoteAssistantReply,
+} from "./demo-fixtures"
 
 const ANTHROPIC_HAIKU = "claude-haiku-4-5-20251001"
 const ANTHROPIC_SONNET = "claude-sonnet-4-5-20250929"
@@ -171,7 +176,23 @@ const getOpenRouter = (): OpenAI | null => {
   return openrouterClient
 }
 
-interface GenInput {
+/** The exported helper behind each `generate()` call; keys the demo fixture table. */
+export type LlmTask =
+  | "classifyUrl"
+  | "generateStudyTips"
+  | "generateRecallQuestions"
+  | "generateTopic"
+  | "generateSessionTitle"
+  | "gradeRecallAnswer"
+  | "generateResourceRecommendations"
+  | "summarizeSession"
+  | "classifyQuoteIntoTags"
+  | "classifyQuotesIntoTagsBatch"
+  | "proposeTagConsolidation"
+  | "generateGuideSteps"
+
+export interface GenInput {
+  task: LlmTask
   system: string
   user: string
   maxTokens: number
@@ -186,6 +207,7 @@ interface GenInput {
 }
 
 const generate = async (input: GenInput): Promise<string | null> => {
+  if (env.DEMO_FIXTURES) return demoCompletion(input)
   const provider = pickProvider()
   if (provider === "anthropic") {
     const c = getAnthropic()
@@ -293,6 +315,7 @@ export const classifyUrl = async (input: {
 
   try {
     const text = await generate({
+      task: "classifyUrl",
       system: SYSTEM_CLASSIFY,
       user: userMessage,
       maxTokens: 200,
@@ -349,6 +372,7 @@ export const generateStudyTips = async (
   if (input.urls.length === 0) return null
   try {
     const text = await generate({
+      task: "generateStudyTips",
       system: SYSTEM_STUDY_TIPS,
       user: buildStudyUserMessage(input),
       maxTokens: 500,
@@ -399,6 +423,7 @@ export const generateRecallQuestions = async (
   const depth = opts.depth ?? "standard"
   try {
     const text = await generate({
+      task: "generateRecallQuestions",
       system: buildRecallSystem(count, depth),
       user: buildRecallUserMessage(input, vault),
       maxTokens: 800,
@@ -433,6 +458,7 @@ export const generateTopic = async (
   if (input.urls.length === 0 && !input.goal) return null
   try {
     const text = await generate({
+      task: "generateTopic",
       system: SYSTEM_TOPIC,
       user: JSON.stringify({
         goal: input.goal ?? "(no explicit goal)",
@@ -463,6 +489,7 @@ export const generateSessionTitle = async (input: {
   if (input.urls.length === 0) return null
   try {
     const text = await generate({
+      task: "generateSessionTitle",
       system: SYSTEM_TITLE,
       user: JSON.stringify({
         topic: input.topic ?? "(uncategorized)",
@@ -501,6 +528,7 @@ export const gradeRecallAnswer = async (input: {
   }
   try {
     const text = await generate({
+      task: "gradeRecallAnswer",
       system: SYSTEM_GRADE,
       user: JSON.stringify({
         question: input.question,
@@ -558,6 +586,7 @@ const callResourcesOnce = async (
   vault: ReadonlyArray<ResourceVaultSeed>,
 ): Promise<ResourceRecommendation[]> => {
   const text = await generate({
+    task: "generateResourceRecommendations",
     system: SYSTEM_RESOURCES,
     user: buildResourcesUserMessage(input, vault),
     maxTokens: 700,
@@ -701,6 +730,7 @@ const validateUrls = async (
 }
 
 const checkUrl = async (url: string): Promise<boolean> => {
+  if (env.DEMO_FIXTURES) return true
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), 4000)
   try {
@@ -748,6 +778,7 @@ export const summarizeSession = async (input: {
 
   try {
     const text = await generate({
+      task: "summarizeSession",
       system: SYSTEM_SUMMARY,
       user: userMessage,
       maxTokens: 400,
@@ -891,6 +922,7 @@ export const classifyQuoteIntoTags = async (input: {
 }): Promise<QuoteTagClassification | null> => {
   try {
     const text = await generate({
+      task: "classifyQuoteIntoTags",
       system: SYSTEM_QUOTE_TAGS,
       user: JSON.stringify({
         quote: input.text.slice(0, 2000),
@@ -953,6 +985,7 @@ export const classifyQuotesIntoTagsBatch = async (input: {
   if (input.quotes.length === 0) return []
   try {
     const text = await generate({
+      task: "classifyQuotesIntoTagsBatch",
       system: SYSTEM_QUOTES_TAGS_BATCH,
       user: JSON.stringify({
         quotes: input.quotes.map((q) => ({
@@ -1017,6 +1050,7 @@ export const proposeTagConsolidation = async (input: {
 }): Promise<TagConsolidationPlan | null> => {
   try {
     const text = await generate({
+      task: "proposeTagConsolidation",
       system: SYSTEM_TAG_CONSOLIDATION,
       user: JSON.stringify({
         tags: input.tags.slice(0, 400),
@@ -1072,6 +1106,7 @@ export const proposeTagConsolidation = async (input: {
 export const embed = async (text: string): Promise<number[] | null> => {
   const trimmed = text.trim().slice(0, 2000)
   if (!trimmed) return null
+  if (env.DEMO_FIXTURES) return demoEmbedding(trimmed)
   const c = getOpenRouter()
   if (!c) return null
   try {
@@ -1213,6 +1248,7 @@ export const generateQuoteAssistantReply = async (input: {
   history: ReadonlyArray<QuoteAssistantTurn>
   userMessage: string
 }): Promise<QuoteAssistantOutput | null> => {
+  if (env.DEMO_FIXTURES) return demoQuoteAssistantReply(input)
   const provider = pickProvider()
   if (provider === "none") return null
 
@@ -1443,6 +1479,7 @@ export const generateGuideSteps = async (input: {
 
   try {
     const text = await generate({
+      task: "generateGuideSteps",
       system: hasCatalog ? SYSTEM_GUIDE_STEPS_DOM : SYSTEM_GUIDE_STEPS,
       user: userMessage,
       maxTokens: 900,
